@@ -1,0 +1,2355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Bachcare Operations</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:system-ui,-apple-system,sans-serif;background:#f0f4f8;min-height:100vh;}
+input,select,textarea{font-family:inherit;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script type="text/babel" data-presets="react">
+const {useState,useRef,useEffect,useCallback}=React;
+
+const APP_PW="Bachcare2025";
+
+const ACCOUNTS=[
+  {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
+  {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
+  {username:"Drew",     password:"AYv$RORe^xxW2U98",  role:"leader", displayName:"Drew Paogofie",   team:"Guest Support"},
+  {username:"Janendra", password:"Ux7q*IN0rTqhjLo!",  role:"leader", displayName:"Janendra Kishan", team:"Reputation and Resolutions"},
+  {username:"Shanya",   password:"&jaKj9n9LmQax7OS",  role:"leader", displayName:"Shanya Kumar",    team:"Owner Support"},
+];
+
+const SK="bc_v3";
+
+const DEFAULT_TEAMS={
+  "Guest Support":{color:"#1e6fcf",lightBg:"#e8f1fb",kpis:[
+    {key:"avg_first_response",label:"Avg First Response Time",target:"<4 Business Hours",unit:"hrs",dir:"lt",thresh:4},
+    {key:"avg_response",label:"Avg Response Time",target:"<8 Business Hours",unit:"hrs",dir:"lt",thresh:8},
+    {key:"productivity_team",label:"Productivity – Team",target:">8 Per Hour",unit:"/hr",dir:"gt",thresh:8},
+    {key:"productivity_lead",label:"Productivity – Team Lead",target:">4 Per Hour",unit:"/hr",dir:"gt",thresh:4},
+    {key:"in_stay_resolved",label:"In Stay Cases Resolved >8 Hrs",target:">95%",unit:"%",dir:"gt",thresh:95},
+    {key:"csat_in_stay",label:"CSAT after In Stay Resolution",target:">85%",unit:"%",dir:"gt",thresh:85},
+    {key:"call_reviews_count",label:"Call Reviews Per Agent/Month",target:">8",unit:"",dir:"gt",thresh:8},
+    {key:"call_reviews_pass",label:"Call Reviews Pass Rate",target:">95%",unit:"%",dir:"gt",thresh:95},
+    {key:"call_answer_rate",label:"Guest Call Answer Rate",target:">90%",unit:"%",dir:"gt",thresh:90},
+    {key:"cancellation_review",label:"Monthly Cancellation Review",target:"Yes",unit:"",dir:"bool",thresh:1},
+  ]},
+  "Owner Support":{color:"#0e7a5e",lightBg:"#e3f5ef",kpis:[
+    {key:"avg_first_response",label:"Avg First Response Time",target:"<2 Business Hours",unit:"hrs",dir:"lt",thresh:2},
+    {key:"avg_response",label:"Avg Response Time",target:"<4 Business Hours",unit:"hrs",dir:"lt",thresh:4},
+    {key:"productivity_team",label:"Productivity – Team",target:">6 Per Hour",unit:"/hr",dir:"gt",thresh:6},
+    {key:"productivity_lead",label:"Productivity – Team Lead",target:">3 Per Hour",unit:"/hr",dir:"gt",thresh:3},
+    {key:"owner_issue_resolved",label:"Owner Cases Resolved >5 Working Days",target:">90%",unit:"%",dir:"gt",thresh:90},
+    {key:"csat_owner",label:"CSAT after Owner Issue Resolution",target:">85%",unit:"%",dir:"gt",thresh:85},
+    {key:"call_reviews_count",label:"Call Reviews Per Agent",target:">8",unit:"",dir:"gt",thresh:8},
+    {key:"call_reviews_pass",label:"Call Reviews Pass Rate",target:">95%",unit:"%",dir:"gt",thresh:95},
+    {key:"owner_call_answer",label:"Owner Call Answer Rate",target:">90%",unit:"%",dir:"gt",thresh:90},
+    {key:"withdrawal_review",label:"Monthly Service Withdrawal Review",target:"Yes",unit:"",dir:"bool",thresh:1},
+  ]},
+  "Reputation and Resolutions":{color:"#7c3aab",lightBg:"#f3eafa",kpis:[
+    {key:"avg_response",label:"Avg Response Time",target:"<8 Business Hours",unit:"hrs",dir:"lt",thresh:8},
+    {key:"productivity_team",label:"Productivity – Team",target:">6 Per Hour",unit:"/hr",dir:"gt",thresh:6},
+    {key:"productivity_lead",label:"Productivity – Team Lead",target:">3 Per Hour",unit:"/hr",dir:"gt",thresh:3},
+    {key:"call_reviews_count",label:"Call Reviews Per Agent/Month",target:">8",unit:"",dir:"gt",thresh:8},
+    {key:"call_reviews_pass",label:"Call Reviews Pass Rate",target:">90%",unit:"%",dir:"gt",thresh:90},
+    {key:"claims_resolved",label:"Claims Cleaning Cases <3 Business Days",target:">95%",unit:"%",dir:"gt",thresh:95},
+    {key:"csat_owner_claim",label:"CSAT for Owners after Claim",target:">65%",unit:"%",dir:"gt",thresh:65},
+    {key:"feedback_resolution",label:"Feedback and Review Resolution <3 Days",target:">90%",unit:"%",dir:"gt",thresh:90},
+    {key:"post_case_csat",label:"Post Case File CSAT",target:">65%",unit:"%",dir:"gt",thresh:65},
+    {key:"airbnb_reviews",label:"Airbnb and Negative Reviews Responded",target:">95%",unit:"%",dir:"gt",thresh:95},
+  ]},
+};
+
+const DEFAULT_ROSTER={
+  "Guest Support":{lead:"Drew Paogofie",members:[
+    {id:"gs1",name:"Gay Barclay"},{id:"gs2",name:"Adriana Pushparaja"},{id:"gs3",name:"Jessica Torkington"},
+    {id:"gs4",name:"Ashlee Foxall"},{id:"gs5",name:"Shizel Thomson"},{id:"gs6",name:"Ami Bennett-Howden"},
+    {id:"gs7",name:"Anna Tanielu"},{id:"gs8",name:"Jacquiline Santos"},{id:"gs9",name:"Kate Yin"},
+    {id:"gs10",name:"William Cook"},{id:"gs11",name:"Dion Henry"},{id:"gs12",name:"Caitlyn Foxall"},
+    {id:"gs13",name:"Loranna De Carvalho"}
+  ]},
+  "Owner Support":{lead:"Shanya Kumar",members:[{id:"os1",name:"Caitlin Lameko"},{id:"os2",name:"Darren Graham"}]},
+  "Reputation and Resolutions":{lead:"Janendra Kishan",members:[
+    {id:"rr1",name:"Kenneth Cassel"},{id:"rr2",name:"Ricky Chahal"},{id:"rr3",name:"Shane Pawson"}
+  ]},
+};
+
+const MONTHS=["October 2025","November 2025","December 2025","January 2026","February 2026","March 2026","April 2026","May 2026","June 2026","July 2026","August 2026","September 2026"];
+const WEEKS=[
+  {w:1,l:"W1: 4-10 Oct 2025"},{w:2,l:"W2: 11-17 Oct 2025"},{w:3,l:"W3: 18-24 Oct 2025"},{w:4,l:"W4: 25-31 Oct 2025"},
+  {w:5,l:"W5: 1-7 Nov 2025"},{w:6,l:"W6: 8-14 Nov 2025"},{w:7,l:"W7: 15-21 Nov 2025"},{w:8,l:"W8: 22-28 Nov 2025"},
+  {w:9,l:"W9: 29 Nov-5 Dec"},{w:10,l:"W10: 6-12 Dec 2025"},{w:11,l:"W11: 13-19 Dec 2025"},{w:12,l:"W12: 20-26 Dec 2025"},
+  {w:13,l:"W13: 27 Dec-2 Jan"},{w:14,l:"W14: 3-9 Jan 2026"},{w:15,l:"W15: 10-16 Jan 2026"},{w:16,l:"W16: 17-23 Jan 2026"},
+  {w:17,l:"W17: 24-30 Jan 2026"},{w:18,l:"W18: 31 Jan-6 Feb"},{w:19,l:"W19: 7-13 Feb 2026"},{w:20,l:"W20: 14-20 Feb 2026"},
+  {w:21,l:"W21: 21-27 Feb 2026"},{w:22,l:"W22: 28 Feb-6 Mar"},{w:23,l:"W23: 7-13 Mar 2026"},{w:24,l:"W24: 14-20 Mar 2026"},
+  {w:25,l:"W25: 21-27 Mar 2026"},{w:26,l:"W26: 28 Mar-3 Apr"},{w:27,l:"W27: 4-10 Apr 2026"},{w:28,l:"W28: 11-17 Apr 2026"},
+  {w:29,l:"W29: 18-24 Apr 2026"},{w:30,l:"W30: 25 Apr-1 May"},{w:31,l:"W31: 2-8 May 2026"},{w:32,l:"W32: 9-15 May 2026"},
+  {w:33,l:"W33: 16-22 May 2026"},{w:34,l:"W34: 23-29 May 2026"},{w:35,l:"W35: 30 May-5 Jun"},{w:36,l:"W36: 6-12 Jun 2026"},
+  {w:37,l:"W37: 13-19 Jun 2026"},{w:38,l:"W38: 20-26 Jun 2026"},{w:39,l:"W39: 27 Jun-3 Jul"},{w:40,l:"W40: 4-10 Jul 2026"},
+  {w:41,l:"W41: 11-17 Jul 2026"},{w:42,l:"W42: 18-24 Jul 2026"},{w:43,l:"W43: 25-31 Jul 2026"},{w:44,l:"W44: 1-7 Aug 2026"},
+  {w:45,l:"W45: 8-14 Aug 2026"},{w:46,l:"W46: 15-21 Aug 2026"},{w:47,l:"W47: 22-28 Aug 2026"},{w:48,l:"W48: 29 Aug-4 Sep"},
+  {w:49,l:"W49: 5-11 Sep 2026"},{w:50,l:"W50: 12-18 Sep 2026"},{w:51,l:"W51: 19-25 Sep 2026"},
+  {w:52,l:"W52: 26 Sep-2 Oct"},{w:53,l:"W53: 3-9 Oct 2026"},
+];
+
+// helpers
+const isPass=(v,k)=>{if(v===null||v===undefined||v==="")return null;if(k.dir==="bool")return["yes","Yes","1",1,true].includes(v);const n=parseFloat(v);if(isNaN(n))return null;return k.dir==="lt"?n<k.thresh:n>k.thresh;};
+const dv=(v,k)=>{if(v===undefined||v===null||v==="")return"—";if(k.dir==="bool")return["yes","Yes","1",1,true].includes(v)?"Yes":"No";return`${v}${k.unit}`;};
+const mg=(a,b)=>{const r={...a};Object.entries(b).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=="")r[k]=v;});return r;};
+const ini=(n)=>(n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+const uid=()=>Math.random().toString(36).slice(2,8);
+const nowNZ=()=>new Date().toLocaleString("en-NZ",{timeZone:"Pacific/Auckland",dateStyle:"medium",timeStyle:"short"});
+const plbl=(pk)=>pk.startsWith("m__")?pk.slice(3):`FY25 Week ${pk.slice(3)}`;
+
+const loadStore=()=>{try{const d=JSON.parse(localStorage.getItem(SK)||"{}");const{_r,_tc,...rest}=d;return{data:rest,roster:_r||DEFAULT_ROSTER,tc:_tc||DEFAULT_TEAMS};}catch{return{data:{},roster:DEFAULT_ROSTER,tc:DEFAULT_TEAMS};}};
+const saveStore=(data,roster,tc)=>{try{localStorage.setItem(SK,JSON.stringify({...data,_r:roster,_tc:tc}));}catch{}};
+
+const parseCSV=(text)=>{const lines=text.trim().split(/\r?\n/).map(l=>l.trim()).filter(Boolean);if(lines.length<2)return[];const hdrs=lines[0].split(",").map(h=>h.trim().replace(/^"|"$/g,"").toLowerCase().replace(/\s+/g,"_"));return lines.slice(1).map(line=>{const vals=[];let cur="";let inQ=false;for(const c of line){if(c==='"'){inQ=!inQ;}else if(c===','&&!inQ){vals.push(cur.trim());cur="";}else cur+=c;}vals.push(cur.trim());const o={};hdrs.forEach((h,i)=>{o[h]=vals[i]||"";});return o;});};
+
+function Badge({pass}){
+  if(pass===null)return <span style={{fontSize:11,padding:"2px 7px",borderRadius:4,background:"#f1f5f9",color:"#64748b"}}>No data</span>;
+  return pass?<span style={{fontSize:11,padding:"2px 7px",borderRadius:4,background:"#dcfce7",color:"#15803d",fontWeight:600}}>Pass</span>:<span style={{fontSize:11,padding:"2px 7px",borderRadius:4,background:"#fee2e2",color:"#dc2626",fontWeight:600}}>Miss</span>;
+}
+
+const S={
+  sel:{border:"1px solid #d1d5db",borderRadius:8,padding:"7px 9px",fontSize:13,background:"#fff",color:"#1e293b",cursor:"pointer"},
+  inp:{width:"100%",boxSizing:"border-box",border:"1px solid #d1d5db",borderRadius:8,padding:"8px 11px",fontSize:13,outline:"none",fontFamily:"inherit"},
+  p1:{background:"#1e3a5f",color:"#fff",border:"none",borderRadius:8,padding:"8px 15px",fontSize:13,cursor:"pointer",fontWeight:600},
+  out:{background:"#fff",color:"#1e3a5f",border:"1px solid #1e3a5f",borderRadius:8,padding:"8px 15px",fontSize:13,cursor:"pointer",fontWeight:500},
+  ghost:{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#64748b",padding:"3px 6px"},
+  danger:{background:"#fff",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:8,padding:"7px 12px",fontSize:12,cursor:"pointer"},
+  lbl:{display:"block",fontSize:12,fontWeight:600,color:"#374151",marginBottom:4},
+};
+
+function Modal({title,sub,onClose,children,footer,wide}){
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:16}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:wide?720:540,maxHeight:"92vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.2)"}}>
+        <div style={{padding:"15px 20px",borderBottom:"1px solid #e5e7eb",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <div><div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>{title}</div>{sub&&<div style={{fontSize:12,color:"#94a3b8",marginTop:1}}>{sub}</div>}</div>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,color:"#94a3b8",lineHeight:1}}>×</button>
+        </div>
+        <div style={{padding:"16px 20px",overflowY:"auto",flex:1}}>{children}</div>
+        {footer&&<div style={{padding:"12px 20px",borderTop:"1px solid #e5e7eb",display:"flex",gap:10,justifyContent:"flex-end",flexShrink:0}}>{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+class ErrorBoundary extends React.Component{
+  constructor(props){super(props);this.state={error:null};}
+  static getDerivedStateFromError(err){return{error:err};}
+  render(){
+    if(this.state.error)return(
+      <div style={{padding:40,fontFamily:"system-ui",maxWidth:500,margin:"40px auto"}}>
+        <div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:12,padding:20}}>
+          <div style={{fontWeight:700,color:"#dc2626",marginBottom:8}}>Something went wrong</div>
+          <div style={{fontSize:13,color:"#991b1b",marginBottom:16}}>{this.state.error.message}</div>
+          <button onClick={()=>window.location.reload()} style={{background:"#1e3a5f",color:"#fff",border:"none",borderRadius:6,padding:"8px 16px",cursor:"pointer"}}>Reload App</button>
+        </div>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+function App(){
+  const init=loadStore();
+  const[currentUser,setCurrentUser]=useState(()=>{try{const u=sessionStorage.getItem("bc_user");return u?JSON.parse(u):null;}catch{return null;}});
+  const auth=!!currentUser;
+  const isAdmin=currentUser?.role==="admin";
+  const isLeader=currentUser?.role==="leader";
+  const[liveAccounts,setLiveAccounts]=useState(ACCOUNTS);
+  const[pw,setPw]=useState("");const[pwErr,setPwErr]=useState("");const[showPw,setShowPw]=useState(false);
+  const[data,setData]=useState(init.data);
+  const[roster,setRoster]=useState(init.roster);
+  const[tc,setTc]=useState(init.tc);
+  const[tab,setTab]=useState("dashboard");
+  const[team,setTeam]=useState(Object.keys(DEFAULT_TEAMS)[0]);
+  const[pt,setPt]=useState("month");
+  const[mo,setMo]=useState("March 2026");
+  const[wk,setWk]=useState(25);
+  const[toast,setToast]=useState("");
+  const[sbUrl,setSbUrl]=useState(()=>localStorage.getItem("bc_sb_url")||"https://mdrvugdzlocogmjbmzow.supabase.co");
+  const[sbKey,setSbKey]=useState(()=>localStorage.getItem("bc_sb_key")||"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1kcnZ1Z2R6bG9jb2dtamJtem93Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNzA1NTksImV4cCI6MjA5MDY0NjU1OX0.3F0mi13f4YE1eo318xu-gzwo_uhgKLaDtELB5TS0eb4");
+  const[sbStatus,setSbStatus]=useState("ok");
+  const[sbMsg,setSbMsg]=useState("");
+  const[editOpen,setEditOpen]=useState(false);
+  const[auditLog,setAuditLog]=useState(()=>{try{return JSON.parse(localStorage.getItem("bc_audit")||"[]");}catch{return[];}});
+  const[pendingEdits,setPendingEdits]=useState(()=>{try{return JSON.parse(localStorage.getItem("bc_pending")||"[]");}catch{return[];}});
+  const[pendingNote,setPendingNote]=useState("");
+  const[editVals,setEditVals]=useState({});
+  const[iMember,setIMember]=useState(null);
+  const[iPt,setIPt]=useState("week");
+  const[iMo,setIMo]=useState("March 2026");
+  const[iWk,setIWk]=useState(25);
+  const[iEdit,setIEdit]=useState(false);
+  const[iVals,setIVals]=useState({});
+  const[addName,setAddName]=useState("");
+  const[addNameTm,setAddNameTm]=useState("");
+  const[addTm,setAddTm]=useState("");
+  const[renId,setRenId]=useState(null);const[renVal,setRenVal]=useState("");
+  const[movM,setMovM]=useState(null);const[movTo,setMovTo]=useState("");
+  const[exTm,setExTm]=useState(Object.keys(DEFAULT_TEAMS)[0]);
+  const[exPt,setExPt]=useState("month");const[exMo,setExMo]=useState("March 2026");const[exWk,setExWk]=useState(25);
+  const fileRef=useRef();
+  const schedFileRef=useRef();
+  const[schedData,setSchedData]=useState(()=>{try{return JSON.parse(localStorage.getItem("bc_sched")||"{}");}catch{return{};}});
+  const[schedFilter,setSchedFilter]=useState("week");
+  const[schedWeek,setSchedWeek]=useState(25);
+  const[schedMonth,setSchedMonth]=useState("March 2026");
+  const[schedTeamF,setSchedTeamF]=useState("all");
+  const[schedPerson,setSchedPerson]=useState("all");
+  const[editHours,setEditHours]=useState(null);
+  const[editHoursVal,setEditHoursVal]=useState("");
+  const icFileRef=useRef();
+  const[icData,setIcData]=useState(()=>{try{return JSON.parse(localStorage.getItem("bc_ic")||"{}");}catch{return{};}});
+  const[icPPT,setIcPPT]=useState(()=>{try{return JSON.parse(localStorage.getItem("bc_ppt")||"{}");}catch{return{};}});
+  const[icFilter,setIcFilter]=useState("week");
+  const[icWeek,setIcWeek]=useState(25);
+  const[icMonth,setIcMonth]=useState("March 2026");
+  const[icTeamF,setIcTeamF]=useState("all");
+  const[icPersonF,setIcPersonF]=useState("all");
+  const tNames=Object.keys(tc);
+
+  useEffect(()=>{saveStore(data,roster,tc);},[data,roster,tc]);
+  useEffect(()=>{try{localStorage.setItem("bc_sched",JSON.stringify(schedData));}catch{};},[schedData]);
+  useEffect(()=>{try{localStorage.setItem("bc_ic",JSON.stringify(icData));}catch{};},[icData]);
+  useEffect(()=>{try{localStorage.setItem("bc_sb_url",sbUrl);}catch{};},[sbUrl]);
+  useEffect(()=>{try{localStorage.setItem("bc_sb_key",sbKey);}catch{};},[sbKey]);
+  useEffect(()=>{try{localStorage.setItem("bc_audit",JSON.stringify(auditLog.slice(-200)));}catch{};},[auditLog]);
+  useEffect(()=>{try{localStorage.setItem("bc_pending",JSON.stringify(pendingEdits));}catch{};},[pendingEdits]);
+  useEffect(()=>{try{localStorage.setItem("bc_ppt",JSON.stringify(icPPT));}catch{};},[icPPT]);
+  useEffect(()=>{if(!tNames.includes(team)&&tNames.length)setTeam(tNames[0]);},[tNames.join(",")]);
+
+  const loginAs=(user)=>{try{sessionStorage.setItem("bc_user",JSON.stringify(user));}catch{}setCurrentUser(user);};
+  const logout=()=>{try{sessionStorage.removeItem("bc_user");}catch{}setCurrentUser(null);};
+  const toast2=(m)=>{setToast(m);setTimeout(()=>setToast(""),3000);};
+
+  const pk=pt==="month"?`m__${mo}`:`w__${wk}`;
+  const tDef=tc[team]||{kpis:[],color:"#64748b",lightBg:"#f1f5f9"};
+  const tR=roster[team]||{lead:"",members:[]};
+  const pData=data[team]?.[pk]||{};
+  const kpis=tDef.kpis||[];
+  const passN=kpis.filter(k=>isPass(pData[k.key],k)===true).length;
+  const failN=kpis.filter(k=>isPass(pData[k.key],k)===false).length;
+  const ndN=kpis.filter(k=>isPass(pData[k.key],k)===null).length;
+
+  const iPK=(p2,m2,w2)=>p2==="month"?`m__${m2}`:`w__${w2}`;
+  const getID=(id,p2,m2,w2)=>{const k2=iPK(p2,m2,w2);return data[`_i_${id}`]?.[k2]||{};};
+  const saveID=(id,p2,m2,w2,vals)=>{const k2=iPK(p2,m2,w2);setData(prev=>{const key=`_i_${id}`;return{...prev,[key]:{...(prev[key]||{}),[k2]:mg(prev[key]?.[k2]||{},{...vals,_at:nowNZ()})}};});};
+  const avgProd=(tn,p2,m2,w2)=>{const r2=roster[tn];if(!r2)return null;const vs=[];(r2.members||[]).forEach(m=>{const d=getID(m.id,p2,m2,w2);if(d.productivity&&!isNaN(+d.productivity))vs.push(+d.productivity);});const ld=getID(`lead_${tn.replace(/\s/g,"_")}`,p2,m2,w2);if(ld.productivity&&!isNaN(+ld.productivity))vs.push(+ld.productivity);if(!vs.length)return null;return(vs.reduce((a,b)=>a+b,0)/vs.length).toFixed(2);};
+
+  const sbFetch=async(path,method="GET",body=null)=>{
+    if(!sbUrl||!sbKey)return{ok:false,error:"Not configured"};
+    const res=await fetch(`${sbUrl}/rest/v1/${path}`,{
+      method,
+      headers:{"Content-Type":"application/json","apikey":sbKey,"Authorization":`Bearer ${sbKey}`,"Prefer":"resolution=merge-duplicates,return=minimal"},
+      ...(body?{body:JSON.stringify(body)}:{})
+    });
+    if(!res.ok){const t=await res.text();return{ok:false,error:t};}
+    const ct=res.headers.get("content-type")||"";
+    return{ok:true,data:ct.includes("json")?await res.json():null};
+  };
+  const sbSave=async(table,key,value)=>sbFetch(`${table}?on_conflict=key`,"POST",[{key,value:JSON.stringify(value),updated_at:new Date().toISOString()}]);
+  const sbLoad=async(table,key)=>{
+    const r=await sbFetch(`${table}?key=eq.${encodeURIComponent(key)}&select=value`);
+    if(!r.ok||!r.data?.length)return null;
+    try{return JSON.parse(r.data[0].value);}catch{return null;}
+  };
+  const syncToSupabase=async()=>{
+    if(!sbUrl||!sbKey||sbStatus!=="ok")return;
+    try{
+      await sbSave("bc_store","app_data",{...data,_r:roster,_tc:tc});
+      await sbSave("bc_store","audit_log",auditLog.slice(-200));
+      await sbSave("bc_store","pending_edits",pendingEdits);
+      await sbSave("bc_store","accounts",liveAccounts);
+    }catch(e){}
+  };
+  const testSupabase=async()=>{
+    setSbStatus("testing");setSbMsg("");
+    try{
+      const r=await sbFetch("bc_store?limit=1");
+      if(r.ok){setSbStatus("ok");setSbMsg("Connected successfully!");toast2("Supabase connected ✓");}
+      else if(r.error?.includes("relation")||r.error?.includes("does not exist")){setSbStatus("needtable");setSbMsg("Connected but table needs setup. See SQL below.");}
+      else{setSbStatus("error");setSbMsg(r.error||"Connection failed.");}
+    }catch(e){setSbStatus("error");setSbMsg("Could not reach Supabase.");}
+  };
+  const loadFromSupabase=async()=>{
+    if(!sbUrl||!sbKey||sbStatus!=="ok")return;
+    try{
+      const d=await sbLoad("bc_store","app_data");
+      if(d){const{_r,_tc,...rest}=d;if(_r)setRoster(_r);if(_tc)setTc(_tc);setData(rest);}
+      const al=await sbLoad("bc_store","audit_log");if(al)setAuditLog(al);
+      const pe=await sbLoad("bc_store","pending_edits");if(pe)setPendingEdits(pe);
+      const ac=await sbLoad("bc_store","accounts");if(ac&&ac.length)setLiveAccounts(ac);
+      toast2("Data loaded from Supabase.");
+    }catch(e){toast2("Load failed: "+e.message);}
+  };
+  React.useEffect(()=>{
+    if(sbStatus==="ok"&&sbUrl&&sbKey){
+      // Load accounts from Supabase on mount
+      sbLoad("bc_store","accounts").then(saved=>{if(saved&&saved.length)setLiveAccounts(saved);});
+    }
+  },[sbStatus]);
+  React.useEffect(()=>{if(sbStatus==="ok"&&sbUrl&&sbKey)syncToSupabase();},[data,roster,tc,auditLog,pendingEdits]);
+  const addAudit=(action,details)=>{
+    setAuditLog(prev=>[{id:uid(),user:currentUser?.displayName||"?",role:currentUser?.role||"?",action,details,ts:nowNZ()},...prev]);
+  };
+  const saveTeam=()=>{
+    if(isAdmin){
+      setData(prev=>{const ex=prev[team]?.[pk]||{};return{...prev,[team]:{...(prev[team]||{}),[pk]:mg(ex,{...editVals,_at:nowNZ()})}};});
+      addAudit("KPI Edit",`${team} · ${plbl(pk)}`);
+      setEditOpen(false);toast2("Saved.");
+    } else {
+      const ex=data[team]?.[pk]||{};
+      const changed={};
+      kpis.forEach(k=>{if(editVals[k.key]!==undefined&&String(editVals[k.key])!==String(ex[k.key]))changed[k.label]=`${ex[k.key]??"-"} → ${editVals[k.key]}`;});
+      if(!Object.keys(changed).length){toast2("No changes to submit.");return;}
+      const req={id:uid(),submittedBy:currentUser?.displayName,role:"leader",team,pk,changes:changed,editVals:{...editVals},note:pendingNote,ts:nowNZ(),status:"pending"};
+      setPendingEdits(prev=>[req,...prev]);
+      addAudit("Edit Request Submitted",`${team} · ${Object.keys(changed).length} change(s)`);
+      setEditOpen(false);setPendingNote("");
+      toast2("Edit request sent to admins for approval.");
+    }
+  };
+  const approveEdit=(reqId)=>{
+    const req=pendingEdits.find(r=>r.id===reqId);if(!req)return;
+    setData(prev=>{const ex=prev[req.team]?.[req.pk]||{};return{...prev,[req.team]:{...(prev[req.team]||{}),[req.pk]:mg(ex,{...req.editVals,_at:nowNZ()})}};});
+    setPendingEdits(prev=>prev.map(r=>r.id===reqId?{...r,status:"approved",approvedBy:currentUser?.displayName,approvedAt:nowNZ()}:r));
+    addAudit("Edit Approved",`${req.team} · by ${req.submittedBy}`);
+    toast2("Edit approved and applied.");
+  };
+  const rejectEdit=(reqId,reason)=>{
+    const req=pendingEdits.find(r=>r.id===reqId);if(!req)return;
+    setPendingEdits(prev=>prev.map(r=>r.id===reqId?{...r,status:"rejected",rejectedBy:currentUser?.displayName,rejectedAt:nowNZ(),rejectReason:reason}:r));
+    addAudit("Edit Rejected",`${req.team} · by ${req.submittedBy}`);
+    toast2("Edit request rejected.");
+  };
+  const clearPd=()=>{if(!window.confirm("Clear all data for this period?"))return;setData(prev=>{const c={...prev,[team]:{...(prev[team]||{})}};delete c[team][pk];return c;});toast2("Cleared.");};
+
+  const handleFile=(e)=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>{const rows=parseCSV(ev.target.result);if(!rows.length){toast2("Could not parse CSV.");return;}const kks=new Set(tDef.kpis.map(k=>k.key));let tot=0;rows.forEach(row=>{const mp={};Object.entries(row).forEach(([k,v])=>{if(kks.has(k)){mp[k]=v;tot++;}});if(!Object.keys(mp).length)return;const rawPk=row.period_key||row.period||null;const useKey=rawPk?(rawPk.startsWith("w__")||rawPk.startsWith("m__")?rawPk:`m__${rawPk}`):pk;setData(prev=>{const ex=prev[team]?.[useKey]||{};return{...prev,[team]:{...(prev[team]||{}),[useKey]:mg(ex,{...mp,_file:file.name,_at:nowNZ()})}};});});toast2(`Imported ${tot} values.`);};r.readAsText(file);e.target.value="";};
+
+
+  // ── SCHEDULE XLSX PARSE ──
+  const FY25_WK_RANGES=[
+    [1,"2025-10-04","2025-10-10"],[2,"2025-10-11","2025-10-17"],[3,"2025-10-18","2025-10-24"],
+    [4,"2025-10-25","2025-10-31"],[5,"2025-11-01","2025-11-07"],[6,"2025-11-08","2025-11-14"],
+    [7,"2025-11-15","2025-11-21"],[8,"2025-11-22","2025-11-28"],[9,"2025-11-29","2025-12-05"],
+    [10,"2025-12-06","2025-12-12"],[11,"2025-12-13","2025-12-19"],[12,"2025-12-20","2025-12-26"],
+    [13,"2025-12-27","2026-01-02"],[14,"2026-01-03","2026-01-09"],[15,"2026-01-10","2026-01-16"],
+    [16,"2026-01-17","2026-01-23"],[17,"2026-01-24","2026-01-30"],[18,"2026-01-31","2026-02-06"],
+    [19,"2026-02-07","2026-02-13"],[20,"2026-02-14","2026-02-20"],[21,"2026-02-21","2026-02-27"],
+    [22,"2026-02-28","2026-03-06"],[23,"2026-03-07","2026-03-13"],[24,"2026-03-14","2026-03-20"],
+    [25,"2026-03-21","2026-03-27"],[26,"2026-03-28","2026-04-03"],[27,"2026-04-04","2026-04-10"],
+    [28,"2026-04-11","2026-04-17"],[29,"2026-04-18","2026-04-24"],[30,"2026-04-25","2026-05-01"],
+    [31,"2026-05-02","2026-05-08"],[32,"2026-05-09","2026-05-15"],[33,"2026-05-16","2026-05-22"],
+    [34,"2026-05-23","2026-05-29"],[35,"2026-05-30","2026-06-05"],[36,"2026-06-06","2026-06-12"],
+    [37,"2026-06-13","2026-06-19"],[38,"2026-06-20","2026-06-26"],[39,"2026-06-27","2026-07-03"],
+    [40,"2026-07-04","2026-07-10"],[41,"2026-07-11","2026-07-17"],[42,"2026-07-18","2026-07-24"],
+    [43,"2026-07-25","2026-07-31"],[44,"2026-08-01","2026-08-07"],[45,"2026-08-08","2026-08-14"],
+    [46,"2026-08-15","2026-08-21"],[47,"2026-08-22","2026-08-28"],[48,"2026-08-29","2026-09-04"],
+    [49,"2026-09-05","2026-09-11"],[50,"2026-09-12","2026-09-18"],[51,"2026-09-19","2026-09-25"],
+    [52,"2026-09-26","2026-10-02"],[53,"2026-10-03","2026-10-09"],
+  ];
+  const dateToWk=(ds)=>{
+    try{
+      let y,m,d2;
+      if(ds instanceof Date){y=ds.getUTCFullYear();m=ds.getUTCMonth()+1;d2=ds.getUTCDate();}
+      else if(typeof ds==="number"){const tmp=new Date(Math.round((ds-25569)*86400*1000));y=tmp.getUTCFullYear();m=tmp.getUTCMonth()+1;d2=tmp.getUTCDate();}
+      else{const p=String(ds).trim().split("/");y=+p[2];m=+p[0];d2=+p[1];}
+      const iso=`${y}-${String(m).padStart(2,"0")}-${String(d2).padStart(2,"0")}`;
+      for(const[w,s,e] of FY25_WK_RANGES){if(iso>=s&&iso<=e)return w;}
+    }catch{}return null;
+  };
+  const dateToMonthLabel=(ds)=>{
+    try{
+      let y,m;
+      if(ds instanceof Date){y=ds.getUTCFullYear();m=ds.getUTCMonth();}
+      else if(typeof ds==="number"){const tmp=new Date(Math.round((ds-25569)*86400*1000));y=tmp.getUTCFullYear();m=tmp.getUTCMonth();}
+      else{const p=String(ds).trim().split("/");y=+p[2];m=+p[0]-1;}
+      return new Date(y,m,1).toLocaleString("en-NZ",{month:"long",year:"numeric"});
+    }catch{return null;}
+  };
+  const parseNetHours=(startT,endT,breakMin)=>{
+    try{
+      let sh,sm,eh,em;
+      if(startT instanceof Date){sh=startT.getUTCHours();sm=startT.getUTCMinutes();}
+      else if(typeof startT==="number"){const mins=Math.round(startT*1440);sh=Math.floor(mins/60);sm=mins%60;}
+      else{const p=String(startT).split(":");sh=+p[0];sm=+p[1]||0;}
+      if(endT instanceof Date){eh=endT.getUTCHours();em=endT.getUTCMinutes();}
+      else if(typeof endT==="number"){const mins=Math.round(endT*1440);eh=Math.floor(mins/60);em=mins%60;}
+      else{const p=String(endT).split(":");eh=+p[0];em=+p[1]||0;}
+      const gross=(eh*60+em)-(sh*60+sm);
+      return Math.max(0,Math.round((gross-(breakMin||0))*100/60)/100);
+    }catch{return 0;}
+  };
+  const handleSchedFile=(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    if(!window.XLSX){toast2("Loading Excel reader, please try again in a moment.");return;}
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const wb=window.XLSX.read(ev.target.result,{type:"array",cellDates:true});
+        const ws=wb.Sheets["Shifts"];
+        if(!ws){toast2("No Shifts sheet found in file.");return;}
+        const rows=window.XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+        if(rows.length<2){toast2("No data rows found.");return;}
+        // headers: Member,Work Email,Group,Start Date,Start Time,End Date,End Time,Theme Color,Custom Label,Unpaid Break (minutes),Notes,Shared
+        const newSched={};
+        let imported=0;
+        for(let i=1;i<rows.length;i++){
+          const row=rows[i];
+          const name=String(row[0]||"").trim();
+          const group=String(row[2]||"").trim();
+          const startDate=row[3];
+          const startTime=row[4];
+          const endTime=row[6];
+          const breakMin=Number(row[9])||0;
+          const label=String(row[8]||"").trim();
+          const notes=String(row[10]||"").trim();
+          if(!name||!startDate||!startTime||!endTime)continue;
+          const net=parseNetHours(startTime,endTime,breakMin);
+          const wk=dateToWk(startDate);
+          const mon=dateToMonthLabel(startDate);
+          // Use ISO string as day key regardless of input type
+          const dayKey=startDate instanceof Date?startDate.getUTCFullYear()+"-"+(startDate.getUTCMonth()+1).toString().padStart(2,"0")+"-"+startDate.getUTCDate().toString().padStart(2,"0"):String(startDate);
+          if(!newSched[name])newSched[name]={group,weeks:{},months:{},days:{},overrides:{}};
+          if(!newSched[name].days[dayKey])newSched[name].days[dayKey]={hours:0,shifts:[]};
+          newSched[name].days[dayKey].hours=Math.round((newSched[name].days[dayKey].hours+net)*100)/100;
+          newSched[name].days[dayKey].shifts.push({s:startTime instanceof Date?startTime.getUTCHours()+":"+startTime.getUTCMinutes().toString().padStart(2,"0"):String(startTime),e:endTime instanceof Date?endTime.getUTCHours()+":"+endTime.getUTCMinutes().toString().padStart(2,"0"):String(endTime),b:breakMin,net,label,notes});
+          if(wk){
+            if(!newSched[name].weeks[wk])newSched[name].weeks[wk]=0;
+            newSched[name].weeks[wk]=Math.round((newSched[name].weeks[wk]+net)*100)/100;
+          }
+          if(mon){
+            if(!newSched[name].months[mon])newSched[name].months[mon]=0;
+            newSched[name].months[mon]=Math.round((newSched[name].months[mon]+net)*100)/100;
+          }
+          imported++;
+        }
+        // Merge into existing schedData (don't wipe previous uploads)
+        setSchedData(prev=>{
+          const merged={...prev};
+          Object.entries(newSched).forEach(([name,nd])=>{
+            if(!merged[name]){merged[name]=nd;return;}
+            merged[name].group=nd.group;
+            Object.entries(nd.weeks).forEach(([w,h])=>{merged[name].weeks[w]=(merged[name].weeks[w]||0);
+              // only update if new file has data for that week, but keep overrides intact
+              merged[name].weeks[w]=Math.round((merged[name].weeks[w]+h-(merged[name].weeks[w]||0))*100)/100;
+              merged[name].weeks[w]=h;
+            });
+            Object.entries(nd.months).forEach(([m,h])=>{merged[name].months[m]=h;});
+            Object.entries(nd.days).forEach(([d,dv])=>{merged[name].days[d]=dv;});
+          });
+          return merged;
+        });
+        toast2(`Schedule imported: ${Object.keys(newSched).length} people, ${imported} shifts.`);
+      }catch(err){toast2("Error reading file: "+err.message);}
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value="";
+  };
+  const getSchedHours=(name,filter,wkNum,monLabel)=>{
+    const person=schedData[name];if(!person)return null;
+    const ovKey=filter==="week"?`w_${wkNum}`:`m_${monLabel}`;
+    if(person.overrides&&person.overrides[ovKey]!==undefined)return person.overrides[ovKey];
+    if(filter==="week")return person.weeks[wkNum]??null;
+    return person.months[monLabel]??null;
+  };
+  const setSchedOverride=(name,filter,wkNum,monLabel,val)=>{
+    const ovKey=filter==="week"?`w_${wkNum}`:`m_${monLabel}`;
+    setSchedData(prev=>({...prev,[name]:{...(prev[name]||{}),overrides:{...(prev[name]?.overrides||{}),[ovKey]:Number(val)}}}));
+  };
+
+
+  // ── INTERCOM CSV PARSE ──
+  // ── REPORT TYPE DETECTION ──────────────────────────────────────────────────
+  const TEAM_MEMBERS={
+    "Guest Support":["Anna Tanielu","Jacquiline Santos","Shizel Thomson","Kate Yin","Gayle Barclay",
+      "Dion Henry","Lorrana De Carvalho","Adriana Pushparaja","Ashlee Foxall","Ami Bennett - Howden",
+      "William Cook","Caitlyn Foxall","Jessica Torkington","Sanket Thakur","Lini Ahio","Timothy Adam",
+      "Teina Smith","Ellen Ganzon","Gay Barclay"],
+    "Owner Support":["Shanya Kumar","Caitlin Lameko","Darren Graham"],
+    "Reputation and Resolutions":["Janendra Kishan","Kenneth Cassel","Ricky Chahal","Shane Pawson"],
+  };
+  const TEAM_LEADS={"Guest Support":"Drew Paogofie","Owner Support":"Shanya Kumar","Reputation and Resolutions":"Janendra Kishan"};
+  const getPersonTeam=(name)=>{
+    for(const[t,members] of Object.entries(TEAM_MEMBERS)){if(members.includes(name))return t;}
+    for(const[t,lead] of Object.entries(TEAM_LEADS)){if(lead===name)return t;}
+    return null;
+  };
+
+  // Parse Intercom day-format CSV (closed/replies by agent by day)
+  const parseIcDayCSV=(text)=>{
+    const lines=text.split(/\r?\n/).filter(l=>l.trim());
+    const parseRow=(line)=>{const vals=[];let cur="";let inq=false;for(const ch of line){if(ch==='"'){inq=!inq;}else if(ch===','&&!inq){vals.push(cur.trim().replace(/^"|"$/g,""));cur="";}else cur+=ch;}vals.push(cur.trim().replace(/^"|"$/g,""));return vals;};
+    // Read title (row 0) and metadata (row 3) for date range detection
+    const title=(lines[0]||"").replace(/"/g,"").trim();
+    let dateFrom=null;
+    for(let i=0;i<lines.length;i++){
+      if(lines[i].includes("Time period from")){
+        const meta=parseRow(lines[i+1]||"");
+        dateFrom=meta[5]||null; // "2026-03-21 00:00"
+        break;
+      }
+    }
+    // Find header row with day names
+    let hIdx=-1;
+    for(let i=0;i<lines.length;i++){if(lines[i].includes("Action performed by")&&!lines[i].includes("Metric")){hIdx=i;break;}}
+    if(hIdx<0)return null;
+    const dayRow=parseRow(lines[hIdx+1]||""); // actual "Mar 21" etc
+    const days=dayRow.slice(1);
+    const rows=[];
+    for(let i=hIdx+2;i<lines.length;i++){
+      if(!lines[i].trim())continue;
+      const vals=parseRow(lines[i]);
+      const agent=vals[0];if(!agent)continue;
+      const counts={};
+      days.forEach((d,j)=>{counts[d]=parseInt(vals[j+1])||0;});
+      rows.push({agent,counts});
+    }
+    return{title,dateFrom,days,rows};
+  };
+
+  // Detect FY25 week from a date string like "2026-03-21 00:00"
+  const wkFromDateStr=(ds)=>{
+    if(!ds)return null;
+    // Use string comparison to avoid JS timezone issues with new Date()
+    const d=ds.slice(0,10); // "YYYY-MM-DD"
+    for(const[w,s,e] of FY25_WK_RANGES){
+      if(d>=s&&d<=e)return w;
+    }
+    return null;
+  };
+
+  // Auto-fill KPIs from report data into the team dashboard
+  const autoFillKPIs=(teamName,wk,updates)=>{
+    const pk=`w__${wk}`;
+    setData(prev=>{
+      const ex=prev[teamName]?.[pk]||{};
+      return{...prev,[teamName]:{...(prev[teamName]||{}),[pk]:{...ex,...updates,_autoFilled:nowNZ()}}};
+    });
+  };
+
+  // Re-run auto-fill for a specific team + week using already-loaded data
+  const recalcForPeriod=(teamName,wkNum)=>{
+    const updates={};
+    // Response times: recompute from icData stored medians (not re-read from file)
+    // These were stored when TYPE C was uploaded — just re-apply them
+    // Actually response times are already in data[teamName][pk] from autoFillKPIs
+    // What we need to re-trigger is the productivity calculation with current schedData
+    const teamIcAgents=Object.entries(icData).filter(([,d])=>d.team===teamName);
+    const totalTickets=teamIcAgents.reduce((s,[,d])=>s+(d.weeks?.[wkNum]?.closed||0),0);
+    const teamHrs=Object.values(schedData)
+      .filter(p=>p.group===teamName)
+      .reduce((s,p)=>{const h=p.overrides?.[`w_${wkNum}`]??p.weeks?.[wkNum]??0;return s+h;},0);
+    const leadName=TEAM_LEADS[teamName];
+    const leadHrs=schedData[leadName]
+      ?((schedData[leadName].overrides?.[`w_${wkNum}`]??schedData[leadName].weeks?.[wkNum])??0)
+      :0;
+    const leadTickets=icData[leadName]?.weeks?.[wkNum]?.closed||0;
+    const ppt=getPPT(teamName);
+    if(totalTickets>0&&teamHrs>0)updates.productivity_team=Math.round(totalTickets*ppt/teamHrs*100)/100;
+    if(leadHrs>0)updates.productivity_lead=leadTickets>0?Math.round(leadTickets*ppt/leadHrs*100)/100:0;
+    // Re-apply response times from icData if stored there
+    // (they're stored in data already via autoFillKPIs — just recalc productivity)
+    if(Object.keys(updates).length){
+      autoFillKPIs(teamName,wkNum,updates);
+      return Object.keys(updates).length;
+    }
+    return 0;
+  };
+
+  // Handle ANY Intercom file — detects type automatically
+  const handleIcFile=(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const text=ev.target.result;
+        const firstLine=(text.split('\n')[0]||"").replace(/"/g,"").trim();
+
+        // ── TYPE A: Closed conversations by agent by day ──────────────────
+        if(firstLine.toLowerCase().includes("closed conversations")){
+          const parsed=parseIcDayCSV(text);
+          if(!parsed){toast2("Could not parse closed conversations CSV.");return;}
+          const wk=wkFromDateStr(parsed.dateFrom);
+          if(!wk){toast2("Could not detect FY25 week from file.");return;}
+
+          // Build per-person per-week ticket counts (exclude Fin bot)
+          const newIc={};
+          const teamTotals={}; // { teamName: { total, leadTotal, leadName } }
+
+          parsed.rows.forEach(({agent,counts})=>{
+            if(agent==="Fin"||agent==="Summary")return;
+            const total=Object.values(counts).reduce((s,v)=>s+v,0);
+            if(total===0)return;
+            const teamName=getPersonTeam(agent);
+
+            // Store in icData
+            if(!newIc[agent])newIc[agent]={team:teamName||"",weeks:{},months:{}};
+            newIc[agent].team=teamName||newIc[agent].team;
+            newIc[agent].weeks[wk]={...(newIc[agent].weeks[wk]||{}),closed:total};
+
+            // Accumulate team totals
+            if(teamName){
+              if(!teamTotals[teamName])teamTotals[teamName]={total:0,leadClosed:0};
+              teamTotals[teamName].total+=total;
+              if(TEAM_LEADS[teamName]===agent)teamTotals[teamName].leadClosed=total;
+            }
+          });
+
+          // Merge icData
+          setIcData(prev=>{
+            const merged={...prev};
+            Object.entries(newIc).forEach(([name,nd])=>{
+              if(!merged[name])merged[name]=nd;
+              else{
+                merged[name].team=nd.team||merged[name].team;
+                Object.entries(nd.weeks||{}).forEach(([w,wd])=>{
+                  merged[name].weeks=merged[name].weeks||{};
+                  merged[name].weeks[w]={...(merged[name].weeks[w]||{}),...wd};
+                });
+              }
+            });
+            return merged;
+          });
+
+          // Auto-fill productivity KPIs for each team
+          // Productivity = (team tickets × pts) ÷ team hours
+          // We store the raw ticket count now; pts/hr computed when hours are available
+          Object.entries(teamTotals).forEach(([tname,totals])=>{
+            const hrs=Object.values(schedData)
+              .filter(p=>p.group===tname)
+              .reduce((s,p)=>{const h=p.overrides?.[`w_${wk}`]??p.weeks?.[wk]??0;return s+h;},0);
+            const leadName=TEAM_LEADS[tname];
+            const leadHrs=schedData[leadName]
+              ?((schedData[leadName].overrides?.[`w_${wk}`]??schedData[leadName].weeks?.[wk])??0)
+              :0;
+            const ppt=getPPT(tname);
+            const updates={};
+            if(hrs>0){
+              updates.productivity_team=Math.round(totals.total*ppt/hrs*100)/100;
+            }
+            if(leadHrs>0){
+              updates.productivity_lead=Math.round(totals.leadClosed*ppt/leadHrs*100)/100;
+            }
+            if(Object.keys(updates).length)autoFillKPIs(tname,wk,updates);
+          });
+
+          const agentCount=Object.keys(newIc).length;
+          const totalTickets=Object.values(newIc).reduce((s,p)=>s+(p.weeks[wk]?.closed||0),0);
+          toast2(`Closed conversations imported: ${agentCount} agents, ${totalTickets} tickets (W${wk}). KPIs auto-filled where schedule data exists.`);
+        }
+
+        // ── TYPE B: Replies by Agent per Day ─────────────────────────────
+        else if(firstLine.toLowerCase().includes("replies")){
+          const parsed=parseIcDayCSV(text);
+          if(!parsed){toast2("Could not parse replies CSV.");return;}
+          const wk=wkFromDateStr(parsed.dateFrom);
+          if(!wk){toast2("Could not detect FY25 week.");return;}
+          const newIc={};
+          parsed.rows.forEach(({agent,counts})=>{
+            if(agent==="Summary")return;
+            const total=Object.values(counts).reduce((s,v)=>s+v,0);
+            if(!newIc[agent])newIc[agent]={team:getPersonTeam(agent)||"",weeks:{},months:{}};
+            newIc[agent].weeks[wk]={...(newIc[agent].weeks[wk]||{}),replies:total};
+          });
+          setIcData(prev=>{
+            const merged={...prev};
+            Object.entries(newIc).forEach(([name,nd])=>{
+              if(!merged[name])merged[name]=nd;
+              else{merged[name].weeks=merged[name].weeks||{};Object.entries(nd.weeks||{}).forEach(([w,wd])=>{merged[name].weeks[w]={...(merged[name].weeks[w]||{}),...wd};});}
+            });
+            return merged;
+          });
+          toast2(`Replies imported: ${Object.keys(newIc).length} agents (W${wk}).`);
+        }
+
+        // ── TYPE C: Full conversation export (response times) ─────────────
+        else if(text.includes("Conversation ID")||text.includes("Time to first reply")){
+          // Parse as standard CSV
+          const lines2=text.split(/\r?\n/).filter(l=>l.trim());
+          const parseRow2=(line)=>{const vals=[];let cur="";let inq=false;for(const ch of line){if(ch==='"'){inq=!inq;}else if(ch===','&&!inq){vals.push(cur.trim().replace(/^"|"$/g,""));cur="";}else cur+=ch;}vals.push(cur.trim().replace(/^"|"$/g,""));return vals;};
+          const hdrs=parseRow2(lines2[0]);
+          const idx=(n)=>hdrs.findIndex(h=>h===n);
+          const iCreated=idx("Created at"),iFirstReply=idx("Time to first reply (seconds)"),iLastClose=idx("Time to last close (seconds)"),iTeam=idx("Team assigned to (name)");
+          if(iFirstReply<0){toast2("Missing response time columns.");return;}
+          if(iTeam<0){toast2("Missing 'Team assigned to (name)' column — ensure you export with team data included.");return;}
+
+          // Group by team and week
+          const teamWeekData={};
+          for(let i=1;i<lines2.length;i++){
+            const row=parseRow2(lines2[i]);
+            const created=row[iCreated]||"";
+            const wk2=wkFromDateStr(created.slice(0,10));
+            if(!wk2)continue;
+            const teamName=row[iTeam]||"";
+            const fr=parseFloat(row[iFirstReply]);
+            const lc=parseFloat(row[iLastClose]);
+            const key=`${teamName}__${wk2}`;
+            if(!teamWeekData[key])teamWeekData[key]={teamName,wk:wk2,firstReplySecs:[],lastCloseSecs:[]};
+            if(!isNaN(fr)&&fr>0)teamWeekData[key].firstReplySecs.push(fr);
+            if(!isNaN(lc)&&lc>0)teamWeekData[key].lastCloseSecs.push(lc);
+          }
+
+          // Compute averages and auto-fill
+          const median=(arr)=>{if(!arr.length)return null;const s=[...arr].sort((a,b)=>a-b);const m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2;};
+          const avg=(arr)=>arr.length?arr.reduce((s,v)=>s+v,0)/arr.length:null;
+          let filled=0;
+          Object.values(teamWeekData).forEach(({teamName,wk:wk3,firstReplySecs,lastCloseSecs})=>{
+            if(!teamName||!teamName.trim())return;
+            const avgFR=avg(firstReplySecs);
+            const avgLC=avg(lastCloseSecs);
+            const updates={};
+            if(avgFR!=null)updates.avg_first_response=Math.round(avgFR/36)/100;
+            if(avgLC!=null)updates.avg_response=Math.round(avgLC/36)/100;
+            // Also re-compute productivity if ticket data already exists for this team/week
+            const teamIcAgents=Object.entries(icData).filter(([n,d])=>d.team===teamName);
+            const totalTickets=teamIcAgents.reduce((s,[,d])=>s+(d.weeks?.[wk3]?.closed||0),0);
+            const teamHrs=Object.values(schedData).filter(p=>p.group===teamName).reduce((s,p)=>{const h=p.overrides?.[`w_${wk3}`]??p.weeks?.[wk3]??0;return s+h;},0);
+            const leadName=TEAM_LEADS[teamName];
+            const leadHrs=schedData[leadName]?((schedData[leadName].overrides?.[`w_${wk3}`]??schedData[leadName].weeks?.[wk3])??0):0;
+            const leadTickets=icData[leadName]?.weeks?.[wk3]?.closed||0;
+            const ppt=getPPT(teamName);
+            if(totalTickets>0&&teamHrs>0)updates.productivity_team=Math.round(totalTickets*ppt/teamHrs*100)/100;
+            if(leadTickets>0&&leadHrs>0)updates.productivity_lead=Math.round(leadTickets*ppt/leadHrs*100)/100;
+            if(Object.keys(updates).length){autoFillKPIs(teamName,wk3,updates);filled++;}
+          });
+          toast2(`Response times imported: Avg First Response + Avg Response Time auto-filled for ${filled} team/week(s). NOTE: ticket counts come from the "Closed conversations by agent by day" CSV, not this file.`);
+        }
+
+        // ── TYPE D: Work Completed / Case Actions report ─────────────────
+        else if(text.includes("Case Actions")||text.includes("Work_Completed")||text.includes("Template Comms")){
+          // UTF-16 TSV — but when FileReader reads as text it comes through as decoded string
+          // Split by tab
+          const rawLines=text.split(/\r?\n/).filter(l=>l.trim());
+          // Find header row
+          let hIdx=rawLines.findIndex(l=>l.includes("Agent")&&l.includes("Case Actions"));
+          if(hIdx<0){toast2("Could not find header row in Work Completed report.");return;}
+          const hdrs=rawLines[hIdx].split("\t").map(h=>h.trim().replace(/^"|"$/g,""));
+          const col=(n)=>hdrs.findIndex(h=>h===n);
+          const iAgent=col("Agent"),iDate=col("Full Date")||col("Date"),
+                iCaseActions=col("Case Actions"),iEmailsViaCases=col("Emails via Cases"),
+                iTemplateComms=col("Template Comms"),iWFs=col("WFs"),iTasks=col("Tasks"),iTotal=col("Total");
+          if(iAgent<0){toast2("Missing Agent column in Work Completed report.");return;}
+
+          // Parse rows
+          const bucket={};
+          let rowCount=0;
+          for(let i=hIdx+1;i<rawLines.length;i++){
+            const row=rawLines[i].split("\t").map(v=>v.trim().replace(/^"|"$/g,""));
+            const agent=row[iAgent];if(!agent)continue;
+            // Date: "22/03/2026" or "22/03" — try Full Date first
+            const fullDate=iDate>=0?row[iDate]:"";
+            let dateStr=fullDate;
+            if(dateStr&&dateStr.includes("/")){
+              const parts=dateStr.split("/");
+              if(parts.length===3){
+                // DD/MM/YYYY -> YYYY-MM-DD
+                dateStr=`${parts[2]}-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`;
+              } else if(parts.length===2){
+                // DD/MM -> assume 2026
+                dateStr=`2026-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`;
+              }
+            }
+            const wk=wkFromDateStr(dateStr);
+            const caseActions=parseFloat(row[iCaseActions])||0;
+            const emailsViaCases=parseFloat(row[iEmailsViaCases])||0;
+            const templateComms=iTemplateComms>=0?parseFloat(row[iTemplateComms])||0:0;
+            const emails=emailsViaCases+templateComms;
+            const wfs=parseFloat(row[iWFs])||0;
+            const tasks=iTasks>=0?parseFloat(row[iTasks])||0:0;
+            const total=parseFloat(row[iTotal])||0;
+            const personKey=agent;
+            if(!bucket[personKey])bucket[personKey]={team:getPersonTeam(agent)||"",weeks:{}};
+            if(wk){
+              if(!bucket[personKey].weeks[wk])bucket[personKey].weeks[wk]={caseActions:0,emails:0,wfs:0,tasks:0,total:0};
+              bucket[personKey].weeks[wk].caseActions+=caseActions;
+              bucket[personKey].weeks[wk].emails+=emails;
+              bucket[personKey].weeks[wk].wfs+=wfs;
+              bucket[personKey].weeks[wk].tasks+=tasks;
+              bucket[personKey].weeks[wk].total+=total;
+            }
+            rowCount++;
+          }
+
+          // Merge into icData
+          setIcData(prev=>{
+            const merged={...prev};
+            Object.entries(bucket).forEach(([name,nd])=>{
+              if(!merged[name])merged[name]={team:nd.team,weeks:{},months:{}};
+              merged[name].team=nd.team||merged[name].team;
+              Object.entries(nd.weeks).forEach(([wk2,wd])=>{
+                merged[name].weeks=merged[name].weeks||{};
+                merged[name].weeks[wk2]={...(merged[name].weeks[wk2]||{}),...wd};
+              });
+            });
+            return merged;
+          });
+
+          // Auto-fill productivity for each team/week using WFs as 1pt each + existing closed tickets
+          const teamWeeks={};
+          Object.entries(bucket).forEach(([name,nd])=>{
+            const tname=nd.team;if(!tname)return;
+            Object.keys(nd.weeks).forEach(wk2=>{
+              const key=`${tname}__${wk2}`;
+              if(!teamWeeks[key])teamWeeks[key]={tname,wk:+wk2};
+            });
+          });
+          let filled=0;
+          Object.values(teamWeeks).forEach(({tname,wk:wkN})=>{
+            const updates={};
+            // All actions = 1pt each: tickets + emails + wfs
+            // ppt removed - all 1pt
+            const agents=Object.entries(icData).filter(([,d])=>d.team===tname);
+            const closedTickets=agents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.closed||0),0);
+            const emailPoints=Object.entries(bucket)
+              .filter(([n])=>getPersonTeam(n)===tname)
+              .reduce((s,[,d])=>s+(d.weeks?.[wkN]?.emails||0),0);
+            const wfPoints=Object.entries(bucket)
+              .filter(([n])=>getPersonTeam(n)===tname)
+              .reduce((s,[,d])=>s+(d.weeks?.[wkN]?.wfs||0),0);
+            const totalPoints=closedTickets*weights.tickets+emailPoints*weights.emails+wfPoints*weights.wfs;
+            const teamHrs=Object.values(schedData).filter(p=>p.group===tname)
+              .reduce((s,p)=>{const h=p.overrides?.[`w_${wkN}`]??p.weeks?.[wkN]??0;return s+h;},0);
+            const leadName=TEAM_LEADS[tname];
+            const leadHrs=schedData[leadName]?((schedData[leadName].overrides?.[`w_${wkN}`]??schedData[leadName].weeks?.[wkN])??0):0;
+            const leadClosed=icData[leadName]?.weeks?.[wkN]?.closed||0;
+            const leadEmails=icData[leadName]?.weeks?.[wkN]?.emails||0;
+            const leadWfs=bucket[leadName]?.weeks?.[wkN]?.wfs||0;
+            const leadPoints=leadClosed*weights.tickets+leadEmails*weights.emails+leadWfs*weights.wfs;
+            if(totalPoints>0&&teamHrs>0){updates.productivity_team=Math.round(totalPoints/teamHrs*100)/100;filled++;}
+            if(leadPoints>0&&leadHrs>0)updates.productivity_lead=Math.round(leadPoints/leadHrs*100)/100;
+            if(Object.keys(updates).length)autoFillKPIs(tname,wkN,updates);
+          });
+
+          const agents=Object.keys(bucket).length;
+          toast2(`Work Completed imported: ${agents} agents, ${rowCount} rows. WF points included in productivity. ${filled} team(s) updated.`);
+        }
+
+
+        // ── TYPE E: Total Calls per person ──────────────────────────────
+        else if(firstLine.includes("Total Calls")||firstLine.includes("Talk Time")||firstLine.toLowerCase().includes("ops_total_calls")||firstLine.toLowerCase().includes("talk_time")||
+                ((text.includes("Total Calls")||text.includes("Talk Time"))&&!text.includes("Conversation ID")&&!text.includes("Replies by")&&!text.includes("Percentage of Calls"))){
+          const rows=text.split(/\r?\n/).filter(l=>l.trim());
+          const parseRow3=(line)=>{const vals=[];let cur="";let inq=false;for(const ch of line){if(ch==='"'){inq=!inq;}else if(ch===','&&!inq){vals.push(cur.trim().replace(/^"|"$/g,""));cur="";}else cur+=ch;}vals.push(cur.trim().replace(/^"|"$/g,""));return vals;};
+          const hdrs=parseRow3(rows[0]);
+          const dateCols=hdrs.slice(1); // date columns like "21/03/2026"
+
+          // Parse date col -> wk number
+          const dateToWk=(ds)=>{
+            // handle "21/03/2026" or "21-03-2026"
+            const clean=ds.replace(/-/g,"/");
+            const parts=clean.split("/");
+            if(parts.length!==3)return null;
+            const iso=`${parts[2]}-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`;
+            return wkFromDateStr(iso);
+          };
+
+          // Skip row 0 (header), row 1 might be "Total Calls" sub-header
+          let dataStart=1;
+          const firstData=parseRow3(rows[1]||"");
+          if((firstData[1]||"").toLowerCase().includes("total calls"))dataStart=2;
+
+          const newIc={};
+          let agentCount=0;
+          for(let i=dataStart;i<rows.length;i++){
+            const row=parseRow3(rows[i]);
+            const agent=(row[0]||"").trim();
+            if(!agent)continue;
+            const teamName=getPersonTeam(agent)||"";
+            if(!newIc[agent])newIc[agent]={team:teamName,weeks:{},months:{}};
+            dateCols.forEach((dc,j)=>{
+              const wkN=dateToWk(dc);
+              if(!wkN)return;
+              const calls=parseFloat(row[j+1])||0;
+              if(!newIc[agent].weeks[wkN])newIc[agent].weeks[wkN]={calls:0};
+              newIc[agent].weeks[wkN].calls=(newIc[agent].weeks[wkN].calls||0)+calls;
+            });
+            agentCount++;
+          }
+
+          // Merge into icData
+          setIcData(prev=>{
+            const merged={...prev};
+            Object.entries(newIc).forEach(([name,nd])=>{
+              if(!merged[name])merged[name]={team:nd.team,weeks:{},months:{}};
+              merged[name].team=nd.team||merged[name].team;
+              Object.entries(nd.weeks).forEach(([w,wd])=>{
+                merged[name].weeks[w]={...(merged[name].weeks[w]||{}),...wd};
+              });
+            });
+            return merged;
+          });
+
+          // Auto-fill productivity for each team/week (calls count as 1pt each)
+          const teamWeekMap={};
+          Object.entries(newIc).forEach(([name,nd])=>{
+            Object.keys(nd.weeks).forEach(wkN=>{
+              const t=nd.team;if(!t)return;
+              if(!teamWeekMap[t])teamWeekMap[t]=new Set();
+              teamWeekMap[t].add(+wkN);
+            });
+          });
+          Object.entries(teamWeekMap).forEach(([tname,wkSet])=>{
+            wkSet.forEach(wkN=>{
+              const agents=Object.entries(icData).filter(([,d])=>d.team===tname);
+              // include newly uploaded call data too
+              const newAgents=Object.entries(newIc).filter(([,d])=>d.team===tname);
+              const tickets=agents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.closed||0),0);
+              const emails=agents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.emails||0),0);
+              const wfs=agents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.wfs||0),0);
+              const calls=newAgents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.calls||0),0)+
+                           agents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.calls||0),0);
+              const totalPts=tickets*weights.tickets+emails*weights.emails+wfs*weights.wfs+calls*weights.calls;
+              const teamHrs=Object.values(schedData).filter(p=>p.group===tname)
+                .reduce((s,p)=>{const h=p.overrides?.[`w_${wkN}`]??p.weeks?.[wkN]??0;return s+h;},0);
+              const leadName=TEAM_LEADS[tname];
+              const leadHrs=schedData[leadName]?((schedData[leadName].overrides?.[`w_${wkN}`]??schedData[leadName].weeks?.[wkN])??0):0;
+              const leadCalls=(newIc[leadName]?.weeks?.[wkN]?.calls||0)+(icData[leadName]?.weeks?.[wkN]?.calls||0);
+              const leadPts=(icData[leadName]?.weeks?.[wkN]?.closed||0)*weights.tickets+(icData[leadName]?.weeks?.[wkN]?.emails||0)*weights.emails+(icData[leadName]?.weeks?.[wkN]?.wfs||0)*weights.wfs+leadCalls*weights.calls;
+              const upd={};
+              if(totalPts>0&&teamHrs>0)upd.productivity_team=Math.round(totalPts/teamHrs*100)/100;
+              if(leadPts>0&&leadHrs>0)upd.productivity_lead=Math.round(leadPts/leadHrs*100)/100;
+              if(Object.keys(upd).length)autoFillKPIs(tname,wkN,upd);
+            });
+          });
+          toast2(`Total Calls imported: ${agentCount} agents. Call points added to productivity.`);
+        }
+
+        // ── TYPE F: Answer Rate (Guest Support or Owner Support) ─────────
+        else if(firstLine.toLowerCase().includes("percentage of calls")||firstLine.toLowerCase().includes("answer_rate")||
+                (text.includes("Percentage of Calls Answered")&&!text.includes("Total Calls"))){
+          const rows=text.split(/\r?\n/).filter(l=>l.trim());
+          const parseRow4=(line)=>{const vals=[];let cur="";let inq=false;for(const ch of line){if(ch==='"'){inq=!inq;}else if(ch===','&&!inq){vals.push(cur.trim().replace(/^"|"$/g,""));cur="";}else cur+=ch;}vals.push(cur.trim().replace(/^"|"$/g,""));return vals;};
+          const hdrs=parseRow4(rows[0]);
+          const dateCols=hdrs.slice(1);
+
+          const dateToWk2=(ds)=>{
+            const clean=ds.replace(/-/g,"/");
+            const parts=clean.split("/");
+            if(parts.length!==3)return null;
+            const iso=`${parts[2]}-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`;
+            return wkFromDateStr(iso);
+          };
+
+          // Find the data row: has "Percentage" in first cell AND numeric values after it
+          // Skip the sub-header row where first cell is empty
+          let dataRow=null;
+          for(let i=1;i<rows.length;i++){
+            const parsed=parseRow4(rows[i]);
+            const firstCell=(parsed[0]||"").trim();
+            const secondCell=(parsed[1]||"").trim();
+            // Data row: first cell is the metric label AND second cell is numeric
+            if(firstCell.toLowerCase().includes("percentage")&&!isNaN(parseFloat(secondCell))){
+              dataRow=parsed;break;
+            }
+          }
+          if(!dataRow){toast2("Could not find answer rate data row.");return;}
+
+          // Detect team from filename hint or data scope
+          // Guest file uses dates like "21-03-2026", Owner uses "22/03/2026"
+          // More reliably: detect from the file name passed in, or check both KPI keys
+          const isGuest=file.name.toLowerCase().includes("guest")||file.name.toLowerCase().includes("gs");
+          const isOwner=file.name.toLowerCase().includes("owner")||file.name.toLowerCase().includes("os");
+          const teamName=isOwner?"Owner Support":isGuest?"Guest Support":null;
+          const kpiKey=isOwner?"owner_call_answer":isGuest?"call_answer_rate":null;
+
+          if(!teamName||!kpiKey){toast2("Could not detect team from filename. Name file with 'Guest' or 'Owner'.");return;}
+
+          // Collect rates by week
+          const wkRates={};
+          dateCols.forEach((dc,j)=>{
+            const wkN=dateToWk2(dc);
+            if(!wkN)return;
+            const val=parseFloat(dataRow[j+1]);
+            if(isNaN(val))return;
+            if(!wkRates[wkN])wkRates[wkN]=[];
+            wkRates[wkN].push(val);
+          });
+
+          // Average per week, convert to percentage, auto-fill KPI
+          let filled=0;
+          Object.entries(wkRates).forEach(([wkN,rates])=>{
+            const avg=rates.reduce((s,v)=>s+v,0)/rates.length;
+            const pct=Math.round(avg*10000)/100; // e.g. 0.9525 -> 95.25
+            autoFillKPIs(teamName,+wkN,{[kpiKey]:pct});
+            filled++;
+          });
+          toast2(`${teamName} Answer Rate imported: ${Math.round(Object.values(wkRates).flat().reduce((s,v)=>s+v,0)/Object.values(wkRates).flat().length*10000)/100}% avg. Auto-filled for ${filled} week(s).`);
+        }
+
+        else{
+          toast2("Unrecognised report type. Expected: closed conversations, replies, or conversation export CSV.");
+        }
+      }catch(err){toast2("Error reading file: "+err.message);console.error(err);}
+    };
+    reader.readAsText(file);
+    e.target.value="";
+  };
+  const getIcStats=(name,filter,wkNum,monLabel)=>{
+    const p=icData[name];if(!p)return null;
+    if(filter==="week")return p.weeks?.[wkNum]||null;
+    return p.months?.[monLabel]||null;
+  };
+  const getPPT=(team)=>icPPT[team]??1;
+  const calcProdPoints=(name,filter,wkNum,monLabel,hoursWorked)=>{
+    const stats=getIcStats(name,filter,wkNum,monLabel);
+    if(!stats||!hoursWorked||hoursWorked===0)return null;
+    const teamName=icData[name]?.team||"";
+    const ppt=getPPT(teamName);
+    const points=stats.closed*ppt;
+    return Math.round(points/hoursWorked*100)/100;
+  };
+
+  const addMember=(tn)=>{const n=addName.trim();if(!n)return;setRoster(prev=>({...prev,[tn]:{...prev[tn],members:[...(prev[tn]?.members||[]),{id:uid(),name:n}]}}));setAddName("");toast2(`${n} added.`);};
+  const remMember=(tn,id)=>{if(!window.confirm("Remove this member?"))return;setRoster(prev=>({...prev,[tn]:{...prev[tn],members:prev[tn].members.filter(x=>x.id!==id)}}));toast2("Removed.");};
+  const doRen=(tn,id)=>{setRoster(prev=>({...prev,[tn]:{...prev[tn],members:prev[tn].members.map(m=>m.id===id?{...m,name:renVal}:m)}}));setRenId(null);toast2("Renamed.");};
+  const doMov=(from,id,to)=>{if(!to||to===from)return;const m=roster[from]?.members.find(x=>x.id===id);if(!m)return;setRoster(prev=>({...prev,[from]:{...prev[from],members:prev[from].members.filter(x=>x.id!==id)},[to]:{...prev[to],members:[...(prev[to]?.members||[]),m]}}));setMovM(null);toast2(`${m.name} moved.`);};
+  const doProm=(tn,id)=>{const m=roster[tn]?.members.find(x=>x.id===id);if(!m)return;const ol=roster[tn]?.lead;setRoster(prev=>({...prev,[tn]:{lead:m.name,members:[...prev[tn].members.filter(x=>x.id!==id),(ol?{id:uid(),name:ol}:null)].filter(Boolean)}}));toast2(`${m.name} is now Lead.`);};
+  const addTeam=()=>{const n=addTm.trim();if(!n||tc[n])return;setTc(prev=>({...prev,[n]:{color:"#64748b",lightBg:"#f1f5f9",kpis:[]}}));setRoster(prev=>({...prev,[n]:{lead:"",members:[]}}));setAddTm("");toast2(`Team "${n}" created.`);};
+  const remTeam=(tn)=>{if(!window.confirm(`Remove team "${tn}"?`))return;setTc(prev=>{const c={...prev};delete c[tn];return c;});setRoster(prev=>{const c={...prev};delete c[tn];return c;});toast2("Team removed.");};
+
+  const copy=(txt)=>{try{navigator.clipboard.writeText(txt).then(()=>toast2("Copied to clipboard!")).catch(()=>fallbackCopy(txt));}catch{fallbackCopy(txt);}};
+  const fallbackCopy=(txt)=>{const ta=document.createElement("textarea");ta.value=txt;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand("copy");toast2("Copied!");}catch{}document.body.removeChild(ta);};
+  const dlCSV=(tn,pkey)=>{const td=tc[tn];if(!td)return;const pd=data[tn]?.[pkey]||{};const lb=plbl(pkey);let csv="Team,Period,KPI,Target,Actual,Status\n";td.kpis.forEach(k=>{const v=pd[k.key];const p=isPass(v,k);csv+=`"${tn}","${lb}","${k.label}","${k.target}","${dv(v,k)}","${p===null?"No data":p?"Pass":"Miss"}"\n`;});const blob=new Blob([csv],{type:"text/csv"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`Bachcare_${tn.replace(/ /g,"_")}_${lb.replace(/ /g,"_")}.csv`;a.click();URL.revokeObjectURL(url);toast2("Downloaded.");};
+  const emailTxt=(tn,pkey)=>{const td=tc[tn];if(!td)return"";const pd=data[tn]?.[pkey]||{};const r2=roster[tn]||{};const lb=plbl(pkey);const ps=td.kpis.filter(k=>isPass(pd[k.key],k)===true);const fl=td.kpis.filter(k=>isPass(pd[k.key],k)===false);const nd=td.kpis.filter(k=>isPass(pd[k.key],k)===null);let t=`Hi ${r2.lead||"Team Lead"},\n\nPerformance summary for ${lb}.\n\nTEAM: ${tn}\nLEAD: ${r2.lead||"—"}\nPERIOD: ${lb}\n${"─".repeat(36)}\n\n`;if(ps.length){t+=`PASSING (${ps.length}/${td.kpis.length})\n`;ps.forEach(k=>{t+=`  • ${k.label}: ${dv(pd[k.key],k)} (target ${k.target})\n`;});}if(fl.length){t+=`\nNEEDS ATTENTION (${fl.length})\n`;fl.forEach(k=>{t+=`  • ${k.label}: ${dv(pd[k.key],k)} (target ${k.target})\n`;});}if(nd.length){t+=`\nNO DATA YET (${nd.length})\n`;nd.forEach(k=>{t+=`  • ${k.label}\n`;});}t+=`\nGenerated: ${nowNZ()}\nBachcare.co.nz — Airbnb · Booking.com · VRBO\n`;return t;};
+  const printPDF=(tn,pkey)=>{const td=tc[tn];if(!td)return;const pd=data[tn]?.[pkey]||{};const r2=roster[tn]||{};const lb=plbl(pkey);const ps=td.kpis.filter(k=>isPass(pd[k.key],k)===true).length;const fl=td.kpis.filter(k=>isPass(pd[k.key],k)===false).length;const rows=td.kpis.map(k=>{const v=pd[k.key];const p=isPass(v,k);const c=p===null?"#94a3b8":p?"#15803d":"#dc2626";return`<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;">${k.label}</td><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;text-align:center;color:#64748b;font-size:13px;">${k.target}</td><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;text-align:center;font-weight:600;font-size:13px;">${dv(v,k)}</td><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;text-align:center;color:${c};font-weight:600;font-size:13px;">${p===null?"—":p?"Pass":"Miss"}</td></tr>`;}).join("");const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bachcare ${tn}</title><style>*{box-sizing:border-box;}body{font-family:system-ui,sans-serif;padding:32px;color:#1e293b;}table{width:100%;border-collapse:collapse;}thead tr{background:#f8fafc;}th{padding:10px 12px;text-align:left;font-weight:600;border-bottom:2px solid #e5e7eb;}th:not(:first-child){text-align:center;}</style></head><body><h1 style="font-size:20px;margin-bottom:4px;">Performance Report</h1><p style="color:#64748b;margin-bottom:16px;">Bachcare · ${tn} · ${lb} · Lead: ${r2.lead||"—"}</p><div style="display:flex;gap:12px;margin-bottom:20px;"><div style="background:#dcfce7;padding:12px 18px;border-radius:8px;"><div style="font-size:11px;font-weight:700;color:#15803d;">PASSING</div><div style="font-size:28px;font-weight:700;color:#15803d;">${ps}</div></div><div style="background:#fee2e2;padding:12px 18px;border-radius:8px;"><div style="font-size:11px;font-weight:700;color:#dc2626;">MISSING</div><div style="font-size:28px;font-weight:700;color:#dc2626;">${fl}</div></div><div style="background:#f1f5f9;padding:12px 18px;border-radius:8px;"><div style="font-size:11px;font-weight:700;color:#64748b;">TOTAL KPIs</div><div style="font-size:28px;font-weight:700;color:#64748b;">${td.kpis.length}</div></div></div><table><thead><tr><th>KPI</th><th>Target</th><th>Actual</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:24px;font-size:11px;color:#94a3b8;">Generated: ${nowNZ()} · Bachcare.co.nz · Airbnb · Booking.com · VRBO</p></body></html>`;const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);};
+
+  if(!auth){
+    return(
+      <div style={{minHeight:"100vh",background:"#f0f4f8",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+        <div style={{background:"#fff",borderRadius:16,padding:"40px 44px",width:"100%",maxWidth:380,boxShadow:"0 4px 24px rgba(0,0,0,.08)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:32}}>
+            <div style={{width:44,height:44,borderRadius:10,background:"#1e3a5f",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontWeight:700,fontSize:16}}>BC</span></div>
+            <div><div style={{fontWeight:700,fontSize:16,color:"#1e293b"}}>Bachcare</div><div style={{fontSize:12,color:"#64748b"}}>Operations Report Organiser</div></div>
+          </div>
+          <label style={S.lbl}>Username</label>
+          <input value={pw.split("|")[0]||""} onChange={e=>setPw(e.target.value.replace("|","")+"|"+(pw.split("|")[1]||""))} onKeyDown={e=>e.key==="Enter"&&document.getElementById("bc_pw_inp")?.focus()} placeholder="Your name" style={{...S.inp,marginBottom:10}}/>
+          <label style={S.lbl}>Password</label>
+          <div style={{position:"relative",marginBottom:14}}>
+            <input id="bc_pw_inp" type={showPw?"text":"password"} value={pw.split("|")[1]||""} onChange={e=>{setPw((pw.split("|")[0]||"")+"|"+e.target.value);setPwErr("");}} onKeyDown={e=>{if(e.key==="Enter"){const[u,p2]=pw.split("|");const a=liveAccounts.find(x=>x.username.toLowerCase()===u.toLowerCase()&&x.password===p2);if(a)loginAs(a);else setPwErr("Incorrect username or password.");}}} placeholder="Password" style={{...S.inp,paddingRight:52}}/>
+            <button onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:12}}>{showPw?"Hide":"Show"}</button>
+          </div>
+          {pwErr&&<div style={{color:"#dc2626",fontSize:13,marginBottom:10}}>{pwErr}</div>}
+          <button onClick={()=>{const[u,p2]=pw.split("|");const a=liveAccounts.find(x=>x.username.toLowerCase()===u.toLowerCase()&&x.password===p2);if(a)loginAs(a);else setPwErr("Incorrect username or password.");}} style={{...S.p1,width:"100%",padding:11,fontSize:14}}>Sign In</button>
+        </div>
+      </div>
+    );
+  }
+
+  const TABS=["Dashboard","Individuals","Schedule","Reports","Upload","Members","Export","Settings"];
+  const ePK=exPt==="month"?`m__${exMo}`:`w__${exWk}`;
+
+
+
+  function ReportsTab(){
+    const allPeople=Object.keys(icData).sort();
+    const allTeams=[...new Set(Object.values(icData).map(d=>d.team).filter(Boolean))].sort();
+    const filtPeople=allPeople.filter(n=>{
+      if(icTeamF!=="all"&&icData[n]?.team!==icTeamF)return false;
+      if(icPersonF!=="all"&&n!==icPersonF)return false;
+      return true;
+    });
+    const byTeam={};
+    filtPeople.forEach(n=>{const t=icData[n]?.team||"Other";if(!byTeam[t])byTeam[t]=[];byTeam[t].push(n);});
+
+    return(
+      <div>
+        {/* Upload + PPT settings */}
+        {/* Drag & drop upload zone */}
+        {(()=>{
+          const[dragging,setDragging]=React.useState(false);
+          const[lastFile,setLastFile]=React.useState(null);
+          const handleDrop=(e)=>{
+            e.preventDefault();e.stopPropagation();setDragging(false);
+            const file=e.dataTransfer.files[0];if(!file)return;
+            setLastFile({name:file.name,time:new Date().toLocaleTimeString("en-NZ")});
+            handleIcFile({target:{files:[file],value:""}});
+          };
+          const handleDragOver=(e)=>{e.preventDefault();setDragging(true);};
+          const handleDragLeave=(e)=>{e.preventDefault();setDragging(false);};
+          return(
+            <div style={{marginBottom:14}}>
+              <div
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onClick={()=>icFileRef.current.click()}
+                style={{background:dragging?"#e8f1fb":"#fff",border:`2px dashed ${dragging?"#1e6fcf":"#cbd5e1"}`,borderRadius:12,padding:"28px 20px",textAlign:"center",cursor:"pointer",transition:"all .15s"}}>
+                <div style={{fontSize:28,marginBottom:8}}>{dragging?"📂":"📋"}</div>
+                <div style={{fontWeight:600,fontSize:14,color:"#1e293b",marginBottom:4}}>
+                  {dragging?"Drop your file here":"Drag & drop any Intercom report here"}
+                </div>
+                <div style={{fontSize:12,color:"#94a3b8",marginBottom:10}}>
+                  or click to browse &nbsp;·&nbsp; CSV files only &nbsp;·&nbsp; auto-detects report type
+                </div>
+                <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",fontSize:11,color:"#64748b"}}>
+                  {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate"].map(t=>(
+                    <span key={t} style={{background:"#f1f5f9",borderRadius:4,padding:"2px 8px"}}>{t}</span>
+                  ))}
+                </div>
+              </div>
+              <input ref={icFileRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{
+                const file=e.target.files[0];if(!file)return;
+                setLastFile({name:file.name,time:new Date().toLocaleTimeString("en-NZ")});
+                handleIcFile(e);
+              }}/>
+              {lastFile&&(
+                <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 14px"}}>
+                  <span style={{fontSize:16}}>✅</span>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600,color:"#15803d"}}>{lastFile.name}</div>
+                    <div style={{fontSize:11,color:"#64748b"}}>Uploaded at {lastFile.time}</div>
+                  </div>
+                  {Object.keys(icData).length>0&&<span style={{marginLeft:"auto",fontSize:12,color:"#0e7a5e",fontWeight:600}}>{Object.keys(icData).length} agents loaded</span>}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+
+
+        {/* Filters */}
+
+        {/* Points per ticket settings */}
+        <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",padding:"14px 16px",marginBottom:14}}>
+          <div style={{fontWeight:600,fontSize:13,color:"#1e293b",marginBottom:10}}>Points per ticket closed <span style={{fontWeight:400,color:"#94a3b8",fontSize:12}}>(used to calculate productivity score = points ÷ hours worked)</span></div>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+            {Object.keys(DEFAULT_TEAMS).map(tn=>(
+              <div key={tn} style={{display:"flex",alignItems:"center",gap:7,background:"#f8fafc",borderRadius:8,padding:"8px 12px",border:"1px solid #e5e7eb"}}>
+                <div style={{width:7,height:7,borderRadius:2,background:tc[tn]?.color||"#64748b"}}/>
+                <span style={{fontSize:12,fontWeight:500,color:"#374151"}}>{tn}</span>
+                <input type="number" step="0.1" min="0.1" value={icPPT[tn]??1} onChange={e=>setIcPPT(prev=>({...prev,[tn]:parseFloat(e.target.value)||1}))} style={{width:58,border:"1px solid #d1d5db",borderRadius:6,padding:"4px 7px",fontSize:13,textAlign:"center"}}/>
+                <span style={{fontSize:11,color:"#94a3b8"}}>pts</span>
+              </div>
+            ))}
+          </div>
+          <div style={{marginTop:8,fontSize:12,color:"#94a3b8"}}>Example: if a team member closes 50 tickets at 1 pt each and worked 40 hrs → productivity = 1.25 pts/hr</div>
+        </div>
+
+        {/* Filters */}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14,background:"#fff",padding:"10px 12px",borderRadius:11,border:"1px solid #e5e7eb",alignItems:"center"}}>
+          <select value={icFilter} onChange={e=>setIcFilter(e.target.value)} style={S.sel}><option value="week">By FY25 Week</option><option value="month">By Month</option></select>
+          {icFilter==="week"
+            ?<select value={icWeek} onChange={e=>setIcWeek(+e.target.value)} style={S.sel}>{WEEKS.map(w=><option key={w.w} value={w.w}>{w.l}</option>)}</select>
+            :<select value={icMonth} onChange={e=>setIcMonth(e.target.value)} style={S.sel}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select>}
+          <select value={icTeamF} onChange={e=>{setIcTeamF(e.target.value);setIcPersonF("all");}} style={S.sel}>
+            <option value="all">All Teams</option>
+            {allTeams.map(t=><option key={t}>{t}</option>)}
+          </select>
+          <select value={icPersonF} onChange={e=>setIcPersonF(e.target.value)} style={S.sel}>
+            <option value="all">All Agents</option>
+            {filtPeople.map(n=><option key={n}>{n}</option>)}
+          </select>
+        </div>
+
+        {Object.keys(icData).length===0&&(
+          <div style={{background:"#fff",borderRadius:11,border:"2px dashed #cbd5e1",padding:40,textAlign:"center",color:"#94a3b8"}}>
+            <div style={{fontSize:28,marginBottom:8}}>📊</div>
+            <div style={{fontWeight:600,fontSize:14,color:"#64748b",marginBottom:4}}>No Intercom data yet</div>
+            <div style={{fontSize:13}}>Upload your Intercom CSV export above. One combined export covers all teams.</div>
+          </div>
+        )}
+
+        {Object.keys(icData).length>0&&filtPeople.length===0&&(
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",padding:24,textAlign:"center",color:"#94a3b8",fontSize:13}}>No agents match the current filters.</div>
+        )}
+
+        {/* Table */}
+        {Object.keys(icData).length>0&&filtPeople.length>0&&(
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:14}}>
+            <div style={{padding:"10px 14px",fontWeight:600,fontSize:13,color:"#1e293b",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:8}}>
+              <span>Intercom Report</span>
+              <span style={{fontSize:11,color:"#94a3b8",fontWeight:400}}>
+                {icFilter==="week"?WEEKS.find(w=>w.w===icWeek)?.l:icMonth}
+              </span>
+              <span style={{marginLeft:"auto",fontSize:11,color:"#64748b"}}>Productivity = (tickets × pts/ticket) ÷ hrs worked</span>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead>
+                  <tr style={{background:"#f8fafc"}}>
+                    {["Agent","Team","Tickets Closed","Median First Reply","Median Close Time","Hours Worked","Productivity Score"].map(h=>(
+                      <th key={h} style={{padding:"8px 12px",textAlign:h==="Agent"||h==="Team"?"left":"center",fontWeight:600,color:"#374151",borderBottom:"1px solid #e5e7eb",fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(byTeam).sort().map(([tname,people])=>{
+                    const tColor=Object.entries(tc).find(([n])=>n===tname)?.[1]?.color||"#64748b";
+                    const tBg=Object.entries(tc).find(([n])=>n===tname)?.[1]?.lightBg||"#f8fafc";
+                    // team totals
+                    const teamStats=people.map(n=>getIcStats(n,icFilter,icWeek,icMonth)).filter(Boolean);
+                    const teamClosed=teamStats.reduce((s,x)=>s+(x.closed||0),0);
+                    return[
+                      <tr key={`g_${tname}`} style={{background:tBg}}>
+                        <td colSpan={7} style={{padding:"6px 12px",fontSize:11,fontWeight:700,color:tColor,letterSpacing:".4px",textTransform:"uppercase"}}>{tname} — {teamClosed} total tickets this period</td>
+                      </tr>,
+                      ...people.sort().map((name,i)=>{
+                        const stats=getIcStats(name,icFilter,icWeek,icMonth);
+                        const hrs=getSchedHours(name,icFilter,icWeek,icMonth);
+                        const ppt=getPPT(tname);
+                        const prodScore=stats&&hrs?(Math.round(stats.closed*ppt/hrs*100)/100):null;
+                        return(
+                          <tr key={name} style={{background:i%2?"#fafafa":"#fff",borderBottom:"1px solid #f1f5f9"}}>
+                            <td style={{padding:"9px 12px",color:"#1e293b",fontWeight:500}}>{name}</td>
+                            <td style={{padding:"9px 12px",color:"#64748b",fontSize:12}}>{tname}</td>
+                            <td style={{padding:"9px 12px",textAlign:"center",fontWeight:600,color:stats?.closed?"#1e293b":"#cbd5e1"}}>{stats?.closed??"—"}</td>
+                            <td style={{padding:"9px 12px",textAlign:"center"}}>
+                              {stats?.medFirstReply!=null?(
+                                <span style={{fontSize:12,color:stats.medFirstReply<4?"#15803d":"#dc2626",fontWeight:500}}>{stats.medFirstReply}h</span>
+                              ):"—"}
+                            </td>
+                            <td style={{padding:"9px 12px",textAlign:"center"}}>
+                              {stats?.medClose!=null?(
+                                <span style={{fontSize:12,color:stats.medClose<8?"#15803d":"#dc2626",fontWeight:500}}>{stats.medClose}h</span>
+                              ):"—"}
+                            </td>
+                            <td style={{padding:"9px 12px",textAlign:"center",color:hrs?"#1e293b":"#94a3b8",fontSize:12}}>
+                              {hrs!=null?`${hrs}h`:<span style={{fontSize:11,color:"#cbd5e1"}}>Upload schedule</span>}
+                            </td>
+                            <td style={{padding:"9px 12px",textAlign:"center"}}>
+                              {prodScore!=null?(
+                                <span style={{fontWeight:700,fontSize:13,color:"#1e3a5f",background:"#e8f1fb",padding:"3px 9px",borderRadius:6,display:"inline-block"}}>{prodScore} pts/hr</span>
+                              ):hrs==null?(
+                                <span style={{fontSize:11,color:"#cbd5e1"}}>Need hours</span>
+                              ):(
+                                <span style={{fontSize:11,color:"#94a3b8"}}>No tickets</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ];
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Auto-fill info */}
+        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:11,padding:"12px 16px",marginBottom:14}}>
+          <div style={{fontWeight:600,fontSize:12,color:"#92400e",marginBottom:6}}>What uploads auto-fill into the Dashboard</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8,fontSize:12,color:"#78350f"}}>
+            <div><strong>Closed conversations CSV</strong> ✅ Source of truth for tickets<br/>→ Productivity – Team (pts/hr)<br/>→ Productivity – Team Lead (pts/hr)<br/><span style={{color:"#94a3b8",fontSize:11}}>(requires schedule hours to be uploaded too)</span></div>
+            <div><strong>Conversation export CSV</strong><br/>→ Avg First Response Time (hrs)<br/>→ Avg Response Time (hrs)<br/><span style={{color:"#dc2626",fontSize:11}}>⚠ Capped at 100 rows — do NOT use for ticket counts</span></div>
+            <div><strong>Replies by agent CSV</strong><br/>→ Stored per agent for individual view<br/><span style={{color:"#94a3b8",fontSize:11}}>(used for future metrics)</span></div>
+          </div>
+        </div>
+
+        {/* Legend */}
+        {Object.keys(icData).length>0&&<div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"#64748b"}}>
+          <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#dcfce7",border:"1px solid #86efac",display:"inline-block"}}/> First reply under 4h</span>
+          <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#fee2e2",border:"1px solid #fca5a5",display:"inline-block"}}/> Over target</span>
+          <span style={{marginLeft:"auto",color:"#94a3b8"}}>Response times are medians for that period. Productivity requires schedule hours to be loaded.</span>
+        </div>}
+      </div>
+    );
+  }
+
+  const DEFAULT_WEIGHTS={tickets:1,emails:1,wfs:1,calls:1};
+  const[weights,setWeights]=useState(()=>{try{return JSON.parse(localStorage.getItem("bc_weights")||"null")||DEFAULT_WEIGHTS;}catch{return DEFAULT_WEIGHTS;}});
+  const[weightsLocked,setWeightsLocked]=useState(true);
+  useEffect(()=>{try{localStorage.setItem("bc_weights",JSON.stringify(weights));}catch{};},[weights]);
+  function WeightsSection(){
+    return(<div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",padding:20,marginBottom:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+        <div style={{fontWeight:700,fontSize:13,color:"#1e293b",flex:1}}>Productivity Weights</div>
+        <button onClick={()=>setWeightsLocked(l=>!l)} style={{display:"flex",alignItems:"center",gap:5,background:weightsLocked?"#f1f5f9":"#fffbeb",border:"1px solid "+(weightsLocked?"#e2e8f0":"#fde68a"),borderRadius:7,padding:"4px 12px",fontSize:12,cursor:"pointer",color:weightsLocked?"#64748b":"#92400e",fontWeight:600}}>
+          {weightsLocked?"Lock Locked":"Unlocked"}
+        </button>
+      </div>
+      <div style={{fontSize:12,color:"#94a3b8",marginBottom:14}}>{weightsLocked?"Click unlock to edit.":"Weights unlocked."}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
+        {[{key:"tickets",label:"Tickets"},{key:"emails",label:"Emails"},{key:"wfs",label:"WFs"},{key:"calls",label:"Calls"}].map(({key,label})=>(
+          <div key={key} style={{background:"#f8fafc",borderRadius:9,padding:"12px 14px",border:"1px solid "+(weightsLocked?"#e5e7eb":"#fde68a")}}>
+            <div style={{fontSize:11,color:"#64748b",marginBottom:6}}>{label}</div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <input type="number" step="0.1" min="0" value={weights[key]} disabled={weightsLocked}
+                onChange={e=>setWeights(prev=>({...prev,[key]:parseFloat(e.target.value)||0}))}
+                style={{width:"100%",border:"1px solid "+(weightsLocked?"#e2e8f0":"#fbbf24"),borderRadius:6,padding:"6px 8px",fontSize:15,fontWeight:700,textAlign:"center",background:weightsLocked?"#f1f5f9":"#fff",color:weightsLocked?"#94a3b8":"#1e293b"}}/>
+              <span style={{fontSize:12,color:"#94a3b8"}}>pts</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      {!weightsLocked&&<div style={{marginTop:12,display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <button onClick={()=>setWeights(DEFAULT_WEIGHTS)} style={S.ghost}>Reset</button>
+        <button onClick={()=>{setWeightsLocked(true);addAudit("Weights Updated","tickets="+weights.tickets+" emails="+weights.emails+" wfs="+weights.wfs+" calls="+weights.calls);toast2("Weights saved.");}} style={S.p1}>Save & Lock</button>
+      </div>}
+    </div>);
+  }
+  function AccessTab(){
+    const[rejectId,setRejectId]=React.useState(null);
+    const[rejectReason,setRejectReason]=React.useState("");
+    const[resetId,setResetId]=React.useState(null);
+    const[newPw,setNewPw]=React.useState("");
+    const pending=pendingEdits.filter(r=>r.status==="pending");
+    const resolved=pendingEdits.filter(r=>r.status!=="pending").slice(0,20);
+    const doReset=(username)=>{
+      if(!newPw||newPw.length<8){toast2("Password must be at least 8 characters.");return;}
+      const updated=liveAccounts.map(a=>a.username===username?{...a,password:newPw}:a);
+      setLiveAccounts(updated);
+      addAudit("Password Reset",`${username} by ${currentUser?.displayName}`);
+      setResetId(null);setNewPw("");toast2("Password updated.");
+    };
+    return(<div>
+      <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:16}}>
+        <div style={{padding:"12px 16px",fontWeight:700,fontSize:14,color:"#1e293b",borderBottom:"1px solid #e5e7eb"}}>Team Accounts</div>
+        {liveAccounts.map(a=>(
+          <div key={a.username} style={{padding:"12px 16px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+            <div style={{width:36,height:36,borderRadius:18,background:a.role==="admin"?"#1e3a5f":"#7c3aab",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700,flexShrink:0}}>{ini(a.displayName)}</div>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:600,fontSize:13,color:"#1e293b"}}>{a.displayName}</div>
+              <div style={{fontSize:11,color:a.role==="admin"?"#1e6fcf":"#7c3aab",fontWeight:600,textTransform:"uppercase"}}>{a.role==="admin"?"Admin":"Team Leader"}{a.team?" · "+a.team:""}</div>
+            </div>
+            {resetId===a.username?(
+              <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                <input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="New password (min 8)" style={{...S.inp,width:180,fontSize:12}} onKeyDown={e=>e.key==="Enter"&&doReset(a.username)}/>
+                <button onClick={()=>doReset(a.username)} style={{background:"#1e3a5f",color:"#fff",border:"none",borderRadius:6,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>Save</button>
+                <button onClick={()=>{setResetId(null);setNewPw("");}} style={{...S.ghost,fontSize:12}}>Cancel</button>
+              </div>
+            ):(
+              <button onClick={()=>{setResetId(a.username);setNewPw("");}} style={{...S.out,fontSize:12,padding:"5px 12px"}}>Reset Password</button>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:16}}>
+        <div style={{padding:"12px 16px",fontWeight:700,fontSize:14,color:"#1e293b",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:8}}>
+          Edit Requests
+          {pending.length>0&&<span style={{background:"#fee2e2",color:"#dc2626",borderRadius:10,padding:"1px 8px",fontSize:12,fontWeight:600}}>{pending.length} pending</span>}
+        </div>
+        {!pending.length&&<div style={{padding:"20px 16px",color:"#94a3b8",fontSize:13,textAlign:"center"}}>No pending requests</div>}
+        {pending.map(req=>(
+          <div key={req.id} style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
+            <div style={{display:"flex",gap:10,alignItems:"flex-start",flexWrap:"wrap",marginBottom:8}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:600,fontSize:13,color:"#1e293b"}}>{req.submittedBy} <span style={{color:"#94a3b8",fontWeight:400}}>wants to edit</span> {req.team}</div>
+                <div style={{fontSize:12,color:"#64748b"}}>{plbl(req.pk)} · {req.ts}</div>
+              </div>
+              {rejectId===req.id?(
+                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                  <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Reason (optional)" style={{...S.inp,width:160,padding:"5px 8px",fontSize:12}}/>
+                  <button onClick={()=>{rejectEdit(req.id,rejectReason);setRejectId(null);setRejectReason("");}} style={{background:"#dc2626",color:"#fff",border:"none",borderRadius:6,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>Confirm</button>
+                  <button onClick={()=>setRejectId(null)} style={S.ghost}>Cancel</button>
+                </div>
+              ):(
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={()=>approveEdit(req.id)} style={{background:"#15803d",color:"#fff",border:"none",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600}}>✓ Approve</button>
+                  <button onClick={()=>{setRejectId(req.id);setRejectReason("");}} style={{...S.out,fontSize:12,color:"#dc2626",borderColor:"#fca5a5"}}>✕ Reject</button>
+                </div>
+              )}
+            </div>
+            <div style={{background:"#f8fafc",borderRadius:7,padding:"8px 12px",fontSize:12}}>
+              {Object.entries(req.changes).map(([label,change])=>(
+                <div key={label} style={{display:"flex",gap:8,marginBottom:3}}>
+                  <span style={{color:"#64748b",flex:1}}>{label}</span>
+                  <span style={{color:"#1e293b",fontWeight:500}}>{change}</span>
+                </div>
+              ))}
+            </div>
+            {req.note&&<div style={{marginTop:6,fontSize:12,color:"#7c3aab",background:"#f3eafa",borderRadius:6,padding:"5px 10px"}}><strong>Note:</strong> {req.note}</div>}
+          </div>
+        ))}
+      </div>
+      <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden"}}>
+        <div style={{padding:"12px 16px",fontWeight:700,fontSize:14,color:"#1e293b",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:8}}>
+          Audit Log
+          <span style={{fontSize:11,color:"#94a3b8",fontWeight:400,flex:1}}>Last 200 actions</span>
+          <button onClick={()=>{const csv=["Timestamp,User,Role,Action,Details",...auditLog.map(e=>`"${e.ts}","${e.user}","${e.role}","${e.action}","${e.details}"`)].join("\n");const b=new Blob([csv],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="audit.csv";a.click();URL.revokeObjectURL(u);}} style={{...S.out,fontSize:11,padding:"3px 10px"}}>⬇ Export</button>
+        </div>
+        {!auditLog.length&&<div style={{padding:"20px 16px",color:"#94a3b8",fontSize:13,textAlign:"center"}}>No audit entries yet</div>}
+        <div style={{maxHeight:360,overflowY:"auto"}}>
+          {auditLog.map(entry=>(
+            <div key={entry.id} style={{padding:"8px 16px",borderBottom:"1px solid #f8fafc",display:"flex",gap:10,alignItems:"center"}}>
+              <div style={{width:26,height:26,borderRadius:13,background:entry.role==="admin"?"#1e3a5f":"#7c3aab",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:9,fontWeight:700,flexShrink:0}}>{ini(entry.user)}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{entry.user}</span>
+                  <span style={{fontSize:11,background:entry.role==="admin"?"#e8f1fb":"#f3eafa",color:entry.role==="admin"?"#1e6fcf":"#7c3aab",borderRadius:3,padding:"1px 5px"}}>{entry.role}</span>
+                  <span style={{fontSize:11,color:"#374151"}}>{entry.action}</span>
+                </div>
+                <div style={{fontSize:11,color:"#64748b",marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{entry.details}</div>
+              </div>
+              <span style={{fontSize:11,color:"#94a3b8",whiteSpace:"nowrap",flexShrink:0}}>{entry.ts}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>);
+  }
+
+  function PeopleTab(){
+    try{
+    return(
+      <div>
+        <div style={{fontSize:13,color:"#64748b",marginBottom:12}}>Click any person to view their stats and weekly summary.</div>
+
+        {tR.lead&&(
+          <div style={{marginBottom:18}}>
+            <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",marginBottom:7,textTransform:"uppercase",letterSpacing:".5px"}}>Team Lead</div>
+            <div onClick={()=>{setIMember({id:`lead_${team.replace(/\s/g,"_")}`,name:tR.lead,teamName:team});setIEdit(false);}} style={{display:"inline-flex",alignItems:"center",gap:11,background:"#fff",border:`2px solid ${tDef.color}`,borderRadius:11,padding:"11px 14px",cursor:"pointer",minWidth:230}}>
+              <div style={{width:38,height:38,borderRadius:19,background:tDef.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700,flexShrink:0}}>{ini(tR.lead)}</div>
+              <div>
+                <div style={{fontWeight:600,fontSize:13,color:"#1e293b"}}>{tR.lead}</div>
+                <div style={{fontSize:11,color:tDef.color,fontWeight:600}}>Team Lead</div>
+              </div>
+              <div style={{marginLeft:"auto",paddingLeft:6,fontSize:17,color:"#cbd5e1"}}>›</div>
+            </div>
+          </div>
+        )}
+
+        <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",marginBottom:7,textTransform:"uppercase",letterSpacing:".5px"}}>
+          Members ({(tR.members||[]).length})
+        </div>
+
+        {!(tR.members||[]).length&&(
+          <div style={{fontSize:13,color:"#94a3b8",padding:"12px 0"}}>No members yet. Add one below.</div>
+        )}
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:9,marginBottom:16}}>
+          {(tR.members||[]).map(m=>{
+            const md=getID(m.id,iPt,iMo,iWk);
+            const hp=!!md.productivity;
+            return(
+              <div key={m.id} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:11,padding:"10px 12px",display:"flex",flexDirection:"column",gap:7}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor=tDef.color;}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor="#e5e7eb";}}>
+                <div onClick={()=>{setIMember({id:m.id,name:m.name,teamName:team});setIEdit(false);}} style={{display:"flex",alignItems:"center",gap:9,cursor:"pointer"}}>
+                  <div style={{width:32,height:32,borderRadius:16,background:tDef.lightBg,display:"flex",alignItems:"center",justifyContent:"center",color:tDef.color,fontSize:11,fontWeight:700,flexShrink:0}}>{ini(m.name)}</div>
+                  <div style={{minWidth:0,flex:1}}>
+                    <div style={{fontWeight:600,fontSize:13,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.name}</div>
+                    <div style={{fontSize:11,color:hp?"#64748b":"#cbd5e1"}}>{hp?`Prod: ${md.productivity}`:"No data"}</div>
+                  </div>
+                  <div style={{fontSize:16,color:"#cbd5e1"}}>›</div>
+                </div>
+                <div style={{display:"flex",gap:4,borderTop:"1px solid #f1f5f9",paddingTop:6}}>
+                  {renId===m.id?(
+                    <div style={{display:"flex",gap:4,flex:1,alignItems:"center"}}>
+                      <input value={renVal} onChange={e=>setRenVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doRen(team,m.id)} autoFocus style={{flex:1,border:"1px solid #d1d5db",borderRadius:5,padding:"3px 6px",fontSize:12,outline:"none",minWidth:0}}/>
+                      <button onClick={()=>doRen(team,m.id)} style={{background:"#1e3a5f",color:"#fff",border:"none",borderRadius:4,padding:"3px 8px",fontSize:11,cursor:"pointer"}}>✓</button>
+                      <button onClick={()=>setRenId(null)} style={{background:"none",border:"1px solid #d1d5db",borderRadius:4,padding:"3px 6px",fontSize:11,cursor:"pointer"}}>✕</button>
+                    </div>
+                  ):(
+                    <div style={{display:"flex",gap:3,flex:1,flexWrap:"wrap"}}>
+                      <button onClick={()=>{setRenId(m.id);setRenVal(m.name);}} style={{...S.ghost,fontSize:11}}>✎ Rename</button>
+                      <button onClick={()=>doProm(team,m.id)} style={{...S.ghost,fontSize:11}}>★ Lead</button>
+                      <button onClick={()=>{setMovM({teamName:team,id:m.id,name:m.name});setMovTo("");}} style={{...S.ghost,fontSize:11}}>⇄ Move</button>
+                      <button onClick={()=>remMember(team,m.id)} style={{...S.ghost,color:"#dc2626",fontSize:11}}>✕</button>
+                    </div>
+                  )}
+                </div>
+                {movM?.id===m.id&&(
+                  <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                    <select value={movTo} onChange={e=>setMovTo(e.target.value)} style={{...S.sel,fontSize:11,padding:"3px 5px",flex:1}}>
+                      <option value="">Move to...</option>
+                      {tNames.filter(t=>t!==team).map(t=><option key={t}>{t}</option>)}
+                    </select>
+                    <button onClick={()=>doMov(team,m.id,movTo)} style={{background:"#1e3a5f",color:"#fff",border:"none",borderRadius:4,padding:"3px 8px",fontSize:11,cursor:"pointer"}}>Go</button>
+                    <button onClick={()=>setMovM(null)} style={{background:"none",border:"1px solid #d1d5db",borderRadius:4,padding:"3px 6px",fontSize:11,cursor:"pointer"}}>✕</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",padding:"10px 13px",marginBottom:24,display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{width:7,height:7,borderRadius:2,background:tDef.color,flexShrink:0}}/>
+          <span style={{fontSize:12,color:"#64748b"}}>Add to <strong>{team}</strong>:</span>
+          <input value={addNameTm===team?addName:""} onChange={e=>{setAddNameTm(team);setAddName(e.target.value);}} onKeyDown={e=>{if(e.key==="Enter"){setAddNameTm(team);addMember(team);}}} placeholder="New member name..." style={{...S.inp,flex:1,padding:"6px 9px",fontSize:13}}/>
+          <button onClick={()=>{setAddNameTm(team);addMember(team);}} style={S.p1}>Add</button>
+        </div>
+
+        <div style={{borderTop:"1px solid #e5e7eb",paddingTop:18}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",marginBottom:12,textTransform:"uppercase",letterSpacing:".5px"}}>All Teams Roster</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(255px,1fr))",gap:10,marginBottom:14}}>
+            {tNames.map(tn=>{
+              const td3=tc[tn]||{color:"#64748b",lightBg:"#f8fafc"};
+              const r3=roster[tn]||{lead:"",members:[]};
+              return(
+                <div key={tn} style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden"}}>
+                  <div style={{background:td3.lightBg,padding:"9px 13px",display:"flex",alignItems:"center",gap:7}}>
+                    <div style={{width:8,height:8,borderRadius:2,background:td3.color,flexShrink:0}}/>
+                    <span style={{fontWeight:700,fontSize:13,color:"#1e293b",flex:1}}>{tn}</span>
+                    <span style={{fontSize:11,color:td3.color}}>{(r3.members||[]).length+1} people</span>
+                    <button onClick={()=>remTeam(tn)} style={{...S.ghost,color:"#dc2626",fontSize:11}}>Remove</button>
+                  </div>
+                  {r3.lead&&(
+                    <div style={{padding:"7px 13px",fontSize:12,borderBottom:"1px solid #f8fafc",display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:20,height:20,borderRadius:10,background:td3.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:9,fontWeight:700,flexShrink:0}}>{ini(r3.lead)}</div>
+                      <span style={{fontWeight:500,color:"#1e293b",flex:1}}>{r3.lead}</span>
+                      <span style={{color:td3.color,fontSize:11}}>Lead</span>
+                    </div>
+                  )}
+                  {(r3.members||[]).map(m=>(
+                    <div key={m.id} style={{padding:"5px 13px",fontSize:12,color:"#374151",borderBottom:"1px solid #f8fafc",display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:18,height:18,borderRadius:9,background:td3.lightBg,display:"flex",alignItems:"center",justifyContent:"center",color:td3.color,fontSize:8,fontWeight:700,flexShrink:0}}>{ini(m.name)}</div>
+                      <span style={{flex:1}}>{m.name}</span>
+                    </div>
+                  ))}
+                  <div style={{padding:"7px 13px",display:"flex",gap:6,background:"#f8fafc"}}>
+                    <input value={addNameTm===tn?addName:""} onChange={e=>{setAddNameTm(tn);setAddName(e.target.value);}} onKeyDown={e=>{if(e.key==="Enter"&&addNameTm===tn)addMember(tn);}} placeholder="Add member..." style={{...S.inp,flex:1,padding:"5px 8px",fontSize:12}}/>
+                    <button onClick={()=>{setAddNameTm(tn);addMember(tn);}} style={S.p1}>Add</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <input value={addTm} onChange={e=>setAddTm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTeam()} placeholder="Create new team..." style={{...S.inp,maxWidth:240}}/>
+            <button onClick={addTeam} style={S.p1}>Add Team</button>
+          </div>
+        </div>
+      </div>
+    );
+    }catch(err){
+      return <div style={{padding:20,color:"#dc2626",background:"#fee2e2",borderRadius:8,margin:16}}>
+        <strong>PeopleTab Error:</strong><br/>{err.message}<br/><pre style={{fontSize:11,marginTop:8}}>{err.stack}</pre>
+      </div>;
+    }
+  }
+
+
+  function AccessTab(){
+    const[rejectId,setRejectId]=React.useState(null);
+    const[rejectReason,setRejectReason]=React.useState("");
+    const[resetId,setResetId]=React.useState(null);
+    const[newPw,setNewPw]=React.useState("");
+    const localAccounts=liveAccounts;
+    const setLocalAccounts=(updated)=>{setLiveAccounts(updated);saveAccountsToSupabase(updated);};
+    const pending=pendingEdits.filter(r=>r.status==="pending");
+    const resolved=pendingEdits.filter(r=>r.status!=="pending").slice(0,20);
+
+    const doReset=(username)=>{
+      if(!newPw||newPw.length<8){toast2("Password must be at least 8 characters.");return;}
+      const updated=localAccounts.map(a=>a.username===username?{...a,password:newPw}:a);
+      setLocalAccounts(updated);
+      try{localStorage.setItem("bc_accounts",JSON.stringify(updated));}catch{}
+      addAudit("Password Reset",`${username}'s password was reset by ${currentUser?.displayName}`);
+      setResetId(null);setNewPw("");
+      toast2(`Password updated for ${username}.`);
+    };
+
+    return(
+      <div>
+
+        {/* Accounts */}
+        <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:16}}>
+          <div style={{padding:"12px 16px",fontWeight:700,fontSize:14,color:"#1e293b",borderBottom:"1px solid #e5e7eb"}}>Team Accounts</div>
+          {localAccounts.map(a=>(
+            <div key={a.username} style={{padding:"12px 16px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+              <div style={{width:36,height:36,borderRadius:18,background:a.role==="admin"?"#1e3a5f":"#7c3aab",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700,flexShrink:0}}>{ini(a.displayName)}</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:600,fontSize:13,color:"#1e293b"}}>{a.displayName}</div>
+                <div style={{fontSize:11,color:a.role==="admin"?"#1e6fcf":"#7c3aab",fontWeight:600,textTransform:"uppercase",letterSpacing:".3px"}}>{a.role==="admin"?"Admin":"Team Leader"}{a.team?` · ${a.team}`:""}</div>
+              </div>
+              {resetId===a.username?(
+                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                  <input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="New password (min 8 chars)" style={{...S.inp,width:200,fontSize:12}} onKeyDown={e=>e.key==="Enter"&&doReset(a.username)}/>
+                  <button onClick={()=>doReset(a.username)} style={{background:"#1e3a5f",color:"#fff",border:"none",borderRadius:6,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>Save</button>
+                  <button onClick={()=>{setResetId(null);setNewPw("");}} style={{...S.ghost,fontSize:12}}>Cancel</button>
+                </div>
+              ):(
+                <button onClick={()=>{setResetId(a.username);setNewPw("");}} style={{...S.out,fontSize:12,padding:"5px 12px"}}>Reset Password</button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Pending edit requests */}
+        <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:16}}>
+          <div style={{padding:"12px 16px",fontWeight:700,fontSize:14,color:"#1e293b",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:8}}>
+            Edit Requests
+            {pending.length>0&&<span style={{background:"#fee2e2",color:"#dc2626",borderRadius:10,padding:"1px 8px",fontSize:12,fontWeight:600}}>{pending.length} pending</span>}
+          </div>
+          {!pending.length&&<div style={{padding:"20px 16px",color:"#94a3b8",fontSize:13,textAlign:"center"}}>No pending requests</div>}
+          {pending.map(req=>(
+            <div key={req.id} style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
+              <div style={{display:"flex",gap:10,alignItems:"flex-start",flexWrap:"wrap",marginBottom:8}}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600,fontSize:13,color:"#1e293b"}}>{req.submittedBy} <span style={{color:"#94a3b8",fontWeight:400}}>wants to edit</span> {req.team}</div>
+                  <div style={{fontSize:12,color:"#64748b",marginTop:1}}>{plbl(req.pk)} · {req.ts}</div>
+                </div>
+                {rejectId===req.id?(
+                  <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                    <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Reason (optional)" style={{...S.inp,width:160,padding:"5px 8px",fontSize:12}}/>
+                    <button onClick={()=>{rejectEdit(req.id,rejectReason);setRejectId(null);setRejectReason("");}} style={{background:"#dc2626",color:"#fff",border:"none",borderRadius:6,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>Confirm</button>
+                    <button onClick={()=>setRejectId(null)} style={S.ghost}>Cancel</button>
+                  </div>
+                ):(
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>approveEdit(req.id)} style={{background:"#15803d",color:"#fff",border:"none",borderRadius:6,padding:"6px 14px",fontSize:12,cursor:"pointer",fontWeight:600}}>✓ Approve</button>
+                    <button onClick={()=>{setRejectId(req.id);setRejectReason("");}} style={{...S.out,fontSize:12,color:"#dc2626",borderColor:"#fca5a5"}}>✕ Reject</button>
+                  </div>
+                )}
+              </div>
+              <div style={{background:"#f8fafc",borderRadius:7,padding:"8px 12px",fontSize:12}}>
+                {Object.entries(req.changes).map(([label,change])=>(
+                  <div key={label} style={{display:"flex",gap:8,marginBottom:3,alignItems:"center"}}>
+                    <span style={{color:"#64748b",flex:1}}>{label}</span>
+                    <span style={{color:"#1e293b",fontWeight:500,fontFamily:"monospace"}}>{change}</span>
+                  </div>
+                ))}
+              </div>
+              {req.note&&<div style={{marginTop:6,fontSize:12,color:"#7c3aab",background:"#f3eafa",borderRadius:6,padding:"5px 10px"}}>
+                <strong>Note:</strong> {req.note}
+              </div>}
+            </div>
+          ))}
+          {resolved.length>0&&<div style={{padding:"8px 16px",borderTop:"1px solid #e5e7eb"}}>
+            <div style={{fontSize:11,color:"#94a3b8",fontWeight:600,marginBottom:6,textTransform:"uppercase",letterSpacing:".4px"}}>Recently resolved</div>
+            {resolved.map(req=>(
+              <div key={req.id} style={{display:"flex",gap:8,alignItems:"center",padding:"6px 0",borderBottom:"1px solid #f8fafc",fontSize:12}}>
+                <span style={{width:6,height:6,borderRadius:3,background:req.status==="approved"?"#15803d":"#dc2626",flexShrink:0,display:"inline-block"}}/>
+                <span style={{color:"#64748b",flex:1}}>{req.submittedBy} · {req.team} · {plbl(req.pk)}</span>
+                <span style={{color:req.status==="approved"?"#15803d":"#dc2626",fontWeight:600,textTransform:"capitalize"}}>{req.status}</span>
+                <span style={{color:"#94a3b8"}}>{req.approvedAt||req.rejectedAt||""}</span>
+              </div>
+            ))}
+          </div>}
+        </div>
+
+        {/* Audit log */}
+        <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",fontWeight:700,fontSize:14,color:"#1e293b",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:8}}>
+            Audit Log
+            <span style={{fontSize:11,color:"#94a3b8",fontWeight:400,flex:1}}>Last 200 actions</span>
+            <button onClick={()=>{const csv=["Timestamp,User,Role,Action,Details",...auditLog.map(e=>`"${e.ts}","${e.user}","${e.role}","${e.action}","${e.details}"`)].join("\n");const b=new Blob([csv],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="bachcare_audit_log.csv";a.click();URL.revokeObjectURL(u);toast2("Audit log downloaded.");}} style={{...S.out,fontSize:11,padding:"3px 10px"}}>⬇ Export</button>
+          </div>
+          {!auditLog.length&&<div style={{padding:"20px 16px",color:"#94a3b8",fontSize:13,textAlign:"center"}}>No audit entries yet</div>}
+          <div style={{maxHeight:360,overflowY:"auto"}}>
+            {auditLog.map(entry=>(
+              <div key={entry.id} style={{padding:"8px 16px",borderBottom:"1px solid #f8fafc",display:"flex",gap:10,alignItems:"center"}}>
+                <div style={{width:26,height:26,borderRadius:13,background:entry.role==="admin"?"#1e3a5f":"#7c3aab",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:9,fontWeight:700,flexShrink:0}}>{ini(entry.user)}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                    <span style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{entry.user}</span>
+                    <span style={{fontSize:11,background:entry.role==="admin"?"#e8f1fb":"#f3eafa",color:entry.role==="admin"?"#1e6fcf":"#7c3aab",borderRadius:3,padding:"1px 5px"}}>{entry.role}</span>
+                    <span style={{fontSize:11,color:"#374151"}}>{entry.action}</span>
+                  </div>
+                  <div style={{fontSize:11,color:"#64748b",marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{entry.details}</div>
+                </div>
+                <span style={{fontSize:11,color:"#94a3b8",whiteSpace:"nowrap",flexShrink:0}}>{entry.ts}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+      </div>
+    );
+  }
+
+
+  function SchedTab(){
+    // Collect all people from schedData + roster
+    const allPeople=[];
+    const seenGroups=new Set();
+    const groupMap={};
+    Object.entries(schedData).forEach(([name,d])=>{
+      const grp=d.group||"Other";
+      if(!groupMap[grp])groupMap[grp]=[];
+      groupMap[grp].push(name);
+      seenGroups.add(grp);
+    });
+    const filtGroups=schedTeamF==="all"?Object.keys(groupMap):[schedTeamF];
+    const filtPeople=filtGroups.flatMap(g=>(groupMap[g]||[])).filter(n=>schedPerson==="all"||n===schedPerson);
+
+    const hoursFor=(name)=>getSchedHours(name,schedFilter,schedWeek,schedMonth);
+
+    // flag if over 40h
+    const flagHigh=(h)=>h!==null&&h>40;
+
+    // day view: collect all days in that week or month
+    const getDaysInWeek=(wk)=>{
+      const range=FY25_WK_RANGES.find(r=>r[0]===wk);if(!range)return[];
+      const s=new Date(range[1]),e=new Date(range[2]);const days=[];
+      for(let d=new Date(s);d<=e;d.setDate(d.getDate()+1))days.push(new Date(d));
+      return days;
+    };
+    const fmtDate=(d)=>`${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`;
+    const fmtDayLabel=(d)=>d.toLocaleString("en-NZ",{weekday:"short",day:"numeric",month:"short"});
+
+    const daysInView=schedFilter==="week"?getDaysInWeek(schedWeek):[];
+
+    return(
+      <div>
+        {/* Upload bar */}
+        {(()=>{
+          const[sDrag,setSDrag]=React.useState(false);
+          const[sFile,setSFile]=React.useState(null);
+          const onSDrop=(e)=>{
+            e.preventDefault();e.stopPropagation();setSDrag(false);
+            const file=e.dataTransfer.files[0];if(!file)return;
+            setSFile({name:file.name,time:new Date().toLocaleTimeString("en-NZ")});
+            handleSchedFile({target:{files:[file],value:""}});
+          };
+          return(
+            <div style={{marginBottom:14}}>
+              <div
+                onDrop={onSDrop}
+                onDragOver={e=>{e.preventDefault();setSDrag(true);}}
+                onDragLeave={e=>{e.preventDefault();setSDrag(false);}}
+                onClick={()=>schedFileRef.current.click()}
+                style={{background:sDrag?"#e8f1fb":"#fff",border:`2px dashed ${sDrag?"#1e6fcf":"#cbd5e1"}`,borderRadius:12,padding:"24px 20px",textAlign:"center",cursor:"pointer",transition:"all .15s"}}>
+                <div style={{fontSize:26,marginBottom:6}}>{sDrag?"📂":"📅"}</div>
+                <div style={{fontWeight:600,fontSize:14,color:"#1e293b",marginBottom:4}}>
+                  {sDrag?"Drop your schedule here":"Drag & drop schedule XLSX here"}
+                </div>
+                <div style={{fontSize:12,color:"#94a3b8"}}>or click to browse &nbsp;·&nbsp; ScheduleImportFormat .xlsx</div>
+              </div>
+              <input ref={schedFileRef} type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>{
+                const file=e.target.files[0];if(!file)return;
+                setSFile({name:file.name,time:new Date().toLocaleTimeString("en-NZ")});
+                handleSchedFile(e);
+              }}/>
+              {sFile&&(
+                <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 14px"}}>
+                  <span style={{fontSize:16}}>✅</span>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600,color:"#15803d"}}>{sFile.name}</div>
+                    <div style={{fontSize:11,color:"#64748b"}}>Uploaded at {sFile.time}</div>
+                  </div>
+                  {Object.keys(schedData).length>0&&<span style={{marginLeft:"auto",fontSize:12,color:"#0e7a5e",fontWeight:600}}>{Object.keys(schedData).length} people loaded</span>}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Filters */}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14,background:"#fff",padding:"10px 12px",borderRadius:11,border:"1px solid #e5e7eb",alignItems:"center"}}>
+          <select value={schedFilter} onChange={e=>setSchedFilter(e.target.value)} style={S.sel}><option value="week">By FY25 Week</option><option value="month">By Month</option></select>
+          {schedFilter==="week"
+            ?<select value={schedWeek} onChange={e=>setSchedWeek(+e.target.value)} style={S.sel}>{WEEKS.map(w=><option key={w.w} value={w.w}>{w.l}</option>)}</select>
+            :<select value={schedMonth} onChange={e=>setSchedMonth(e.target.value)} style={S.sel}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select>}
+          <select value={schedTeamF} onChange={e=>{setSchedTeamF(e.target.value);setSchedPerson("all");}} style={S.sel}>
+            <option value="all">All Teams</option>
+            {[...new Set(Object.values(schedData).map(d=>d.group))].sort().map(g=><option key={g}>{g}</option>)}
+          </select>
+          <select value={schedPerson} onChange={e=>setSchedPerson(e.target.value)} style={S.sel}>
+            <option value="all">All People</option>
+            {filtPeople.sort().map(n=><option key={n}>{n}</option>)}
+          </select>
+          <div style={{flex:1}}/>
+          <span style={{fontSize:11,color:"#94a3b8"}}>Click any hours number to edit</span>
+        </div>
+
+        {Object.keys(schedData).length===0&&(
+          <div style={{background:"#fff",borderRadius:11,border:"2px dashed #cbd5e1",padding:40,textAlign:"center",color:"#94a3b8"}}>
+            <div style={{fontSize:28,marginBottom:8}}>📅</div>
+            <div style={{fontWeight:600,fontSize:14,color:"#64748b",marginBottom:4}}>No schedule data yet</div>
+            <div style={{fontSize:13}}>Upload your ScheduleImportFormat .xlsx file above to get started.</div>
+          </div>
+        )}
+
+        {Object.keys(schedData).length>0&&filtPeople.length===0&&(
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",padding:24,textAlign:"center",color:"#94a3b8",fontSize:13}}>No people match the current filters.</div>
+        )}
+
+        {/* Summary table */}
+        {Object.keys(schedData).length>0&&filtPeople.length>0&&schedFilter==="week"&&(
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:14}}>
+            <div style={{padding:"10px 14px",fontWeight:600,fontSize:13,color:"#1e293b",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:8}}>
+              <span>Hours Summary</span>
+              <span style={{fontSize:11,color:"#94a3b8",fontWeight:400}}>Net hours after unpaid breaks · {WEEKS.find(w=>w.w===schedWeek)?.l}</span>
+              <span style={{marginLeft:"auto",fontSize:11,background:"#fee2e2",color:"#dc2626",padding:"2px 8px",borderRadius:4}}>Red = over 40 hrs</span>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead>
+                  <tr style={{background:"#f8fafc"}}>
+                    <th style={{padding:"8px 13px",textAlign:"left",fontWeight:600,color:"#374151",borderBottom:"1px solid #e5e7eb",fontSize:12,minWidth:160}}>Name</th>
+                    <th style={{padding:"8px 13px",textAlign:"left",fontWeight:600,color:"#374151",borderBottom:"1px solid #e5e7eb",fontSize:12}}>Team</th>
+                    <th style={{padding:"8px 13px",textAlign:"center",fontWeight:600,color:"#374151",borderBottom:"1px solid #e5e7eb",fontSize:12}}>Total Hours</th>
+                    {daysInView.map(d=><th key={fmtDate(d)} style={{padding:"8px 10px",textAlign:"center",fontWeight:600,color:"#374151",borderBottom:"1px solid #e5e7eb",fontSize:11,minWidth:70}}>{fmtDayLabel(d)}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtGroups.map(grp=>{
+                    const grpPeople=(groupMap[grp]||[]).filter(n=>schedPerson==="all"||n===schedPerson);
+                    if(!grpPeople.length)return null;
+                    const td2=Object.values(tc).find(t=>t)|| {};
+                    const grpColor=Object.entries(tc).find(([tn])=>tn===grp)?.[1]?.color||"#64748b";
+                    const grpBg=Object.entries(tc).find(([tn])=>tn===grp)?.[1]?.lightBg||"#f8fafc";
+                    return [
+                      <tr key={`g_${grp}`} style={{background:grpBg}}>
+                        <td colSpan={3+daysInView.length} style={{padding:"6px 13px",fontSize:11,fontWeight:700,color:grpColor,letterSpacing:".4px",textTransform:"uppercase"}}>{grp}</td>
+                      </tr>,
+                      ...grpPeople.sort().map((name,i)=>{
+                        const h=hoursFor(name);
+                        const high=flagHigh(h);
+                        const ovKey=`w_${schedWeek}`;
+                        const hasOverride=schedData[name]?.overrides?.[ovKey]!==undefined;
+                        return(
+                          <tr key={name} style={{background:i%2?"#fafafa":"#fff",borderBottom:"1px solid #f1f5f9"}}>
+                            <td style={{padding:"9px 13px",color:"#1e293b",fontWeight:500}}>
+                              {name}
+                              {hasOverride&&<span style={{fontSize:10,color:"#7c3aab",background:"#f3eafa",borderRadius:3,padding:"1px 5px",marginLeft:5}}>edited</span>}
+                            </td>
+                            <td style={{padding:"9px 13px",color:"#64748b",fontSize:12}}>{schedData[name]?.group||""}</td>
+                            <td style={{padding:"9px 13px",textAlign:"center"}}>
+                              {editHours===`${name}_total`?(
+                                <span style={{display:"inline-flex",gap:4,alignItems:"center"}}>
+                                  <input type="number" step="0.5" value={editHoursVal} onChange={e=>setEditHoursVal(e.target.value)} style={{width:60,border:"1px solid #d1d5db",borderRadius:5,padding:"2px 5px",fontSize:12,textAlign:"center"}} autoFocus onKeyDown={e=>{if(e.key==="Enter"){setSchedOverride(name,"week",schedWeek,schedMonth,editHoursVal);setEditHours(null);}if(e.key==="Escape")setEditHours(null);}}/>
+                                  <button onClick={()=>{setSchedOverride(name,"week",schedWeek,schedMonth,editHoursVal);setEditHours(null);}} style={{background:"#1e3a5f",color:"#fff",border:"none",borderRadius:4,padding:"2px 7px",fontSize:11,cursor:"pointer"}}>Save</button>
+                                  <button onClick={()=>setEditHours(null)} style={{background:"none",border:"1px solid #d1d5db",borderRadius:4,padding:"2px 5px",fontSize:11,cursor:"pointer"}}>✕</button>
+                                </span>
+                              ):(
+                                <span onClick={()=>{setEditHours(`${name}_total`);setEditHoursVal(h??0);}} style={{cursor:"pointer",fontWeight:600,fontSize:14,color:high?"#dc2626":"#1e293b",background:high?"#fee2e2":h!==null?"#f0fdf4":"#f1f5f9",padding:"3px 10px",borderRadius:6,display:"inline-block",minWidth:48,border:high?"1px solid #fca5a5":"1px solid transparent"}} title="Click to edit">
+                                  {h!==null?h:"—"}
+                                </span>
+                              )}
+                            </td>
+                            {daysInView.map(d=>{
+                              const ds=fmtDate(d);
+                              const dayData=schedData[name]?.days[ds];
+                              const dh=dayData?.hours??null;
+                              const dayEditKey=`${name}_${ds}`;
+                              return(
+                                <td key={ds} style={{padding:"6px 8px",textAlign:"center"}}>
+                                  {editHours===dayEditKey?(
+                                    <span style={{display:"inline-flex",gap:3,alignItems:"center"}}>
+                                      <input type="number" step="0.5" value={editHoursVal} onChange={e=>setEditHoursVal(e.target.value)} style={{width:50,border:"1px solid #d1d5db",borderRadius:4,padding:"2px 4px",fontSize:11,textAlign:"center"}} autoFocus onKeyDown={e=>{if(e.key==="Enter"){
+                                        setSchedData(prev=>{const copy=JSON.parse(JSON.stringify(prev));if(!copy[name])return prev;if(!copy[name].days[ds])copy[name].days[ds]={hours:0,shifts:[]};copy[name].days[ds].hours=+editHoursVal;return copy;});
+                                        setEditHours(null);}if(e.key==="Escape")setEditHours(null);}}/>
+                                      <button onClick={()=>{setSchedData(prev=>{const copy=JSON.parse(JSON.stringify(prev));if(!copy[name])return prev;if(!copy[name].days[ds])copy[name].days[ds]={hours:0,shifts:[]};copy[name].days[ds].hours=+editHoursVal;return copy;});setEditHours(null);}} style={{background:"#1e3a5f",color:"#fff",border:"none",borderRadius:3,padding:"2px 5px",fontSize:10,cursor:"pointer"}}>✓</button>
+                                    </span>
+                                  ):(
+                                    <span onClick={()=>{setEditHours(dayEditKey);setEditHoursVal(dh??0);}} style={{cursor:"pointer",fontSize:12,color:dh?"#1e293b":"#cbd5e1",background:dh?"#f8fafc":"transparent",padding:"2px 5px",borderRadius:4,display:"inline-block"}} title="Click to edit">
+                                      {dh??"-"}
+                                    </span>
+                                  )}
+                                  {dayData?.shifts?.length>0&&<div style={{fontSize:9,color:"#94a3b8",marginTop:1}}>{dayData.shifts[0].s}–{dayData.shifts[0].e}</div>}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })
+                    ];
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Month view */}
+        {Object.keys(schedData).length>0&&filtPeople.length>0&&schedFilter==="month"&&(
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:14}}>
+            <div style={{padding:"10px 14px",fontWeight:600,fontSize:13,color:"#1e293b",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:8}}>
+              <span>Hours Summary — {schedMonth}</span>
+              <span style={{marginLeft:"auto",fontSize:11,background:"#fee2e2",color:"#dc2626",padding:"2px 8px",borderRadius:4}}>Red = over 160 hrs/month</span>
+            </div>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead><tr style={{background:"#f8fafc"}}>
+                <th style={{padding:"8px 13px",textAlign:"left",fontWeight:600,color:"#374151",borderBottom:"1px solid #e5e7eb",fontSize:12}}>Name</th>
+                <th style={{padding:"8px 13px",textAlign:"left",fontWeight:600,color:"#374151",borderBottom:"1px solid #e5e7eb",fontSize:12}}>Team</th>
+                <th style={{padding:"8px 13px",textAlign:"center",fontWeight:600,color:"#374151",borderBottom:"1px solid #e5e7eb",fontSize:12}}>Total Hours</th>
+              </tr></thead>
+              <tbody>{filtGroups.map(grp=>{
+                const grpPeople=(groupMap[grp]||[]).filter(n=>schedPerson==="all"||n===schedPerson);
+                if(!grpPeople.length)return null;
+                const grpColor=Object.entries(tc).find(([tn])=>tn===grp)?.[1]?.color||"#64748b";
+                const grpBg=Object.entries(tc).find(([tn])=>tn===grp)?.[1]?.lightBg||"#f8fafc";
+                return[
+                  <tr key={`g_${grp}`} style={{background:grpBg}}><td colSpan={3} style={{padding:"6px 13px",fontSize:11,fontWeight:700,color:grpColor,letterSpacing:".4px",textTransform:"uppercase"}}>{grp}</td></tr>,
+                  ...grpPeople.sort().map((name,i)=>{
+                    const h=hoursFor(name);const high=h!==null&&h>160;
+                    const ovKey=`m_${schedMonth}`;const hasOverride=schedData[name]?.overrides?.[ovKey]!==undefined;
+                    return(
+                      <tr key={name} style={{background:i%2?"#fafafa":"#fff",borderBottom:"1px solid #f1f5f9"}}>
+                        <td style={{padding:"9px 13px",color:"#1e293b",fontWeight:500}}>
+                          {name}{hasOverride&&<span style={{fontSize:10,color:"#7c3aab",background:"#f3eafa",borderRadius:3,padding:"1px 5px",marginLeft:5}}>edited</span>}
+                        </td>
+                        <td style={{padding:"9px 13px",color:"#64748b",fontSize:12}}>{schedData[name]?.group||""}</td>
+                        <td style={{padding:"9px 13px",textAlign:"center"}}>
+                          {editHours===`${name}_total`?(
+                            <span style={{display:"inline-flex",gap:4,alignItems:"center"}}>
+                              <input type="number" step="0.5" value={editHoursVal} onChange={e=>setEditHoursVal(e.target.value)} style={{width:65,border:"1px solid #d1d5db",borderRadius:5,padding:"2px 5px",fontSize:12,textAlign:"center"}} autoFocus onKeyDown={e=>{if(e.key==="Enter"){setSchedOverride(name,"month",schedWeek,schedMonth,editHoursVal);setEditHours(null);}if(e.key==="Escape")setEditHours(null);}}/>
+                              <button onClick={()=>{setSchedOverride(name,"month",schedWeek,schedMonth,editHoursVal);setEditHours(null);}} style={{background:"#1e3a5f",color:"#fff",border:"none",borderRadius:4,padding:"2px 7px",fontSize:11,cursor:"pointer"}}>Save</button>
+                              <button onClick={()=>setEditHours(null)} style={{background:"none",border:"1px solid #d1d5db",borderRadius:4,padding:"2px 5px",fontSize:11,cursor:"pointer"}}>✕</button>
+                            </span>
+                          ):(
+                            <span onClick={()=>{setEditHours(`${name}_total`);setEditHoursVal(h??0);}} style={{cursor:"pointer",fontWeight:600,fontSize:14,color:high?"#dc2626":"#1e293b",background:high?"#fee2e2":h!==null?"#f0fdf4":"#f1f5f9",padding:"3px 10px",borderRadius:6,display:"inline-block",minWidth:48,border:high?"1px solid #fca5a5":"1px solid transparent"}} title="Click to edit">
+                              {h!==null?h:"—"}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ];
+              })}</tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Legend */}
+        {Object.keys(schedData).length>0&&<div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:12,color:"#64748b"}}>
+          <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:12,height:12,borderRadius:3,background:"#f0fdf4",border:"1px solid #bbf7d0",display:"inline-block"}}/> Hours recorded</span>
+          <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:12,height:12,borderRadius:3,background:"#fee2e2",border:"1px solid #fca5a5",display:"inline-block"}}/> Over 40 hrs/week</span>
+          <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:12,height:12,borderRadius:3,background:"#f3eafa",border:"1px solid #e9d5ff",display:"inline-block"}}/> Manually edited</span>
+          <span style={{marginLeft:"auto",color:"#94a3b8"}}>Net hours = gross shift time minus unpaid breaks</span>
+        </div>}
+      </div>
+    );
+  }
+
+  function IndivPanel(){
+    if(!iMember)return null;
+    const{id,name,teamName}=iMember;
+    const ik=iPK(iPt,iMo,iWk);const d=getID(id,iPt,iMo,iWk);
+    const ap=avgProd(teamName,iPt,iMo,iWk);
+    const td2=tc[teamName]||{};const pu=td2?.kpis?.find(k=>k.key==="productivity_team")?.unit||"/hr";
+    const passK=(d._kpis||[]).filter(k=>isPass(d[k.key],k)===true);
+    const failK=(d._kpis||[]).filter(k=>isPass(d[k.key],k)===false);
+    const lb=plbl(ik);const pv=+d.productivity;const av=+ap;const bars=!isNaN(pv)&&pv>0&&!isNaN(av)&&av>0;const bMax=bars?Math.max(pv,av)*1.3:1;
+    const iEmailTxt=()=>{
+      const sk=d._kpis||[];const ps=sk.filter(k=>isPass(d[k.key],k)===true);const fl=sk.filter(k=>isPass(d[k.key],k)===false);
+      const icStats=getIcStats(name,iPt,iWk,iMo);
+      const hrs=getSchedHours(name,iPt,iWk,iMo);
+      const ppt=getPPT(teamName);
+      const autoScore=icStats&&hrs?Math.round(icStats.closed*ppt/hrs*100)/100:null;
+      let t=`Hi ${name},\n\nYour individual performance summary for ${lb}.\n\nNAME: ${name}\nTEAM: ${teamName}\nPERIOD: ${lb}\n${"─".repeat(36)}\n\n`;
+      t+=`PRODUCTIVITY\n`;
+      if(autoScore!=null)t+=`  Score (auto): ${autoScore} pts/hr\n`;
+      else if(d.productivity)t+=`  Score: ${d.productivity}${pu}\n`;
+      else t+=`  Score: —\n`;
+      if(ap)t+=`  Team average: ${ap}${pu}\n`;
+      if(icStats){
+        t+=`\nINTERCOM STATS\n`;
+        t+=`  Tickets closed: ${icStats.closed} (${ppt} pt${ppt!==1?"s":""} each)\n`;
+        if(icStats.medFirstReply!=null)t+=`  Median first reply: ${icStats.medFirstReply}h (target <4h)\n`;
+        if(icStats.medClose!=null)t+=`  Median close time: ${icStats.medClose}h (target <8h)\n`;
+        if(hrs!=null)t+=`  Hours worked: ${hrs}h\n`;
+      }
+      t+=`\nOVERALL: ${ps.length} passing, ${fl.length} missing\n`;
+      if(ps.length){t+=`\nPASSING\n`;ps.forEach(k=>{t+=`  • ${k.label}: ${dv(d[k.key],k)} (target ${k.target})\n`;});}
+      if(fl.length){t+=`\nNEEDS ATTENTION\n`;fl.forEach(k=>{t+=`  • ${k.label}: ${dv(d[k.key],k)} (target ${k.target})\n`;});}
+      if(d._note)t+=`\nMANAGER NOTE\n${d._note}\n`;
+      t+=`\nGenerated: ${nowNZ()}\nBachcare.co.nz\n`;
+      return t;
+    };
+    return(
+      <Modal title={name} sub={`${teamName} · Individual Stats`} onClose={()=>{setIMember(null);setIEdit(false);}} wide>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,padding:"10px 12px",background:"#f8fafc",borderRadius:10,alignItems:"center"}}>
+          <select value={iPt} onChange={e=>setIPt(e.target.value)} style={S.sel}><option value="month">Month</option><option value="week">FY25 Week</option></select>
+          {iPt==="month"?<select value={iMo} onChange={e=>setIMo(e.target.value)} style={S.sel}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select>
+            :<select value={iWk} onChange={e=>setIWk(+e.target.value)} style={S.sel}>{WEEKS.map(w=><option key={w.w} value={w.w}>{w.l}</option>)}</select>}
+          <div style={{flex:1}}/>
+          {!iEdit&&<button onClick={()=>{setIVals({...d,_kpis:[...(d._kpis||[])]});setIEdit(true);}} style={S.p1}>Edit Stats</button>}
+        </div>
+        {(()=>{
+          const icStats=getIcStats(name,iPt,iWk,iMo);
+          const hrs=getSchedHours(name,iPt,iWk,iMo);
+          const tname=iMember?.teamName||"";
+          const ppt=getPPT(tname);
+          const autoScore=icStats&&hrs?Math.round(icStats.closed*ppt/hrs*100)/100:null;
+          return(
+            <>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(115px,1fr))",gap:9,marginBottom:icStats?10:14}}>
+                {[{l:"Productivity",v:d.productivity?`${d.productivity}${pu}`:autoScore?`${autoScore} pts/hr`:"—",bg:"#f8fafc",c:"#1e293b"},
+                  {l:"Team Avg",v:ap?`${ap}${pu}`:"—",bg:"#f8fafc",c:"#64748b"},
+                  {l:"Passing",v:passK.length,bg:"#dcfce7",c:"#15803d"},
+                  {l:"Missing",v:failK.length,bg:failK.length?"#fee2e2":"#f8fafc",c:failK.length?"#dc2626":"#64748b"}].map(c=>(
+                  <div key={c.l} style={{background:c.bg,borderRadius:9,padding:"10px 12px"}}>
+                    <div style={{fontSize:11,color:c.c,fontWeight:600,marginBottom:1}}>{c.l}</div>
+                    <div style={{fontSize:20,fontWeight:700,color:c.c}}>{c.v}</div>
+                  </div>
+                ))}
+              </div>
+              {icStats&&<div style={{background:"#f8fafc",borderRadius:9,border:"1px solid #e5e7eb",padding:"11px 14px",marginBottom:14}}>
+                <div style={{fontWeight:600,fontSize:12,color:"#374151",marginBottom:9}}>Intercom stats — {lb}</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
+                  <div><div style={{fontSize:11,color:"#94a3b8",marginBottom:2}}>Tickets closed</div><div style={{fontSize:18,fontWeight:700,color:"#1e293b"}}>{icStats.closed}</div><div style={{fontSize:11,color:"#64748b"}}>{ppt} pt{ppt!==1?"s":""} each</div></div>
+                  <div><div style={{fontSize:11,color:"#94a3b8",marginBottom:2}}>Median first reply</div><div style={{fontSize:18,fontWeight:700,color:icStats.medFirstReply<4?"#15803d":"#dc2626"}}>{icStats.medFirstReply!=null?`${icStats.medFirstReply}h`:"—"}</div><div style={{fontSize:11,color:"#64748b"}}>target &lt;4h</div></div>
+                  <div><div style={{fontSize:11,color:"#94a3b8",marginBottom:2}}>Median close time</div><div style={{fontSize:18,fontWeight:700,color:icStats.medClose<8?"#15803d":"#dc2626"}}>{icStats.medClose!=null?`${icStats.medClose}h`:"—"}</div><div style={{fontSize:11,color:"#64748b"}}>target &lt;8h</div></div>
+                  <div><div style={{fontSize:11,color:"#94a3b8",marginBottom:2}}>Hours worked</div><div style={{fontSize:18,fontWeight:700,color:"#1e293b"}}>{hrs!=null?`${hrs}h`:"—"}</div><div style={{fontSize:11,color:"#64748b"}}>{hrs==null?"upload schedule":""}</div></div>
+                  {autoScore!=null&&<div style={{background:"#e8f1fb",borderRadius:7,padding:"8px 10px"}}><div style={{fontSize:11,color:"#1e6fcf",marginBottom:2}}>Auto productivity</div><div style={{fontSize:18,fontWeight:700,color:"#1e3a5f"}}>{autoScore}</div><div style={{fontSize:11,color:"#1e6fcf"}}>pts/hr</div></div>}
+                </div>
+              </div>}
+            </>
+          );
+        })()}
+        {bars&&<div style={{background:"#f8fafc",borderRadius:9,padding:"11px 13px",marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#374151",marginBottom:7}}>Productivity vs team average</div>
+          {[[name,pv,pv>=av?"#15803d":"#dc2626"],["Team avg",av,"#64748b"]].map(([l2,v2,c2])=>(
+            <div key={l2} style={{marginBottom:6}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#64748b",marginBottom:2}}><span>{l2}</span><span>{v2}{pu}</span></div>
+              <div style={{height:8,borderRadius:4,background:"#e2e8f0"}}><div style={{height:"100%",width:`${Math.min(100,v2/bMax*100)}%`,background:c2,borderRadius:4}}/></div>
+            </div>
+          ))}
+          <div style={{fontSize:12,fontWeight:600,color:pv>=av?"#15803d":"#dc2626",marginTop:3}}>{pv>=av?`▲ ${((pv-av)/av*100).toFixed(1)}% above`:`▼ ${((av-pv)/av*100).toFixed(1)}% below`} team average</div>
+        </div>}
+        {(d._kpis||[]).length>0&&!iEdit&&<div style={{background:"#fff",borderRadius:9,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:14}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <thead><tr style={{background:"#f8fafc"}}>{["KPI","Target","Actual","Status"].map(h=><th key={h} style={{padding:"8px 11px",textAlign:h==="KPI"?"left":"center",fontWeight:600,color:"#374151",borderBottom:"1px solid #e5e7eb",fontSize:11}}>{h}</th>)}</tr></thead>
+            <tbody>{(d._kpis||[]).map((k,i)=>{const v=d[k.key];const p=isPass(v,k);return<tr key={k.key} style={{background:i%2?"#fafafa":"#fff",borderBottom:"1px solid #f1f5f9"}}>
+              <td style={{padding:"8px 11px"}}>{k.label}</td><td style={{padding:"8px 11px",textAlign:"center",color:"#64748b"}}>{k.target}</td>
+              <td style={{padding:"8px 11px",textAlign:"center",fontWeight:v?600:400}}>{dv(v,k)}</td><td style={{padding:"8px 11px",textAlign:"center"}}><Badge pass={p}/></td>
+            </tr>;})}
+            </tbody>
+          </table>
+        </div>}
+        {!(d._kpis||[]).length&&!iEdit&&<div style={{background:"#f8fafc",borderRadius:9,padding:16,textAlign:"center",color:"#94a3b8",fontSize:13,marginBottom:14}}>No individual KPIs yet. Click "Edit Stats" to add metrics.</div>}
+        {d._note&&!iEdit&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:9,padding:"10px 13px",marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#92400e",marginBottom:3}}>Manager Note</div>
+          <div style={{fontSize:13,color:"#78350f",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{d._note}</div>
+        </div>}
+        {!iEdit&&<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button onClick={()=>copy(iEmailTxt())} style={S.out}>Copy Weekly Summary</button>
+          <button onClick={()=>{let csv=`Name,Team,Period,Metric,Value\n"${name}","${teamName}","${lb}","Productivity","${d.productivity||""}"\n`;(d._kpis||[]).forEach(k=>{csv+=`"${name}","${teamName}","${lb}","${k.label}","${dv(d[k.key],k)}"\n`;});const blob=new Blob([csv],{type:"text/csv"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`${name.replace(/ /g,"_")}.csv`;a.click();URL.revokeObjectURL(url);toast2("Downloaded.");}} style={S.out}>Download CSV</button>
+        </div>}
+        {iEdit&&<div style={{marginTop:10,padding:16,background:"#f8fafc",borderRadius:12,border:"1px solid #e5e7eb"}}>
+          <div style={{fontWeight:600,fontSize:14,color:"#1e293b",marginBottom:12}}>Edit Stats — {lb}</div>
+          <div style={{marginBottom:12}}><label style={S.lbl}>Productivity Score</label><input type="number" step="any" value={iVals.productivity||""} onChange={e=>setIVals(p=>({...p,productivity:e.target.value}))} placeholder="e.g. 9.2" style={S.inp}/></div>
+          <div style={{marginBottom:12}}><label style={S.lbl}>Manager Note (optional — shown in summary)</label><textarea value={iVals._note||""} onChange={e=>setIVals(p=>({...p,_note:e.target.value}))} rows={3} style={{...S.inp,resize:"vertical"}}/></div>
+          <div style={{marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
+              <label style={{...S.lbl,margin:0}}>Individual KPIs</label>
+              <button onClick={()=>setIVals(p=>({...p,_kpis:[...(p._kpis||[]),{key:`k${uid()}`,label:"New KPI",target:">0",unit:"",dir:"gt",thresh:0}]}))} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#1e3a5f",fontWeight:600,padding:"2px 4px"}}>+ Add KPI</button>
+            </div>
+            {!(iVals._kpis||[]).length&&<div style={{fontSize:12,color:"#94a3b8",marginBottom:6}}>No KPIs yet.</div>}
+            {(iVals._kpis||[]).map((k,ki)=>(
+              <div key={k.key} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:"10px 12px",marginBottom:8}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:7}}>
+                  <div><label style={{...S.lbl,fontSize:11}}>KPI Name</label><input value={k.label} onChange={e=>setIVals(p=>({...p,_kpis:p._kpis.map((x,i)=>i===ki?{...x,label:e.target.value}:x)}))} style={{...S.inp,fontSize:12}}/></div>
+                  <div><label style={{...S.lbl,fontSize:11}}>Target text</label><input value={k.target} onChange={e=>setIVals(p=>({...p,_kpis:p._kpis.map((x,i)=>i===ki?{...x,target:e.target.value}:x)}))} style={{...S.inp,fontSize:12}}/></div>
+                  <div><label style={{...S.lbl,fontSize:11}}>Threshold</label><input type="number" value={k.thresh} onChange={e=>setIVals(p=>({...p,_kpis:p._kpis.map((x,i)=>i===ki?{...x,thresh:+e.target.value||0}:x)}))} style={{...S.inp,fontSize:12}}/></div>
+                  <div><label style={{...S.lbl,fontSize:11}}>Direction</label><select value={k.dir} onChange={e=>setIVals(p=>({...p,_kpis:p._kpis.map((x,i)=>i===ki?{...x,dir:e.target.value}:x)}))} style={{...S.sel,width:"100%",fontSize:12}}><option value="gt">Greater than</option><option value="lt">Less than</option><option value="bool">Yes / No</option></select></div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:7,alignItems:"end"}}>
+                  <div><label style={{...S.lbl,fontSize:11}}>Actual Value</label>
+                    {k.dir==="bool"?<select value={iVals[k.key]||""} onChange={e=>setIVals(p=>({...p,[k.key]:e.target.value}))} style={{...S.sel,width:"100%"}}><option value="">—</option><option value="yes">Yes</option><option value="no">No</option></select>
+                      :<input type="number" step="any" value={iVals[k.key]||""} onChange={e=>setIVals(p=>({...p,[k.key]:e.target.value}))} style={S.inp}/>}
+                  </div>
+                  <button onClick={()=>setIVals(p=>({...p,_kpis:p._kpis.filter((_,i)=>i!==ki)}))} style={S.danger}>Remove</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:9,justifyContent:"flex-end"}}>
+            <button onClick={()=>setIEdit(false)} style={S.out}>Cancel</button>
+            <button onClick={()=>{saveID(id,iPt,iMo,iWk,iVals);setIEdit(false);toast2("Saved.");}} style={S.p1}>Save</button>
+          </div>
+        </div>}
+      </Modal>
+    );
+  }
+
+  return(
+    <div style={{fontFamily:"system-ui,-apple-system,sans-serif",minHeight:"100vh",background:"#f0f4f8"}}>
+      {toast&&<div style={{position:"fixed",top:14,right:14,zIndex:999,background:"#1e3a5f",color:"#fff",padding:"10px 18px",borderRadius:10,fontSize:13,boxShadow:"0 4px 20px rgba(0,0,0,.2)",maxWidth:300,zIndex:1000}}>{toast}</div>}
+
+      <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",position:"sticky",top:0,zIndex:50}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 18px",height:50}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:30,height:30,borderRadius:7,background:"#1e3a5f",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontWeight:700,fontSize:12}}>BC</span></div>
+            <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Bachcare</span>
+            <span style={{fontSize:12,color:"#94a3b8"}}>Operations</span>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:11,background:isAdmin?"#1e3a5f":"#7c3aab",color:"#fff",padding:"2px 8px",borderRadius:4,fontWeight:600}}>{isAdmin?"Admin":"Team Lead"}</span>
+            <span style={{fontSize:12,color:"#374151",fontWeight:500}}>{currentUser?.displayName}</span>
+            <button onClick={logout} style={{fontSize:12,color:"#94a3b8",background:"none",border:"none",cursor:"pointer"}}>Sign out</button>
+          </div>
+        </div>
+        <div style={{display:"flex",padding:"0 18px",overflowX:"auto"}}>
+          {TABS.map(t=><button key={t} onClick={()=>setTab(t.toLowerCase())} style={{background:"none",border:"none",cursor:"pointer",whiteSpace:"nowrap",padding:"7px 11px",fontSize:13,fontWeight:tab===t.toLowerCase()?600:400,color:tab===t.toLowerCase()?"#1e3a5f":"#64748b",borderBottom:tab===t.toLowerCase()?"2px solid #1e3a5f":"2px solid transparent"}}>{t}</button>)}
+        </div>
+      </div>
+
+      {isAdmin&&pendingEdits.filter(r=>r.status==="pending").length>0&&(
+        <div style={{background:"#fffbeb",borderBottom:"1px solid #fde68a",padding:"8px 20px",display:"flex",alignItems:"center",gap:10,fontSize:13}}>
+          <span>&#9203;</span>
+          <span style={{color:"#92400e",fontWeight:600}}>{pendingEdits.filter(r=>r.status==="pending").length} pending edit request(s)</span>
+          <button onClick={()=>setTab("access")} style={{background:"#1e3a5f",color:"#fff",border:"none",borderRadius:6,padding:"3px 12px",fontSize:12,cursor:"pointer",marginLeft:4}}>Review</button>
+        </div>
+      )}
+      <div style={{maxWidth:1040,margin:"0 auto",padding:"16px 14px"}}>
+
+        {(tab==="dashboard"||tab==="upload"||tab==="individuals")&&(
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:14,background:"#fff",padding:"10px 12px",borderRadius:12,border:"1px solid #e5e7eb"}}>
+            <select value={team} onChange={e=>setTeam(e.target.value)} style={S.sel}>{tNames.map(t=><option key={t}>{t}</option>)}</select>
+            {tab!=="individuals"&&<>
+              <select value={pt} onChange={e=>setPt(e.target.value)} style={S.sel}><option value="month">By Month</option><option value="week">By FY25 Week</option></select>
+              {pt==="month"?<select value={mo} onChange={e=>setMo(e.target.value)} style={S.sel}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select>
+                :<select value={wk} onChange={e=>setWk(+e.target.value)} style={S.sel}>{WEEKS.map(w=><option key={w.w} value={w.w}>{w.l}</option>)}</select>}
+            </>}
+            <div style={{flex:1}}/>
+            {tab==="dashboard"&&<>
+              <button onClick={()=>{setEditVals({...pData});setPendingNote("");setEditOpen(true);}} style={{...S.p1,background:isAdmin?"#1e3a5f":"#7c3aab"}}>{isAdmin?"+ Enter Data":"✎ Request Edit"}</button>
+              <button onClick={()=>{
+                if(pt!=="week"){toast2("Refresh works on weekly view — switch to By FY25 Week.");return;}
+                const n=recalcForPeriod(team,wk);
+                if(n>0)toast2(`Refreshed: ${n} KPI(s) recalculated from loaded data.`);
+                else toast2("Nothing to recalculate — upload Intercom and schedule files first.");
+              }} style={{background:"#fff",color:"#0e7a5e",border:"1px solid #6ee7b7",borderRadius:8,padding:"9px 14px",fontSize:13,cursor:"pointer",fontWeight:500}} title="Recalculate productivity & KPIs from uploaded data">↻ Refresh</button>
+              {isAdmin&&<button onClick={clearPd} style={S.danger}>Clear</button>}
+            </>}
+            {tab==="upload"&&<button onClick={()=>fileRef.current.click()} style={S.p1}>Upload CSV</button>}
+            <input ref={fileRef} type="file" accept=".csv,.txt" style={{display:"none"}} onChange={handleFile}/>
+          </div>
+        )}
+
+        {tab==="dashboard"&&<>
+          <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:12,flexWrap:"wrap"}}>
+            <div style={{width:8,height:8,borderRadius:2,background:tDef.color}}/><span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{team}</span>
+            <span style={{color:"#cbd5e1"}}>·</span><span style={{fontSize:13,color:"#64748b"}}>{pt==="month"?mo:`FY25 Week ${wk}`}</span>
+            <span style={{color:"#cbd5e1"}}>·</span><span style={{fontSize:12,color:"#94a3b8"}}>Lead: {tR.lead||"—"}</span>
+            {pData._at&&<span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>Updated: {pData._at}</span>}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+            {[{l:"Passing",v:passN,c:"#15803d",bg:"#dcfce7"},{l:"Missing Target",v:failN,c:"#dc2626",bg:"#fee2e2"},{l:"No Data",v:ndN,c:"#64748b",bg:"#f1f5f9"}].map(c=>(
+              <div key={c.l} style={{background:c.bg,borderRadius:9,padding:"12px 14px"}}>
+                <div style={{fontSize:11,color:c.c,fontWeight:600,marginBottom:1}}>{c.l}</div>
+                <div style={{fontSize:26,fontWeight:700,color:c.c}}>{c.v}</div>
+                <div style={{fontSize:11,color:c.c,opacity:.7}}>of {kpis.length} KPIs</div>
+              </div>
+            ))}
+          </div>
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:12}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead><tr style={{background:"#f8fafc"}}>{["KPI","Target","Actual","Status"].map(h=><th key={h} style={{padding:"9px 13px",textAlign:h==="KPI"?"left":"center",fontWeight:600,color:"#374151",borderBottom:"1px solid #e5e7eb",fontSize:12}}>{h}</th>)}</tr></thead>
+              <tbody>{kpis.map((k,i)=>{const v=pData[k.key];const p=isPass(v,k);return(
+                <tr key={k.key} style={{background:i%2?"#fafafa":"#fff",borderBottom:"1px solid #f1f5f9"}}>
+                  <td style={{padding:"9px 13px",color:"#1e293b"}}>{k.label}</td>
+                  <td style={{padding:"9px 13px",textAlign:"center",color:"#64748b"}}>{k.target}</td>
+                  <td style={{padding:"9px 13px",textAlign:"center",fontWeight:v?"600":"400",color:v?"#1e293b":"#cbd5e1"}}>{dv(v,k)}</td>
+                  <td style={{padding:"9px 13px",textAlign:"center"}}><Badge pass={p}/>{pData._autoFilled&&!v&&<span style={{fontSize:9,color:"#94a3b8",display:"block"}}>auto</span>}</td>
+                </tr>);})}
+              </tbody>
+            </table>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button onClick={()=>dlCSV(team,pk)} style={S.out}>Download CSV</button>
+            <button onClick={()=>printPDF(team,pk)} style={S.out}>Print / Save PDF</button>
+            <button onClick={()=>copy(emailTxt(team,pk))} style={S.out}>Copy Email Summary</button>
+          </div>
+        </>}
+
+        {tab==="individuals"&&<div>
+          <div style={{fontSize:13,color:"#64748b",marginBottom:12}}>Click any person to view their stats and generate their weekly summary.</div>
+          {tR.lead&&<div style={{marginBottom:18}}>
+            <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",marginBottom:7,textTransform:"uppercase",letterSpacing:".5px"}}>Team Lead</div>
+            <div onClick={()=>{setIMember({id:`lead_${team.replace(/\s/g,"_")}`,name:tR.lead,teamName:team});setIEdit(false);}} style={{display:"inline-flex",alignItems:"center",gap:11,background:"#fff",border:`2px solid ${tDef.color}`,borderRadius:11,padding:"11px 14px",cursor:"pointer",minWidth:230}}>
+              <div style={{width:38,height:38,borderRadius:19,background:tDef.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700,flexShrink:0}}>{ini(tR.lead)}</div>
+              <div><div style={{fontWeight:600,fontSize:13,color:"#1e293b"}}>{tR.lead}</div><div style={{fontSize:11,color:tDef.color,fontWeight:600}}>Team Lead</div></div>
+              <div style={{marginLeft:"auto",paddingLeft:6,fontSize:17,color:"#cbd5e1"}}>›</div>
+            </div>
+          </div>}
+          <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",marginBottom:7,textTransform:"uppercase",letterSpacing:".5px"}}>Members ({(tR.members||[]).length})</div>
+          {!(tR.members||[]).length&&<div style={{fontSize:13,color:"#94a3b8",padding:"14px 0"}}>No members. Add them in the Members tab.</div>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(185px,1fr))",gap:9}}>
+            {(tR.members||[]).map(m=>{const d=getID(m.id,iPt,iMo,iWk);const hp=!!d.productivity;return(
+              <div key={m.id} onClick={()=>{setIMember({id:m.id,name:m.name,teamName:team});setIEdit(false);}} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:11,padding:"11px 13px",cursor:"pointer",display:"flex",alignItems:"center",gap:9}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor=tDef.color;}} onMouseLeave={e=>{e.currentTarget.style.borderColor="#e5e7eb";}}>
+                <div style={{width:32,height:32,borderRadius:16,background:tDef.lightBg,display:"flex",alignItems:"center",justifyContent:"center",color:tDef.color,fontSize:11,fontWeight:700,flexShrink:0}}>{ini(m.name)}</div>
+                <div style={{minWidth:0}}><div style={{fontWeight:600,fontSize:13,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.name}</div><div style={{fontSize:11,color:hp?"#64748b":"#cbd5e1"}}>{hp?`Prod: ${d.productivity}`:"No data yet"}</div></div>
+                <div style={{marginLeft:"auto",fontSize:16,color:"#cbd5e1",flexShrink:0}}>›</div>
+              </div>);})}
+          </div>
+        </div>}
+
+
+        {tab==="reports"&&<ReportsTab/>}
+
+        {tab==="upload"&&<div>
+          <div style={{background:"#fff",borderRadius:11,border:"2px dashed #cbd5e1",padding:32,textAlign:"center",marginBottom:16}}>
+            <div style={{fontSize:28,marginBottom:6}}>📂</div>
+            <div style={{fontWeight:700,fontSize:15,color:"#1e293b",marginBottom:4}}>Upload a report CSV</div>
+            <div style={{fontSize:13,color:"#64748b",marginBottom:4}}>Data merges — existing values are never overwritten unless the same KPI updates.</div>
+            <div style={{fontSize:12,color:"#94a3b8",marginBottom:16}}>Importing to: <strong>{team}</strong> · <strong>{pt==="month"?mo:`Week ${wk}`}</strong></div>
+            <button onClick={()=>fileRef.current.click()} style={S.p1}>Choose CSV File</button>
+          </div>
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",padding:16,marginBottom:14}}>
+            <div style={{fontWeight:600,fontSize:13,color:"#1e293b",marginBottom:8}}>Column names for <span style={{color:tDef.color}}>{team}</span></div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>{tDef.kpis.map(k=><code key={k.key} style={{background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:4,padding:"2px 7px",fontSize:11,color:"#475569"}}>{k.key}</code>)}</div>
+            <div style={{fontSize:12,color:"#94a3b8"}}>Optional: add <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>period_key</code> column (e.g. <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>m__March 2026</code>) to target a specific period.</div>
+          </div>
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden"}}>
+            <div style={{padding:"11px 14px",fontWeight:600,fontSize:13,color:"#1e293b",borderBottom:"1px solid #e5e7eb"}}>Saved Data Inventory</div>
+            {tNames.map(tn=>{const td2=tc[tn];const td3=data[tn]||{};const pds=Object.keys(td3).filter(k=>!k.startsWith("_"));return(
+              <div key={tn} style={{borderBottom:"1px solid #f1f5f9"}}>
+                <div style={{padding:"9px 14px",display:"flex",gap:8,alignItems:"center",background:td2.lightBg}}>
+                  <div style={{width:7,height:7,borderRadius:2,background:td2.color}}/><span style={{fontSize:13,color:"#1e293b",fontWeight:600}}>{tn}</span>
+                  <span style={{fontSize:12,color:td2.color}}>{pds.length} period(s)</span>
+                </div>
+                {!pds.length&&<div style={{padding:"7px 14px 7px 26px",fontSize:12,color:"#94a3b8"}}>No data yet</div>}
+                {pds.map(p2=>{const pd2=td3[p2];const f=(td2.kpis||[]).filter(k=>pd2[k.key]!==undefined&&pd2[k.key]!=="").length;return(
+                  <div key={p2} style={{padding:"6px 14px 6px 26px",display:"flex",gap:7,alignItems:"center",borderTop:"1px solid #f8fafc",flexWrap:"wrap"}}>
+                    <span style={{fontSize:13,color:"#374151"}}>{plbl(p2)}</span>
+                    <span style={{fontSize:11,color:"#94a3b8"}}>{f}/{(td2.kpis||[]).length} KPIs</span>
+                    {pd2._at&&<span style={{fontSize:11,color:"#cbd5e1"}}>· {pd2._at}</span>}
+                  </div>);})}
+              </div>);})}
+          </div>
+        </div>}
+
+
+        {tab==="schedule"&&<SchedTab/>}
+
+        {tab==="members"&&<div>
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",padding:16,marginBottom:14}}>
+            <div style={{fontWeight:600,fontSize:13,color:"#1e293b",marginBottom:8}}>Add New Team</div>
+            <div style={{display:"flex",gap:8}}><input value={addTm} onChange={e=>setAddTm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTeam()} placeholder="Team name..." style={{...S.inp,flex:1}}/><button onClick={addTeam} style={S.p1}>Add Team</button></div>
+          </div>
+          {tNames.map(tn=>{const td2=tc[tn];const r2=roster[tn]||{lead:"",members:[]};return(
+            <div key={tn} style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",marginBottom:12,overflow:"hidden"}}>
+              <div style={{background:td2.lightBg,padding:"10px 14px",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:7}}>
+                <div style={{width:8,height:8,borderRadius:2,background:td2.color}}/>
+                <span style={{fontWeight:700,fontSize:13,color:"#1e293b",flex:1}}>{tn}</span>
+                <button onClick={()=>remTeam(tn)} style={{...S.ghost,color:"#dc2626"}}>Remove team</button>
+              </div>
+              {r2.lead&&<div style={{padding:"9px 14px",display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid #f8fafc",background:"#fafafa"}}>
+                <div style={{width:27,height:27,borderRadius:14,background:td2.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:10,fontWeight:700,flexShrink:0}}>{ini(r2.lead)}</div>
+                <span style={{fontWeight:600,fontSize:12,color:"#1e293b",flex:1}}>{r2.lead}</span>
+                <span style={{fontSize:11,color:td2.color,fontWeight:600}}>Lead</span>
+              </div>}
+              {(r2.members||[]).map(m=>(
+                <div key={m.id} style={{borderBottom:"1px solid #f8fafc"}}>
+                  <div style={{padding:"7px 14px",display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+                    {renId===m.id?<div style={{display:"flex",gap:7,flex:1,alignItems:"center",flexWrap:"wrap"}}>
+                      <input value={renVal} onChange={e=>setRenVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doRen(tn,m.id)} autoFocus style={{...S.inp,flex:1,padding:"5px 8px",fontSize:12,minWidth:100}}/>
+                      <button onClick={()=>doRen(tn,m.id)} style={S.p1}>Save</button><button onClick={()=>setRenId(null)} style={S.out}>Cancel</button>
+                    </div>:<>
+                      <div style={{width:25,height:25,borderRadius:13,background:td2.lightBg,display:"flex",alignItems:"center",justifyContent:"center",color:td2.color,fontSize:9,fontWeight:700,flexShrink:0}}>{ini(m.name)}</div>
+                      <span style={{fontSize:12,color:"#374151",flex:1}}>{m.name}</span>
+                      <button onClick={()=>{setRenId(m.id);setRenVal(m.name);}} style={S.ghost}>Rename</button>
+                      <button onClick={()=>{setMovM({teamName:tn,id:m.id});setMovTo("");}} style={S.ghost}>Move</button>
+                      <button onClick={()=>doProm(tn,m.id)} style={S.ghost}>→ Lead</button>
+                      <button onClick={()=>remMember(tn,m.id)} style={{...S.ghost,color:"#dc2626"}}>✕</button>
+                    </>}
+                  </div>
+                  {movM?.id===m.id&&<div style={{padding:"5px 14px 9px 40px",display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}>
+                    <select value={movTo} onChange={e=>setMovTo(e.target.value)} style={S.sel}><option value="">Move to...</option>{tNames.filter(t=>t!==tn).map(t=><option key={t}>{t}</option>)}</select>
+                    <button onClick={()=>doMov(tn,m.id,movTo)} style={S.p1}>Move</button><button onClick={()=>setMovM(null)} style={S.out}>Cancel</button>
+                  </div>}
+                </div>
+              ))}
+              <div style={{padding:"8px 14px",display:"flex",gap:7,background:"#f8fafc"}}>
+                <input value={addNameTm===tn?addName:""} onChange={e=>{setAddNameTm(tn);setAddName(e.target.value);}} onKeyDown={e=>e.key==="Enter"&&addNameTm===tn&&addMember(tn)} placeholder="Add member name..." style={{...S.inp,flex:1,padding:"6px 8px",fontSize:12}}/>
+                <button onClick={()=>{setAddNameTm(tn);addMember(tn);}} style={S.p1}>Add</button>
+              </div>
+            </div>);})}
+        </div>}
+
+        {tab==="export"&&<div>
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",padding:20,marginBottom:14}}>
+            <div style={{fontWeight:700,fontSize:14,color:"#1e293b",marginBottom:14}}>Generate Team Report</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:18}}>
+              <div><label style={S.lbl}>Team</label><select value={exTm} onChange={e=>setExTm(e.target.value)} style={{...S.sel,width:"100%"}}>{tNames.map(t=><option key={t}>{t}</option>)}</select></div>
+              <div><label style={S.lbl}>Period</label><select value={exPt} onChange={e=>setExPt(e.target.value)} style={{...S.sel,width:"100%"}}><option value="month">Month</option><option value="week">FY25 Week</option></select></div>
+              <div><label style={S.lbl}>{exPt==="month"?"Month":"Week"}</label>
+                {exPt==="month"?<select value={exMo} onChange={e=>setExMo(e.target.value)} style={{...S.sel,width:"100%"}}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select>
+                  :<select value={exWk} onChange={e=>setExWk(+e.target.value)} style={{...S.sel,width:"100%"}}>{WEEKS.map(w=><option key={w.w} value={w.w}>{w.l}</option>)}</select>}
+              </div>
+            </div>
+            {(()=>{const etd=tc[exTm];if(!etd)return null;const epd=data[exTm]?.[ePK]||{};const er=roster[exTm]||{};const ep=etd.kpis.filter(k=>isPass(epd[k.key],k)===true).length;const ef=etd.kpis.filter(k=>isPass(epd[k.key],k)===false).length;return<>
+              <div style={{background:"#f8fafc",borderRadius:9,border:"1px solid #e5e7eb",padding:14,marginBottom:13}}>
+                <div style={{fontWeight:600,fontSize:13,color:"#374151",marginBottom:8}}>{exTm} · {exPt==="month"?exMo:`Week ${exWk}`} · Lead: {er.lead||"—"}</div>
+                <div style={{display:"flex",gap:12,marginBottom:9,flexWrap:"wrap"}}>
+                  <span style={{fontSize:13,color:"#15803d",fontWeight:600}}>✓ {ep} Passing</span>
+                  <span style={{fontSize:13,color:"#dc2626",fontWeight:600}}>✗ {ef} Missing</span>
+                  <span style={{fontSize:13,color:"#94a3b8"}}>{etd.kpis.length-ep-ef} No data</span>
+                </div>
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",fontSize:12,borderCollapse:"collapse",minWidth:320}}>
+                    <thead><tr style={{background:"#fff"}}>{["KPI","Target","Actual","Status"].map(h=><th key={h} style={{padding:"6px 9px",textAlign:h==="KPI"?"left":"center",fontWeight:600,color:"#374151",borderBottom:"1px solid #e5e7eb"}}>{h}</th>)}</tr></thead>
+                    <tbody>{etd.kpis.map((k,i)=>{const v=epd[k.key];const p=isPass(v,k);return<tr key={k.key} style={{background:i%2?"#fafafa":"#fff"}}>
+                      <td style={{padding:"6px 9px"}}>{k.label}</td><td style={{padding:"6px 9px",textAlign:"center",color:"#64748b"}}>{k.target}</td>
+                      <td style={{padding:"6px 9px",textAlign:"center",fontWeight:v?600:400}}>{dv(v,k)}</td><td style={{padding:"6px 9px",textAlign:"center"}}><Badge pass={p}/></td>
+                    </tr>;})}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <button onClick={()=>dlCSV(exTm,ePK)} style={S.p1}>Download CSV</button>
+                <button onClick={()=>printPDF(exTm,ePK)} style={S.out}>Print / Save PDF</button>
+                <button onClick={()=>copy(emailTxt(exTm,ePK))} style={S.out}>Copy Email to {er.lead||"Lead"}</button>
+              </div>
+            </>})()}
+          </div>
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",padding:20}}>
+            <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:4}}>Batch Export — All Teams</div>
+            <div style={{fontSize:13,color:"#64748b",marginBottom:10}}>Download CSV for all teams for the selected period.</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{tNames.map(t=><button key={t} onClick={()=>dlCSV(t,ePK)} style={S.out}>Download {t}</button>)}</div>
+          </div>
+        </div>}
+
+        {tab==="access"&&isAdmin&&<AccessTab/>}
+        {tab==="settings"&&<div style={{maxWidth:560}}>
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",padding:20,marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#1e293b",flex:1}}>Supabase Database</div>
+              {sbStatus==="ok"&&<span style={{fontSize:11,background:"#dcfce7",color:"#15803d",borderRadius:4,padding:"1px 8px",fontWeight:600}}>Connected</span>}
+              {sbStatus==="error"&&<span style={{fontSize:11,background:"#fee2e2",color:"#dc2626",borderRadius:4,padding:"1px 8px",fontWeight:600}}>Error</span>}
+            </div>
+            <div style={{marginBottom:10}}><label style={S.lbl}>Project URL</label><input value={sbUrl} onChange={e=>setSbUrl(e.target.value.trim())} style={S.inp}/></div>
+            <div style={{marginBottom:14}}><label style={S.lbl}>Anon Public Key</label><input value={sbKey} onChange={e=>setSbKey(e.target.value.trim())} style={S.inp}/></div>
+            {sbMsg&&<div style={{fontSize:12,marginBottom:12,padding:"8px 12px",borderRadius:7,background:sbStatus==="ok"?"#f0fdf4":sbStatus==="error"?"#fee2e2":"#fffbeb",color:sbStatus==="ok"?"#15803d":sbStatus==="error"?"#dc2626":"#92400e"}}>{sbMsg}</div>}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button onClick={testSupabase} style={S.p1} disabled={!sbUrl||!sbKey}>Test Connection</button>
+              {sbStatus==="ok"&&<button onClick={loadFromSupabase} style={S.out}>↓ Load from Supabase</button>}
+              {sbStatus==="ok"&&<button onClick={syncToSupabase} style={S.out}>↑ Push local data now</button>}
+            </div>
+          </div>
+          {isAdmin&&<WeightsSection/>}
+          <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",padding:20,marginBottom:14}}>
+            <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:4}}>Local Backup</div>
+            <div style={{fontSize:13,color:"#64748b",marginBottom:12}}>Download a JSON snapshot as a safety net.</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button onClick={()=>{const blob=new Blob([JSON.stringify({...data,_r:roster,_tc:tc},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`Bachcare_backup_${Date.now()}.json`;a.click();URL.revokeObjectURL(url);toast2("Backup downloaded.");}} style={S.out}>Download Backup</button>
+              <button onClick={()=>{const inp=document.createElement("input");inp.type="file";inp.accept=".json";inp.onchange=e=>{const f=e.target.files[0];if(!f)return;const r2=new FileReader();r2.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(d._r)setRoster(d._r);if(d._tc)setTc(d._tc);const{_r,_tc,...rest}=d;setData(prev=>mg(prev,rest));toast2("Backup restored.");}catch{toast2("Invalid file.");}};r2.readAsText(f);};inp.click();}} style={S.out}>Restore Backup</button>
+            </div>
+          </div>
+
+
+        </div>}
+
+      </div>
+
+      {editOpen&&<Modal title={isAdmin?`Enter Data — ${team}`:`Request Edit — ${team}`} sub={pt==="month"?mo:`FY25 Week ${wk}`} onClose={()=>setEditOpen(false)}
+        footer={<><button onClick={()=>setEditOpen(false)} style={S.out}>Cancel</button><button onClick={saveTeam} style={{...S.p1,background:isAdmin?"#1e3a5f":"#7c3aab"}}>{isAdmin?"Save":"Submit for Approval"}</button></>}>
+        {!isAdmin&&<div style={{background:"#f3eafa",border:"1px solid #e9d5ff",borderRadius:8,padding:"10px 12px",marginBottom:14,fontSize:13,color:"#6d28d9"}}>
+          Your changes will be sent to an admin for approval.
+          <div style={{marginTop:8}}><label style={{...S.lbl,color:"#6d28d9",fontSize:11}}>Reason (optional)</label><input value={pendingNote} onChange={e=>setPendingNote(e.target.value)} placeholder="Why are you making this change?" style={{...S.inp,fontSize:12}}/></div>
+        </div>}
+        {kpis.map(k=>(
+          <div key={k.key} style={{marginBottom:12}}>
+            <label style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600,color:"#374151",marginBottom:3}}>
+              <span>{k.label}</span><span style={{color:"#94a3b8",fontWeight:400}}>{k.target}</span>
+            </label>
+            {k.dir==="bool"?<select value={editVals[k.key]||""} onChange={e=>setEditVals(p=>({...p,[k.key]:e.target.value}))} style={{...S.sel,width:"100%"}}><option value="">— not set —</option><option value="yes">Yes</option><option value="no">No</option></select>
+              :<input type="number" step="any" value={editVals[k.key]??""} onChange={e=>setEditVals(p=>({...p,[k.key]:e.target.value}))} placeholder={`Value${k.unit?" ("+k.unit+")":""}`} style={S.inp}/>}
+          </div>
+        ))}
+      </Modal>}
+
+      {iMember&&<IndivPanel/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ErrorBoundary,null,React.createElement(App)));
+</script>
+</body>
+</html>

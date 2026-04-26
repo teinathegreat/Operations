@@ -664,22 +664,28 @@ function App(){
   };
   const migrateSysToRows=async()=>{
     console.log("Migrating system config to config_rows...");
+    // First check what already exists in config_rows so we don't overwrite
+    const existingSys=await dbLoadConfig("sys")||{};
     const sysKeys=["app_data","pending_edits","call_review_teams","sync_version","quick_refs","update_notes","api_keys","app_version","accounts"];
     for(const key of sysKeys){
+      if(existingSys[key]){console.log("Skipping sys:"+key+" (already exists)");continue;}
       try{const val=await sbLoad("bc_store",key);
       if(val!==null&&val!==undefined){
         console.log("Migrating sys:"+key);
         await dbSaveConfigKey("sys",key,val);
       }}catch(e){console.error("Sys migration error for "+key+":",e);}
     }
-    // Migrate presence
-    try{const pres=await sbLoad("bc_store","presence");
-    if(pres&&typeof pres==="object"){
-      for(const[username,data] of Object.entries(pres)){
-        await dbSaveConfigKey("presence",username,data);
-      }
-      console.log("Migrated presence: "+Object.keys(pres).length+" users");
-    }}catch{}
+    // Migrate presence (only if empty)
+    const existingPres=await dbLoadConfig("presence");
+    if(!existingPres||Object.keys(existingPres).length===0){
+      try{const pres=await sbLoad("bc_store","presence");
+      if(pres&&typeof pres==="object"){
+        for(const[username,data] of Object.entries(pres)){
+          await dbSaveConfigKey("presence",username,data);
+        }
+        console.log("Migrated presence: "+Object.keys(pres).length+" users");
+      }}catch{}
+    }
     console.log("System migration complete!");
   };
 
@@ -864,9 +870,9 @@ function App(){
       // Run migrations if needed (one-time)
       if(useFallback)setTimeout(()=>{console.log("Triggering array migration...");migrateToRows();},2000);
       if(!configMigrated)setTimeout(()=>{console.log("Triggering config migration...");migrateConfigToRows();migrateSysToRows();},3000);
-      // Check if specific sys keys are missing and need migrating
-      const sysMissing=!sysConf.quick_refs&&!sysConf.update_notes&&!sysConf.app_data;
-      if(sysMissing)setTimeout(()=>{console.log("Triggering sys migration (missing keys)...");migrateSysToRows();},3500);
+      // Check if specific sys keys are missing and need migrating (only run once)
+      const sysMissing=!sysConf.quick_refs&&!sysConf.update_notes&&!sysConf.app_data&&!sysConf._sys_migrated;
+      if(sysMissing)setTimeout(async()=>{console.log("Triggering sys migration (missing keys)...");await migrateSysToRows();await dbSaveConfigKey("sys","_sys_migrated",true);},3500);
       // Check if audit/notifs/alerts need re-migration from bc_store
       if(f_au.length===0||f_nf.length===0){
         setTimeout(async()=>{

@@ -399,6 +399,8 @@ function App(){
   const[dragCard,setDragCard]=useState(null);
   const[filterAssignee,setFilterAssignee]=useState("");
   const[plannerView,setPlannerView]=useState("kanban");
+  const[plannerSearch,setPlannerSearch]=useState("");
+  const[showArchive,setShowArchive]=useState(false);
   const[alertNameRevealed,setAlertNameRevealed]=useState(false);
 
   const addNotif=(forUser,msg)=>{const n={id:Date.now().toString(36),forUser,msg,read:false,createdAt:new Date().toISOString()};setNotifications(prev=>[n,...prev.slice(0,100)]);dbUpsert("notif_entries",n);};
@@ -4447,7 +4449,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             <button onClick={()=>setTab("audit")} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"4px 14px",fontSize:12,cursor:"pointer",marginLeft:4,fontWeight:500}}>Review</button>
           </div>
         )}
-        <div style={{maxWidth:1100,margin:"0 auto",padding:"24px 28px"}}>
+        <div style={{maxWidth:tab==="planner"?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":"24px 28px"}}>
 
         {/* Profile View takes over main content */}
         {tab==="dashboard"&&isAdmin&&(
@@ -4838,6 +4840,21 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   <div style={{padding:"8px 12px",maxHeight:200,overflowY:"auto"}}>{myOpenActions.length?myOpenActions.slice(0,6).map(a=><div key={a.id} style={{padding:"5px 4px",borderBottom:"1px solid #f9fafb"}}><div style={{fontSize:11,fontWeight:500,color:"#111827"}}>{a.title}</div><div style={{fontSize:9,color:"#6b7280"}}>{a.personName+" \u2022 "+a.type.replace(/_/g," ")}</div></div>):<div style={{color:"#059669",fontSize:11,textAlign:"center",padding:12}}>All clear!</div>}</div>
                 </div>}
               </div>
+
+              {/* My Planner Cards */}
+              {(()=>{const myName=currentUser?.displayName;const myCards=plannerCards.filter(c=>(c.assignees||[c.assignee]).includes(myName)&&!c.column?.toLowerCase().match(/done|completed|archived/)&&c.status!=="archived").sort((a,b)=>(a.dueDate||"z").localeCompare(b.dueDate||"z")).slice(0,5);
+              if(!myCards.length)return null;
+              return<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:20}}>
+                <div style={{padding:"12px 16px",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:14}}>🗂️</span><span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>My Planner Cards</span><button onClick={()=>setTab("planner")} style={{fontSize:10,color:"#0d9488",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>View all</button></div>
+                <div style={{padding:"8px 12px"}}>{myCards.map(c=>{const board2=plannerBoards.find(b=>b.id===c.boardId);const isOverdue=c.dueDate&&c.dueDate<todayNZ();const cp2=c.checklist?.length?c.checklist.filter(x=>x.done).length+"/"+c.checklist.length:null;
+                return<div key={c.id} onClick={()=>{setTab("planner");if(board2)setSelBoard(board2.id);setTimeout(()=>setViewCard(c),200);}} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 4px",borderBottom:"1px solid #f9fafb",cursor:"pointer"}}>
+                  <div style={{width:6,height:6,borderRadius:3,background:{"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706"}[c.column]||"#6b7280",flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}><div style={{fontSize:11,color:"#111827",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.title}</div></div>
+                  {cp2&&<span style={{fontSize:9,color:"#9ca3af"}}>{cp2}</span>}
+                  {c.dueDate&&<span style={{fontSize:9,color:isOverdue?"#dc2626":"#9ca3af",whiteSpace:"nowrap"}}>{fmtNZDate(c.dueDate)}</span>}
+                  <span style={{fontSize:9,color:"#d1d5db"}}>{board2?.teamName?.split(" ")[0]}</span>
+                </div>})}</div>
+              </div>})()}
 
               {/* Updates Note Log */}
               <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:20}}>
@@ -5564,7 +5581,14 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const board=plannerBoards.find(b=>b.teamName===currentTeamName);
             if(!selBoard&&board)setTimeout(()=>setSelBoard(board.id),0);
             const boardCards=board?plannerCards.filter(c=>c.boardId===board?.id):[];
-            const columns=board?.columns||["To Do","In Progress","Review","Done"];
+            const DEFAULT_COLS=["To Do","In Progress","Review","Done"];
+            const columns=(()=>{const raw=board?.columns||DEFAULT_COLS;
+              // Enforce default columns always exist and are first, in order
+              const customs=raw.filter(c=>!DEFAULT_COLS.includes(c));
+              const fixed=[...DEFAULT_COLS,...customs];
+              // Auto-fix board if columns are wrong
+              if(board&&JSON.stringify(raw)!==JSON.stringify(fixed)){const updated={...board,columns:fixed};setPlannerBoards(prev=>prev.map(b=>b.id===board.id?updated:b));dbUpsert("planner_boards",updated);}
+              return fixed;})();
             const teamMembers=(roster[currentTeamName]?.members||[]).map(m=>m.name);
             const allMembers=[...teamMembers,roster[currentTeamName]?.lead].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
             const allAssignees=[...new Set(boardCards.flatMap(c=>c.assignees||[c.assignee]).filter(Boolean))];
@@ -5576,13 +5600,38 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const renameCol=(oldName)=>{const name=window.prompt("Rename column:",oldName);if(!name?.trim()||name===oldName)return;const updated={...board,columns:columns.map(c=>c===oldName?name.trim():c)};setPlannerBoards(prev=>prev.map(b=>b.id===board.id?updated:b));dbUpsert("planner_boards",updated);boardCards.filter(c=>c.column===oldName).forEach(c=>{const u={...c,column:name.trim()};setPlannerCards(prev=>prev.map(x=>x.id===c.id?u:x));dbUpsert("planner_cards",u);});};
             const delCol=(colName)=>{if(!window.confirm("Delete '"+colName+"' and all its cards?"))return;boardCards.filter(c=>c.column===colName).forEach(c=>dbDeleteRow("planner_cards",c.id));setPlannerCards(prev=>prev.filter(c=>!(c.boardId===board.id&&c.column===colName)));const updated={...board,columns:columns.filter(c=>c!==colName)};setPlannerBoards(prev=>prev.map(b=>b.id===board.id?updated:b));dbUpsert("planner_boards",updated);};
             const addCardFn=(colName)=>{const titleEl=document.getElementById("pc_title_"+colName.replace(/\s/g,"_"));const title=titleEl?.value?.trim();if(!title)return;const card={id:uid(),boardId:board.id,column:colName,title,description:"",assignees:[],dueDate:"",labels:[],checklist:[],links:[],comments:[],activity:[{id:uid(),action:"created this card",by:currentUser?.displayName,at:new Date().toISOString()}],order:boardCards.filter(c=>c.column===colName).length,createdBy:currentUser?.displayName,createdAt:new Date().toISOString()};setPlannerCards(prev=>[card,...prev]);dbUpsert("planner_cards",card);titleEl.value="";setAddingCard(null);};
-            const moveCard=(cardId,toCol)=>{const card=plannerCards.find(c=>c.id===cardId);if(!card||card.column===toCol)return;const updated={...card,column:toCol,movedAt:new Date().toISOString(),activity:[...(card.activity||[]),{id:uid(),action:"moved to "+toCol,by:currentUser?.displayName,at:new Date().toISOString()}]};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);};
+            const moveCard=(cardId,toCol)=>{const card=plannerCards.find(c=>c.id===cardId);if(!card||card.column===toCol)return;const updated={...card,column:toCol,movedAt:new Date().toISOString(),activity:[...(card.activity||[]),{id:uid(),action:"moved to "+toCol,by:currentUser?.displayName,at:new Date().toISOString()}]};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);
+              // If moved to Done and recurring, create next card
+              if(toCol.toLowerCase().match(/done|completed/)&&card.recurring)completeRecurring(card);};
             const saveCard=(card)=>{setPlannerCards(prev=>prev.map(c=>c.id===card.id?card:c));dbUpsert("planner_cards",card);};
             const deleteCard=(cardId)=>{if(!window.confirm("Delete this card?"))return;setPlannerCards(prev=>prev.filter(c=>c.id!==cardId));dbDeleteRow("planner_cards",cardId);setViewCard(null);toast2("Deleted.");};
             const addComment=(cardId,text)=>{if(!text?.trim())return;const card=plannerCards.find(c=>c.id===cardId);if(!card)return;const comment={id:uid(),text:text.trim(),by:currentUser?.displayName,at:new Date().toISOString()};const updated={...card,comments:[...(card.comments||[]),comment],activity:[...(card.activity||[]),{id:uid(),action:"commented",by:currentUser?.displayName,at:new Date().toISOString()}]};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);setViewCard(updated);
               // Notify assignees
-              (updated.assignees||[]).forEach(name=>{if(name!==currentUser?.displayName){const acct=liveAccounts.find(a=>a.displayName===name);if(acct)addNotif(acct.username,"Comment on '"+card.title+"' by "+currentUser?.displayName);}});};
-            const filteredCards=(colName)=>{let cards=boardCards.filter(c=>c.column===colName);if(filterAssignee)cards=cards.filter(c=>(c.assignees||[c.assignee]).includes(filterAssignee));return cards.sort((a,b)=>(a.order||0)-(b.order||0));};
+              (updated.assignees||[]).forEach(name=>{if(name!==currentUser?.displayName){const acct=liveAccounts.find(a=>a.displayName===name);if(acct)addNotif(acct.username,"Comment on '"+card.title+"' by "+currentUser?.displayName);}});
+              // Notify @mentions
+              notifyMentions(text,card.title);};
+            const filteredCards=(colName)=>{let cards=boardCards.filter(c=>c.column===colName&&c.status!=="archived");if(filterAssignee)cards=cards.filter(c=>(c.assignees||[c.assignee]).includes(filterAssignee));if(plannerSearch){const q=plannerSearch.toLowerCase();cards=cards.filter(c=>c.title?.toLowerCase().includes(q)||c.description?.toLowerCase().includes(q)||(c.assignees||[]).some(a=>a.toLowerCase().includes(q)));}return cards.sort((a,b)=>(a.order||0)-(b.order||0));};
+            const archivedCards=boardCards.filter(c=>c.status==="archived");
+
+            // Archive card instead of delete for Done column
+            const archiveCard=(cardId)=>{const card=plannerCards.find(c=>c.id===cardId);if(!card)return;const updated={...card,status:"archived",archivedAt:new Date().toISOString(),activity:[...(card.activity||[]),{id:uid(),action:"archived",by:currentUser?.displayName,at:new Date().toISOString()}]};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);toast2("Archived.");};
+            const unarchiveCard=(cardId)=>{const card=plannerCards.find(c=>c.id===cardId);if(!card)return;const updated={...card,status:undefined,archivedAt:undefined,column:"To Do",activity:[...(card.activity||[]),{id:uid(),action:"unarchived",by:currentUser?.displayName,at:new Date().toISOString()}]};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);toast2("Restored to To Do.");};
+
+            // Copy board digest for Teams standup
+            const copyDigest=()=>{let d="📋 "+currentTeamName+" — Board Update\\n"+"═".repeat(40)+"\\n\\n";
+              columns.forEach(col=>{const cards=filteredCards(col);if(!cards.length)return;d+=col.toUpperCase()+" ("+cards.length+")\\n";cards.forEach(c=>{const assignees=(c.assignees||[]).map(n=>n.split(" ")[0]).join(", ");const cp3=c.checklist?.length?(" ["+c.checklist.filter(x=>x.done).length+"/"+c.checklist.length+"]"):"";const overdue=c.dueDate&&c.dueDate<todayS?" ⚠ OVERDUE":"";d+="  • "+c.title+(assignees?" ("+assignees+")":"")+(c.dueDate?" — due "+fmtNZDate(c.dueDate)+overdue:"")+cp3+"\\n";});d+="\\n";});
+              if(overdueCards)d+="⚠ "+overdueCards+" overdue task"+(overdueCards>1?"s":"")+"\\n";
+              d+="\\nProgress: "+doneCards+"/"+totalCards+" complete ("+progressPct+"%)";
+              try{navigator.clipboard.writeText(d);toast2("Digest copied!");}catch{toast2("Copy failed");}};
+
+            // @mention parser for comments
+            const parseComment=(text)=>{if(!text)return text;const mentionRegex=/@(\w+(?:\s\w+)?)/g;return text.replace(mentionRegex,(match,name)=>{return match;});};
+            const notifyMentions=(text,cardTitle)=>{if(!text)return;const mentionRegex=/@(\w+(?:\s\w+)?)/g;let m;while((m=mentionRegex.exec(text))!==null){const mentioned=m[1];const acct=liveAccounts.find(a=>a.displayName?.toLowerCase().startsWith(mentioned.toLowerCase())||a.username?.toLowerCase()===mentioned.toLowerCase());if(acct&&acct.username!==currentUser?.username)addNotif(acct.username,currentUser?.displayName+" mentioned you on '"+cardTitle+"'");}};
+
+            // Recurring card support
+            const completeRecurring=(card)=>{if(!card.recurring)return;const nextDue=new Date(card.dueDate||new Date());if(card.recurring==="daily")nextDue.setDate(nextDue.getDate()+1);else if(card.recurring==="weekdays"){nextDue.setDate(nextDue.getDate()+1);while(nextDue.getDay()===0||nextDue.getDay()===6)nextDue.setDate(nextDue.getDate()+1);}else if(card.recurring==="weekly")nextDue.setDate(nextDue.getDate()+7);else if(card.recurring==="fortnightly")nextDue.setDate(nextDue.getDate()+14);else if(card.recurring==="monthly")nextDue.setMonth(nextDue.getMonth()+1);
+              const nextCard={...card,id:uid(),column:columns[0]||"To Do",status:undefined,dueDate:nextDue.toISOString().slice(0,10),checklist:(card.checklist||[]).map(x=>({...x,done:false})),comments:[],activity:[{id:uid(),action:"auto-created (recurring)",by:"System",at:new Date().toISOString()}],createdAt:new Date().toISOString()};
+              setPlannerCards(prev=>[nextCard,...prev]);dbUpsert("planner_cards",nextCard);};
 
             // Card aging (days in current column since last move)
             const getAge=(card)=>{const ref=card.movedAt||card.createdAt;if(!ref)return 0;return Math.floor((new Date()-new Date(ref))/86400000);};
@@ -5608,7 +5657,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             // ═══════════════════════════════════════════
             // KANBAN VIEW
             // ═══════════════════════════════════════════
-            const KanbanView=()=><div style={{display:"flex",gap:14,flex:1,overflowX:"auto",paddingBottom:16,alignItems:"flex-start"}}>
+            const KanbanView=()=><div style={{display:"flex",gap:14,flex:1,overflowX:"auto",paddingBottom:16,paddingRight:40,alignItems:"flex-start"}}>
               {columns.map(colName=>{const cards=filteredCards(colName);const isDone=colName.toLowerCase().match(/done|completed/);const colColors={"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706","Done":"#059669","Completed":"#059669"};const colColor=colColors[colName]||teamColor;
               return<div key={colName} style={{minWidth:280,maxWidth:320,flex:"0 0 280px",display:"flex",flexDirection:"column",maxHeight:"calc(100vh - 220px)"}}
                 onDragOver={e=>{e.preventDefault();e.currentTarget.querySelector("[data-col-header]").style.borderColor=teamColor;}}
@@ -5617,8 +5666,8 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 <div data-col-header="" style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",borderLeft:"3px solid "+colColor,borderRight:"3px solid transparent",marginBottom:4,transition:"border-color .15s"}}>
                   <span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>{colName}</span>
                   <span style={{fontSize:11,color:"#9ca3af",fontWeight:600}}>{cards.length}</span>
-                  <button onClick={()=>renameCol(colName)} style={{fontSize:10,color:"#9ca3af",background:"none",border:"none",cursor:"pointer",padding:2}}>✏️</button>
-                  {columns.length>1&&<button onClick={()=>delCol(colName)} style={{fontSize:10,color:"#d1d5db",background:"none",border:"none",cursor:"pointer",padding:2}}>✕</button>}
+                  {!DEFAULT_COLS.includes(colName)&&<button onClick={()=>renameCol(colName)} style={{fontSize:10,color:"#9ca3af",background:"none",border:"none",cursor:"pointer",padding:2}}>✏️</button>}
+                  {!DEFAULT_COLS.includes(colName)&&<button onClick={()=>delCol(colName)} style={{fontSize:10,color:"#d1d5db",background:"none",border:"none",cursor:"pointer",padding:2}}>✕</button>}
                 </div>
                 <div style={{flex:1,overflowY:"auto",padding:"0 4px",display:"flex",flexDirection:"column",gap:8}}>
                   {cards.map(card=>{const cp=checkProgress(card.checklist);const age=getAge(card);const ac=ageColor(age);const isOverdue=card.dueDate&&card.dueDate<todayS&&!isDone;const assignees=card.assignees||[card.assignee].filter(Boolean);
@@ -5633,6 +5682,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                       {card.dueDate&&!isOverdue&&<span style={{fontSize:9,color:"#6b7280"}}>{fmtNZDate(card.dueDate)}</span>}
                       {card.comments?.length>0&&<span style={{fontSize:9,color:"#9ca3af"}}>{"💬 "+card.comments.length}</span>}
                       {ac&&!isDone&&<span style={{fontSize:8,color:ac}} title={age+" days in column"}>{"🕐 "+age+"d"}</span>}
+                      {card.recurring&&<span style={{fontSize:8,color:"#0d9488"}} title={"Recurring: "+card.recurring}>🔄</span>}
                       <div style={{flex:1}}/>
                       {assignees.slice(0,3).map((name,i)=><div key={i} style={{width:24,height:24,borderRadius:12,background:teamColor,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,marginLeft:i>0?-6:0,border:"2px solid #fff",position:"relative",zIndex:3-i}} title={name}>{initials(name)}</div>)}
                       {assignees.length>3&&<span style={{fontSize:9,color:"#9ca3af"}}>{"+"+( assignees.length-3)}</span>}
@@ -5698,7 +5748,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 {boardCards.length===0&&<div style={{textAlign:"center",padding:30,color:"#9ca3af",fontSize:13}}>No tasks</div>}
               </div>};
 
-            return<div style={{height:"calc(100vh - 80px)",display:"flex",flexDirection:"column"}}>
+            return<div style={{height:"calc(100vh - 80px)",display:"flex",flexDirection:"column",minWidth:0,overflow:"hidden"}}>
               {/* Header */}
               <div style={{marginBottom:16}}>
                 {visibleTeams.length>1&&<div style={{display:"flex",gap:2,marginBottom:14}}>{visibleTeams.map(tn=>{const b=plannerBoards.find(x=>x.teamName===tn);const active=b?.id===selBoard;const tColor=tc[tn]?.color||"#6b7280";return<button key={tn} onClick={()=>{if(b)setSelBoard(b.id);setFilterAssignee("");}} style={{padding:"8px 20px",borderRadius:8,border:"none",background:active?tColor:"transparent",color:active?"#fff":"#6b7280",fontWeight:active?700:500,fontSize:13,cursor:"pointer",transition:"all .15s"}}>{tn}</button>})}</div>}
@@ -5712,14 +5762,29 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     {[{v:"kanban",l:"Board"},{v:"list",l:"List"},{v:"calendar",l:"Calendar"}].map(({v,l})=><button key={v} onClick={()=>setPlannerView(v)} style={{padding:"5px 12px",borderRadius:6,border:"none",background:plannerView===v?"#fff":"transparent",color:plannerView===v?"#111827":"#9ca3af",fontSize:11,fontWeight:600,cursor:"pointer",boxShadow:plannerView===v?"0 1px 2px rgba(0,0,0,.06)":"none"}}>{l}</button>)}
                   </div>
                   {allAssignees.length>0&&<select value={filterAssignee} onChange={e=>setFilterAssignee(e.target.value)} style={{fontSize:12,padding:"6px 12px",border:"1px solid #e5e7eb",borderRadius:8,color:"#374151",background:"#fff"}}><option value="">Everyone</option>{allAssignees.map(a=><option key={a}>{a}</option>)}</select>}
+                  <input value={plannerSearch} onChange={e=>setPlannerSearch(e.target.value)} placeholder="Search cards..." style={{fontSize:12,padding:"6px 12px",border:"1px solid #e5e7eb",borderRadius:8,width:150,background:"#fff"}}/>
+                  <button onClick={copyDigest} style={{fontSize:11,padding:"6px 14px",background:"#f3f4f6",border:"1px solid #e5e7eb",borderRadius:8,cursor:"pointer",color:"#374151",fontWeight:600}} title="Copy board summary for Teams">📋 Digest</button>
                   <button onClick={createFromTemplate} style={{fontSize:11,padding:"6px 14px",background:"#f3f4f6",border:"1px solid #e5e7eb",borderRadius:8,cursor:"pointer",color:"#374151",fontWeight:600}}>📋 Template</button>
+                  {archivedCards.length>0&&<button onClick={()=>setShowArchive(!showArchive)} style={{fontSize:11,padding:"6px 14px",background:showArchive?"#111827":"#f3f4f6",border:"1px solid #e5e7eb",borderRadius:8,cursor:"pointer",color:showArchive?"#fff":"#374151",fontWeight:600}}>{"🗄 Archive ("+archivedCards.length+")"}</button>}
                 </div>
               </div>
 
-              {board&&plannerView==="kanban"&&<KanbanView/>}
-              {board&&plannerView==="list"&&<ListView/>}
-              {board&&plannerView==="calendar"&&<CalendarView/>}
+              {board&&plannerView==="kanban"&&!showArchive&&<KanbanView/>}
+              {board&&plannerView==="list"&&!showArchive&&<ListView/>}
+              {board&&plannerView==="calendar"&&!showArchive&&<CalendarView/>}
               {!board&&<div style={{textAlign:"center",color:"#9ca3af",padding:60,fontSize:14}}>Loading boards...</div>}
+
+              {/* Archive panel */}
+              {showArchive&&<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
+                <div style={{padding:"12px 16px",background:"#f9fafb",fontSize:13,fontWeight:700,color:"#111827"}}>{"Archived Cards ("+archivedCards.length+")"}</div>
+                {archivedCards.length===0&&<div style={{padding:30,textAlign:"center",color:"#9ca3af",fontSize:13}}>No archived cards</div>}
+                {archivedCards.map(card=><div key={card.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",borderTop:"1px solid #f3f4f6"}}>
+                  <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:"#6b7280"}}>{card.title}</div>
+                  <div style={{fontSize:10,color:"#9ca3af"}}>{"Archived "+(card.archivedAt?fmtNZDate(card.archivedAt.slice(0,10)):"")}</div></div>
+                  <button onClick={()=>unarchiveCard(card.id)} style={{fontSize:11,color:"#0d9488",background:"#f0fdfa",border:"1px solid #ccfbf1",borderRadius:6,padding:"4px 12px",cursor:"pointer",fontWeight:600}}>Restore</button>
+                  <button onClick={()=>{if(window.confirm("Permanently delete?")){setPlannerCards(prev=>prev.filter(c=>c.id!==card.id));dbDeleteRow("planner_cards",card.id);}}} style={{fontSize:11,color:"#dc2626",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}>Delete</button>
+                </div>)}
+              </div>}
 
               {/* Card detail modal */}
               {viewCard&&<Modal title="" onClose={()=>{setViewCard(null);setEditCard(null);}}>
@@ -5754,6 +5819,18 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     <button onClick={()=>{setEditCard({...editCard,links:(editCard.links||[]).filter(x=>x.id!==link.id)});}} style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer"}}>✕</button>
                   </div>)}
                   <button onClick={()=>{setEditCard({...editCard,links:[...(editCard.links||[]),{id:uid(),label:"",url:""}]});}} style={{fontSize:11,color:teamColor,background:"none",border:"none",cursor:"pointer",fontWeight:600,marginTop:4}}>+ Add link</button></div>
+                  {/* Recurring */}
+                  <div style={{marginTop:12}}><label style={{fontSize:11,fontWeight:600,color:"#6b7280",display:"block",marginBottom:4}}>Recurring</label>
+                  <select value={editCard.recurring||""} onChange={e=>setEditCard({...editCard,recurring:e.target.value||undefined})} style={{fontSize:12,padding:"8px 10px",border:"1px solid #e5e7eb",borderRadius:8}}>
+                    <option value="">None</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekdays">Weekdays</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="fortnightly">Fortnightly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                  {editCard.recurring&&<span style={{fontSize:10,color:"#6b7280",marginLeft:8}}>When moved to Done, a new card auto-creates with the next due date</span>}
+                  </div>
                   <div style={{display:"flex",gap:8,marginTop:16}}>
                     <button onClick={()=>{
                       // Track changes for activity log
@@ -5801,6 +5878,8 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   <div style={{display:"flex",gap:8,marginTop:16,borderTop:"1px solid #f0f0f0",paddingTop:14}}>
                     <button onClick={()=>setEditCard({...viewCard})} style={{padding:"8px 20px",background:teamColor,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>Edit</button>
                     <button onClick={()=>deleteCard(viewCard.id)} style={{padding:"8px 16px",color:"#dc2626",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,cursor:"pointer",fontSize:12}}>Delete</button>
+                    {viewCard.column?.toLowerCase().match(/done|completed/)&&<button onClick={()=>{archiveCard(viewCard.id);setViewCard(null);}} style={{padding:"8px 16px",color:"#6b7280",background:"#f3f4f6",border:"1px solid #e5e7eb",borderRadius:8,cursor:"pointer",fontSize:12}}>🗄 Archive</button>}
+                    {viewCard.recurring&&<span style={{fontSize:10,color:"#0d9488",background:"#f0fdfa",border:"1px solid #ccfbf1",borderRadius:6,padding:"4px 10px",fontWeight:600}}>{"🔄 "+viewCard.recurring}</span>}
                   </div>
                 </div>}
               </Modal>}

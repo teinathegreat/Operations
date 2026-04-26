@@ -391,6 +391,13 @@ function App(){
   const[adminAlerts,setAdminAlerts]=useState(()=>{return[];});
   const[plannerBoards,setPlannerBoards]=useState([]);
   const[plannerCards,setPlannerCards]=useState([]);
+  const[selBoard,setSelBoard]=useState("");
+  const[newBoardName,setNewBoardName]=useState("");
+  const[addingCard,setAddingCard]=useState(null);
+  const[viewCard,setViewCard]=useState(null);
+  const[editCard,setEditCard]=useState(null);
+  const[dragCard,setDragCard]=useState(null);
+  const[filterAssignee,setFilterAssignee]=useState("");
   const[alertNameRevealed,setAlertNameRevealed]=useState(false);
 
   const addNotif=(forUser,msg)=>{const n={id:Date.now().toString(36),forUser,msg,read:false,createdAt:new Date().toISOString()};setNotifications(prev=>[n,...prev.slice(0,100)]);dbUpsert("notif_entries",n);};
@@ -993,6 +1000,7 @@ function App(){
   useEffect(()=>syncRows("alert_entries",adminAlerts,"aa"),[adminAlerts]);
   useEffect(()=>syncRows("planner_boards",plannerBoards,"pb"),[plannerBoards]);
   useEffect(()=>syncRows("planner_cards",plannerCards,"pc"),[plannerCards]);
+  useEffect(()=>{if(!selBoard&&plannerBoards.length>0)setSelBoard(plannerBoards[0].id);},[plannerBoards]);
 
   // Auto-save config keys (these stay in bc_store — single writer, low conflict risk)
 
@@ -5543,13 +5551,6 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
 
         {tab==="planner"&&<div>
           {(()=>{
-            const[selBoard,setSelBoard]=React.useState(plannerBoards[0]?.id||"");
-            const[newBoardName,setNewBoardName]=React.useState("");
-            const[addingCard,setAddingCard]=React.useState(null);
-            const[viewCard,setViewCard]=React.useState(null);
-            const[editCard,setEditCard]=React.useState(null);
-            const[dragCard,setDragCard]=React.useState(null);
-            const[filterAssignee,setFilterAssignee]=React.useState("");
             const LABELS=[{l:"High Priority",c:"#dc2626",bg:"#fef2f2"},{l:"Medium",c:"#d97706",bg:"#fffbeb"},{l:"Low",c:"#059669",bg:"#ecfdf5"},{l:"Blocked",c:"#7c3aed",bg:"#f5f3ff"},{l:"Bug",c:"#e11d48",bg:"#fff1f2"},{l:"Feature",c:"#0ea5e9",bg:"#f0f9ff"}];
             const board=plannerBoards.find(b=>b.id===selBoard);
             const boardCards=plannerCards.filter(c=>c.boardId===selBoard);

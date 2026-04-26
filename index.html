@@ -55,7 +55,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.1.5";
+const APP_VERSION="1.1.6";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -580,11 +580,12 @@ function App(){
   const dbUpsert=async(table,item)=>{
     const url=sbUrlRef.current,key=sbKeyRef.current;if(!url||!key||!item?.id)return;
     try{const resp=await fetch(url+"/rest/v1/"+table,{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id:item.id,data:item,updated_at:new Date().toISOString()})});
-    if(!resp.ok){const txt=await resp.text().catch(()=>"");console.error("dbUpsert "+table+" FAILED ("+resp.status+"):",txt);}}catch(e){console.error("dbUpsert "+table+" error:",e);}
+    if(!resp.ok){const txt=await resp.text().catch(()=>"");console.error("dbUpsert "+table+" FAILED ("+resp.status+"):",txt);toast2("⚠ Save failed — check your connection and try again.");}}catch(e){console.error("dbUpsert "+table+" error:",e);toast2("⚠ Save failed — check your connection.");}
   };
   const dbDeleteRow=async(table,id)=>{
     const url=sbUrlRef.current,key=sbKeyRef.current;if(!url||!key||!id)return;
-    try{await fetch(url+"/rest/v1/"+table+"?id=eq."+encodeURIComponent(id),{method:"DELETE",headers:{"apikey":key,"Authorization":"Bearer "+key}});}catch(e){console.error("dbDelete "+table+" error:",e);}
+    try{const resp=await fetch(url+"/rest/v1/"+table+"?id=eq."+encodeURIComponent(id),{method:"DELETE",headers:{"apikey":key,"Authorization":"Bearer "+key}});
+    if(!resp.ok)toast2("⚠ Delete may have failed — refresh to check.");}catch(e){console.error("dbDelete "+table+" error:",e);toast2("⚠ Delete failed — check your connection.");}
   };
   const dbBulkInsert=async(table,items)=>{
     const url=sbUrlRef.current,key=sbKeyRef.current;if(!url||!key||!items?.length)return;
@@ -609,7 +610,8 @@ function App(){
   const dbSaveConfigKey=async(prefix,key,value)=>{
     const url=sbUrlRef.current,k=sbKeyRef.current;if(!url||!k||!key)return;
     const id=prefix+":"+key;
-    try{await fetch(url+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id,data:value,updated_at:new Date().toISOString()})});}catch(e){console.error("dbSaveConfigKey error:",e);}
+    try{const resp=await fetch(url+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id,data:value,updated_at:new Date().toISOString()})});
+    if(!resp.ok){console.error("dbSaveConfigKey "+id+" failed:",resp.status);toast2("⚠ Save failed — check your connection.");}}catch(e){console.error("dbSaveConfigKey error:",e);toast2("⚠ Save failed — check your connection.");}
   };
   const dbDeleteConfigKey=async(prefix,key)=>{
     const url=sbUrlRef.current,k=sbKeyRef.current;if(!url||!k)return;

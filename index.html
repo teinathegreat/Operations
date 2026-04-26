@@ -8,8 +8,32 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:#f8f9fb;min-height:100vh;color:#1f2937;-webkit-font-smoothing:antialiased;}
+body{font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;background:#f8f9fb;min-height:100vh;color:#1f2937;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.5;}
 input,select,textarea{font-family:'Plus Jakarta Sans',sans-serif;transition:border-color .2s,box-shadow .2s;}
+/* Tabular numbers for stats */
+.bc-num{font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
+/* Elevation system */
+.bc-card{background:#fff;border-radius:12px;border:1px solid #eef0f2;box-shadow:0 1px 2px rgba(0,0,0,.03);}
+.bc-card-raised{background:#fff;border-radius:12px;border:1px solid #eef0f2;box-shadow:0 2px 8px rgba(0,0,0,.04);}
+.bc-card-float{background:#fff;border-radius:14px;border:1px solid #eef0f2;box-shadow:0 4px 16px rgba(0,0,0,.06);}
+/* Consistent badges */
+.bc-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;line-height:1.4;}
+.bc-badge-green{background:#ecfdf5;color:#059669;}
+.bc-badge-red{background:#fef2f2;color:#dc2626;}
+.bc-badge-amber{background:#fffbeb;color:#d97706;}
+.bc-badge-blue{background:#eff6ff;color:#2563eb;}
+.bc-badge-purple{background:#f5f3ff;color:#7c3aed;}
+.bc-badge-gray{background:#f3f4f6;color:#6b7280;}
+/* Table polish */
+table{border-collapse:separate;border-spacing:0;}
+thead th{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;padding:10px 14px;}
+tbody td{padding:10px 14px;font-size:13px;border-bottom:1px solid #f5f5f5;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:#fafbfc;}
+/* Section headers */
+.bc-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin-bottom:10px;}
+/* Dividers */
+.bc-divider{height:1px;background:linear-gradient(90deg,transparent,#e5e7eb 20%,#e5e7eb 80%,transparent);margin:16px 0;}
 input:focus,select:focus,textarea:focus{outline:none;border-color:#0d9488!important;box-shadow:0 0 0 3px rgba(13,148,136,.12)!important;}
 ::selection{background:#ccfbf1;color:#0f766e;}
 ::-webkit-scrollbar{width:5px;height:5px;}
@@ -4282,14 +4306,14 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
       </div>
 
       {/* ═══ SIDEBAR ═══ */}
-      <div style={{width:220,background:"#111827",display:"flex",flexDirection:"column",flexShrink:0,position:"fixed",top:0,bottom:0,left:0,zIndex:60,borderRight:"1px solid #1f2937"}}>
+      <div style={{width:220,background:"linear-gradient(180deg,#111827 0%,#0f172a 100%)",display:"flex",flexDirection:"column",flexShrink:0,position:"fixed",top:0,bottom:0,left:0,zIndex:60,borderRight:"1px solid rgba(255,255,255,.06)"}}>
         {/* Logo */}
-        <div style={{padding:"20px 18px 16px",borderBottom:"1px solid #1f2937"}}>
+        <div style={{padding:"22px 18px 18px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:32,height:32,borderRadius:8,background:"#0d9488",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontWeight:800,fontSize:15}}>B</span></div>
+            <div style={{width:34,height:34,borderRadius:10,background:"linear-gradient(135deg,#0d9488,#0e7490)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(13,148,136,.3)"}}><span style={{color:"#fff",fontWeight:800,fontSize:15}}>B</span></div>
             <div>
               <div style={{fontWeight:700,fontSize:15,color:"#f3f4f6",letterSpacing:"-.01em"}}>Bachcare</div>
-              <div style={{fontSize:10,color:"#6b7280",fontWeight:500,letterSpacing:".04em",textTransform:"uppercase"}}>{"Operations"}<span onClick={()=>{if(currentUser?.username==="Teina"){setVersionEditVal(remoteVersion||APP_VERSION);setVersionEditOpen(true);}}} style={{marginLeft:6,fontSize:9,color:"#22d3ee",fontWeight:700,letterSpacing:0,cursor:currentUser?.username==="Teina"?"pointer":"default"}}>{"v"+(remoteVersion||APP_VERSION)}</span></div>
+              <div style={{fontSize:10,color:"#4b5563",fontWeight:500,letterSpacing:".04em",textTransform:"uppercase"}}>{"Operations"}<span onClick={()=>{if(currentUser?.username==="Teina"){setVersionEditVal(remoteVersion||APP_VERSION);setVersionEditOpen(true);}}} style={{marginLeft:6,fontSize:9,color:"#22d3ee",fontWeight:700,letterSpacing:0,cursor:currentUser?.username==="Teina"?"pointer":"default"}}>{" v"+(remoteVersion||APP_VERSION)}</span></div>
             </div>
           </div>
         </div>
@@ -4878,18 +4902,21 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const getAuditColor=(userName)=>{const acct=liveAccounts.find(a=>a.displayName===userName);if(!acct)return"#6b7280";if(acct.role==="admin")return"#111827";if(acct.team==="Guest Support")return"#1e6fcf";if(acct.team==="Owner Support")return"#7c3aab";if(acct.team==="Reputation and Resolutions")return"#0e7a5e";if(acct.team==="Managed Services")return"#b45309";return tc[acct.team]?.color||"#6b7280";};
             return<div>
               {/* Greeting */}
-              <div style={{background:"linear-gradient(135deg,#0d9488 0%,#0e7490 100%)",borderRadius:14,padding:"24px 28px",marginBottom:20,color:"#fff"}}>
-                <div style={{fontSize:20,fontWeight:700,marginBottom:6}}>{greet+", "+firstName}</div>
+              <div style={{background:"linear-gradient(135deg,#0d9488 0%,#0e7490 50%,#0c4a6e 100%)",borderRadius:16,padding:"28px 32px",marginBottom:20,color:"#fff",position:"relative",overflow:"hidden"}}>
+                <div style={{position:"absolute",top:0,right:0,width:200,height:200,background:"radial-gradient(circle,rgba(255,255,255,.08) 0%,transparent 70%)",borderRadius:"50%",transform:"translate(30%,-30%)"}}/>
+                <div style={{position:"relative"}}>
+                <div style={{fontSize:22,fontWeight:800,marginBottom:6,letterSpacing:"-.02em"}}>{greet+", "+firstName}</div>
                 <div style={{fontSize:13,opacity:.85,marginBottom:14}}>{fmtNZDate(today4)+" \u2022 FY25 Week "+wk}</div>
                 <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
-                  {isAdmin&&<div style={{background:"rgba(255,255,255,0.15)",borderRadius:10,padding:"10px 16px",minWidth:100}}><div style={{fontSize:22,fontWeight:800}}>{dailyTeams3.filter(tn4=>dailyReports.some(r=>r.teamName===tn4&&drNZDate(r)===today4&&r.shift==="morning")).length+"/"+dailyTeams3.length}</div><div style={{fontSize:10,opacity:.8}}>Morning reports in</div></div>}
-                  {isAdmin&&<div style={{background:"rgba(255,255,255,0.15)",borderRadius:10,padding:"10px 16px",minWidth:100}}><div style={{fontSize:22,fontWeight:800}}>{dailyTeams3.filter(tn4=>dailyReports.some(r=>r.teamName===tn4&&drNZDate(r)===today4&&r.shift==="evening")).length+"/"+dailyTeams3.length}</div><div style={{fontSize:10,opacity:.8}}>Evening reports in</div></div>}
-                  {(isLeader||isGuest)&&!myMorning&&<div style={{background:"rgba(255,200,50,0.25)",borderRadius:10,padding:"10px 16px",border:"1px solid rgba(255,255,255,0.3)"}}><div style={{fontSize:13,fontWeight:700}}>{"☀️ Submit Morning Stats"}</div><div style={{fontSize:10,opacity:.8}}>Not yet submitted</div></div>}
-                  {(isLeader||isGuest)&&myMorning&&!myEvening&&<div style={{background:"rgba(255,200,50,0.25)",borderRadius:10,padding:"10px 16px",border:"1px solid rgba(255,255,255,0.3)"}}><div style={{fontSize:13,fontWeight:700}}>{"🌙 Submit Evening Stats"}</div><div style={{fontSize:10,opacity:.8}}>Morning done, evening pending</div></div>}
-                  {(isLeader||isGuest)&&myMorning&&myEvening&&<div style={{background:"rgba(255,255,255,0.15)",borderRadius:10,padding:"10px 16px"}}><div style={{fontSize:13,fontWeight:700}}>{"✅ Daily Complete"}</div><div style={{fontSize:10,opacity:.8}}>Both shifts submitted</div></div>}
-                  <div style={{background:"rgba(255,255,255,0.15)",borderRadius:10,padding:"10px 16px",minWidth:80}}><div style={{fontSize:22,fontWeight:800}}>{todayTodos2.length}</div><div style={{fontSize:10,opacity:.8}}>To-dos today</div></div>
-                  {overdueTodos.length>0&&<div style={{background:"rgba(220,38,38,0.3)",borderRadius:10,padding:"10px 16px"}}><div style={{fontSize:22,fontWeight:800}}>{overdueTodos.length}</div><div style={{fontSize:10,opacity:.8}}>Overdue to-dos</div></div>}
-                  <div style={{background:"rgba(255,255,255,0.15)",borderRadius:10,padding:"10px 16px",minWidth:80}}><div style={{fontSize:22,fontWeight:800}}>{myOpenActions.length}</div><div style={{fontSize:10,opacity:.8}}>Open actions</div></div>
+                  {isAdmin&&<div style={{background:"rgba(255,255,255,0.1)",backdropFilter:"blur(8px)",borderRadius:12,padding:"12px 18px",minWidth:100,border:"1px solid rgba(255,255,255,.1)"}}><div style={{fontSize:22,fontWeight:800}}>{dailyTeams3.filter(tn4=>dailyReports.some(r=>r.teamName===tn4&&drNZDate(r)===today4&&r.shift==="morning")).length+"/"+dailyTeams3.length}</div><div style={{fontSize:10,opacity:.8}}>Morning reports in</div></div>}
+                  {isAdmin&&<div style={{background:"rgba(255,255,255,0.1)",backdropFilter:"blur(8px)",borderRadius:12,padding:"12px 18px",minWidth:100,border:"1px solid rgba(255,255,255,.1)"}}><div style={{fontSize:22,fontWeight:800}}>{dailyTeams3.filter(tn4=>dailyReports.some(r=>r.teamName===tn4&&drNZDate(r)===today4&&r.shift==="evening")).length+"/"+dailyTeams3.length}</div><div style={{fontSize:10,opacity:.8}}>Evening reports in</div></div>}
+                  {(isLeader||isGuest)&&!myMorning&&<div style={{background:"rgba(255,200,50,0.2)",backdropFilter:"blur(8px)",borderRadius:12,padding:"12px 18px",border:"1px solid rgba(255,255,255,.15)"}}><div style={{fontSize:13,fontWeight:700}}>{"☀️ Submit Morning Stats"}</div><div style={{fontSize:10,opacity:.8}}>Not yet submitted</div></div>}
+                  {(isLeader||isGuest)&&myMorning&&!myEvening&&<div style={{background:"rgba(255,200,50,0.2)",backdropFilter:"blur(8px)",borderRadius:12,padding:"12px 18px",border:"1px solid rgba(255,255,255,.15)"}}><div style={{fontSize:13,fontWeight:700}}>{"🌙 Submit Evening Stats"}</div><div style={{fontSize:10,opacity:.8}}>Morning done, evening pending</div></div>}
+                  {(isLeader||isGuest)&&myMorning&&myEvening&&<div style={{background:"rgba(255,255,255,0.1)",backdropFilter:"blur(8px)",borderRadius:12,padding:"12px 18px",border:"1px solid rgba(255,255,255,.1)"}}><div style={{fontSize:13,fontWeight:700}}>{"✅ Daily Complete"}</div><div style={{fontSize:10,opacity:.8}}>Both shifts submitted</div></div>}
+                  <div style={{background:"rgba(255,255,255,0.1)",backdropFilter:"blur(8px)",borderRadius:12,padding:"12px 18px",minWidth:80,border:"1px solid rgba(255,255,255,.1)"}}><div style={{fontSize:22,fontWeight:800}}>{todayTodos2.length}</div><div style={{fontSize:10,opacity:.8}}>To-dos today</div></div>
+                  {overdueTodos.length>0&&<div style={{background:"rgba(220,38,38,0.25)",backdropFilter:"blur(8px)",borderRadius:12,padding:"12px 18px",border:"1px solid rgba(255,255,255,.1)"}}><div style={{fontSize:22,fontWeight:800}}>{overdueTodos.length}</div><div style={{fontSize:10,opacity:.8}}>Overdue to-dos</div></div>}
+                  <div style={{background:"rgba(255,255,255,0.1)",backdropFilter:"blur(8px)",borderRadius:12,padding:"12px 18px",minWidth:80,border:"1px solid rgba(255,255,255,.1)"}}><div style={{fontSize:22,fontWeight:800}}>{myOpenActions.length}</div><div style={{fontSize:10,opacity:.8}}>Open actions</div></div>
+                </div>
                 </div>
               </div>
 

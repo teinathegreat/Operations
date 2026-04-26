@@ -398,6 +398,7 @@ function App(){
   const[editCard,setEditCard]=useState(null);
   const[dragCard,setDragCard]=useState(null);
   const[filterAssignee,setFilterAssignee]=useState("");
+  const[plannerView,setPlannerView]=useState("kanban");
   const[alertNameRevealed,setAlertNameRevealed]=useState(false);
 
   const addNotif=(forUser,msg)=>{const n={id:Date.now().toString(36),forUser,msg,read:false,createdAt:new Date().toISOString()};setNotifications(prev=>[n,...prev.slice(0,100)]);dbUpsert("notif_entries",n);};
@@ -5556,8 +5557,6 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             if(plannerBoards.length<tNames.length&&tNames.length>0){setTimeout(ensureBoards,500);}
 
             const LABELS=[{l:"High Priority",c:"#dc2626",bg:"#fef2f2"},{l:"Medium",c:"#d97706",bg:"#fffbeb"},{l:"Low",c:"#059669",bg:"#ecfdf5"},{l:"Blocked",c:"#7c3aed",bg:"#f5f3ff"},{l:"Bug",c:"#e11d48",bg:"#fff1f2"},{l:"Feature",c:"#0ea5e9",bg:"#f0f9ff"}];
-
-            // Determine visible teams
             const myTeamP=isLeader&&currentUser?.team?currentUser.team:null;
             const visibleTeams=isAdmin?tNames:(myTeamP?[myTeamP]:allowedTeams);
             const activeTeam=selBoard&&plannerBoards.find(b=>b.id===selBoard)?.teamName;
@@ -5567,161 +5566,240 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const boardCards=board?plannerCards.filter(c=>c.boardId===board?.id):[];
             const columns=board?.columns||["To Do","In Progress","Review","Done"];
             const teamMembers=(roster[currentTeamName]?.members||[]).map(m=>m.name);
-            const allMembers=[...teamMembers,roster[currentTeamName]?.lead].filter(Boolean);
-            const allAssignees=[...new Set(boardCards.map(c=>c.assignee).filter(Boolean))];
+            const allMembers=[...teamMembers,roster[currentTeamName]?.lead].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+            const allAssignees=[...new Set(boardCards.flatMap(c=>c.assignees||[c.assignee]).filter(Boolean))];
+            const tc2=tc[currentTeamName]||{};const teamColor=tc2.color||"#0d9488";
+            const todayS=todayNZ();
 
-            const tc2=tc[currentTeamName]||{};
-            const teamColor=tc2.color||"#0d9488";
-
+            // CRUD helpers
             const addCol=()=>{if(!board)return;const name=window.prompt("Column name:");if(!name?.trim())return;const updated={...board,columns:[...columns,name.trim()]};setPlannerBoards(prev=>prev.map(b=>b.id===board.id?updated:b));dbUpsert("planner_boards",updated);};
-            const renameCol=(oldName)=>{const name=window.prompt("Rename column:",oldName);if(!name?.trim()||name===oldName)return;const updated={...board,columns:columns.map(c=>c===oldName?name.trim():c)};setPlannerBoards(prev=>prev.map(b=>b.id===board.id?updated:b));dbUpsert("planner_boards",updated);setPlannerCards(prev=>prev.map(c=>c.boardId===board.id&&c.column===oldName?{...c,column:name.trim()}:c));boardCards.filter(c=>c.column===oldName).forEach(c=>dbUpsert("planner_cards",{...c,column:name.trim()}));};
-            const delCol=(colName)=>{if(!window.confirm("Delete column '"+colName+"' and all its cards?"))return;boardCards.filter(c=>c.column===colName).forEach(c=>dbDeleteRow("planner_cards",c.id));setPlannerCards(prev=>prev.filter(c=>!(c.boardId===board.id&&c.column===colName)));const updated={...board,columns:columns.filter(c=>c!==colName)};setPlannerBoards(prev=>prev.map(b=>b.id===board.id?updated:b));dbUpsert("planner_boards",updated);};
-            const addCard=(colName)=>{const titleEl=document.getElementById("pc_title_"+colName.replace(/\s/g,"_"));const title=titleEl?.value?.trim();if(!title)return;const card={id:uid(),boardId:board.id,column:colName,title:title,description:"",assignee:"",dueDate:"",labels:[],comments:[],order:boardCards.filter(c=>c.column===colName).length,createdBy:currentUser?.displayName,createdAt:new Date().toISOString()};setPlannerCards(prev=>[card,...prev]);dbUpsert("planner_cards",card);titleEl.value="";setAddingCard(null);};
-            const moveCard=(cardId,toCol)=>{const card=plannerCards.find(c=>c.id===cardId);if(!card||card.column===toCol)return;const updated={...card,column:toCol,movedAt:new Date().toISOString()};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);};
-            const updateCard=(cardId,updates)=>{setPlannerCards(prev=>prev.map(c=>{if(c.id!==cardId)return c;const u={...c,...updates};dbUpsert("planner_cards",u);return u;}));};
+            const renameCol=(oldName)=>{const name=window.prompt("Rename column:",oldName);if(!name?.trim()||name===oldName)return;const updated={...board,columns:columns.map(c=>c===oldName?name.trim():c)};setPlannerBoards(prev=>prev.map(b=>b.id===board.id?updated:b));dbUpsert("planner_boards",updated);boardCards.filter(c=>c.column===oldName).forEach(c=>{const u={...c,column:name.trim()};setPlannerCards(prev=>prev.map(x=>x.id===c.id?u:x));dbUpsert("planner_cards",u);});};
+            const delCol=(colName)=>{if(!window.confirm("Delete '"+colName+"' and all its cards?"))return;boardCards.filter(c=>c.column===colName).forEach(c=>dbDeleteRow("planner_cards",c.id));setPlannerCards(prev=>prev.filter(c=>!(c.boardId===board.id&&c.column===colName)));const updated={...board,columns:columns.filter(c=>c!==colName)};setPlannerBoards(prev=>prev.map(b=>b.id===board.id?updated:b));dbUpsert("planner_boards",updated);};
+            const addCardFn=(colName)=>{const titleEl=document.getElementById("pc_title_"+colName.replace(/\s/g,"_"));const title=titleEl?.value?.trim();if(!title)return;const card={id:uid(),boardId:board.id,column:colName,title,description:"",assignees:[],dueDate:"",labels:[],checklist:[],links:[],comments:[],activity:[{id:uid(),action:"created this card",by:currentUser?.displayName,at:new Date().toISOString()}],order:boardCards.filter(c=>c.column===colName).length,createdBy:currentUser?.displayName,createdAt:new Date().toISOString()};setPlannerCards(prev=>[card,...prev]);dbUpsert("planner_cards",card);titleEl.value="";setAddingCard(null);};
+            const moveCard=(cardId,toCol)=>{const card=plannerCards.find(c=>c.id===cardId);if(!card||card.column===toCol)return;const updated={...card,column:toCol,movedAt:new Date().toISOString(),activity:[...(card.activity||[]),{id:uid(),action:"moved to "+toCol,by:currentUser?.displayName,at:new Date().toISOString()}]};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);};
+            const saveCard=(card)=>{setPlannerCards(prev=>prev.map(c=>c.id===card.id?card:c));dbUpsert("planner_cards",card);};
             const deleteCard=(cardId)=>{if(!window.confirm("Delete this card?"))return;setPlannerCards(prev=>prev.filter(c=>c.id!==cardId));dbDeleteRow("planner_cards",cardId);setViewCard(null);toast2("Deleted.");};
-            const addComment=(cardId,text)=>{if(!text?.trim())return;const card=plannerCards.find(c=>c.id===cardId);if(!card)return;const comment={id:uid(),text:text.trim(),by:currentUser?.displayName,at:new Date().toISOString()};const updated={...card,comments:[...(card.comments||[]),comment]};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);setViewCard(updated);};
-            const filteredCards=(colName)=>{let cards=boardCards.filter(c=>c.column===colName);if(filterAssignee)cards=cards.filter(c=>c.assignee===filterAssignee);return cards.sort((a,b)=>(a.order||0)-(b.order||0));};
-            const totalCards=boardCards.length;
-            const doneCards=boardCards.filter(c=>c.column?.toLowerCase()==="done"||c.column?.toLowerCase()==="completed").length;
+            const addComment=(cardId,text)=>{if(!text?.trim())return;const card=plannerCards.find(c=>c.id===cardId);if(!card)return;const comment={id:uid(),text:text.trim(),by:currentUser?.displayName,at:new Date().toISOString()};const updated={...card,comments:[...(card.comments||[]),comment],activity:[...(card.activity||[]),{id:uid(),action:"commented",by:currentUser?.displayName,at:new Date().toISOString()}]};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);setViewCard(updated);
+              // Notify assignees
+              (updated.assignees||[]).forEach(name=>{if(name!==currentUser?.displayName){const acct=liveAccounts.find(a=>a.displayName===name);if(acct)addNotif(acct.username,"Comment on '"+card.title+"' by "+currentUser?.displayName);}});};
+            const filteredCards=(colName)=>{let cards=boardCards.filter(c=>c.column===colName);if(filterAssignee)cards=cards.filter(c=>(c.assignees||[c.assignee]).includes(filterAssignee));return cards.sort((a,b)=>(a.order||0)-(b.order||0));};
+
+            // Card aging (days in current column since last move)
+            const getAge=(card)=>{const ref=card.movedAt||card.createdAt;if(!ref)return 0;return Math.floor((new Date()-new Date(ref))/86400000);};
+            const ageColor=(days)=>days>=14?"#dc2626":days>=7?"#d97706":null;
+
+            // Stats
+            const totalCards=boardCards.length;const doneCards=boardCards.filter(c=>c.column?.toLowerCase()==="done"||c.column?.toLowerCase()==="completed").length;
             const progressPct=totalCards>0?Math.round(doneCards/totalCards*100):0;
-            const overdueCards=boardCards.filter(c=>c.dueDate&&c.dueDate<todayNZ()&&c.column?.toLowerCase()!=="done"&&c.column?.toLowerCase()!=="completed").length;
+            const overdueCards=boardCards.filter(c=>c.dueDate&&c.dueDate<todayS&&!c.column?.toLowerCase().match(/done|completed/)).length;
+
+            // Create from template
+            const createFromTemplate=()=>{const templates=[{n:"New Hire Onboarding",d:"Standard onboarding checklist",cl:["Set up Intercom account","Set up email and Teams","Complete system training","Shadow experienced agent (3 days)","First solo shift","1-week check-in","Sign off by team leader"]},{n:"Property Setup",d:"New property onboarding",cl:["Receive owner agreement","Create property listing","Upload photos","Set pricing","Configure calendar","Test booking flow","Go live"]},{n:"Process Improvement",d:"Track a process change",cl:["Identify problem","Document current process","Propose solution","Get approval","Implement change","Monitor results","Review after 2 weeks"]}];
+              const choice=window.prompt("Templates:\\n"+templates.map((t,i)=>(i+1)+". "+t.n).join("\\n")+"\\n\\nEnter number:");
+              const idx=parseInt(choice)-1;if(isNaN(idx)||idx<0||idx>=templates.length)return;
+              const tmpl=templates[idx];
+              const card={id:uid(),boardId:board.id,column:columns[0]||"To Do",title:tmpl.n,description:tmpl.d,assignees:[],dueDate:"",labels:[],checklist:tmpl.cl.map(t=>({id:uid(),text:t,done:false})),links:[],comments:[],activity:[{id:uid(),action:"created from template '"+tmpl.n+"'",by:currentUser?.displayName,at:new Date().toISOString()}],order:0,createdBy:currentUser?.displayName,createdAt:new Date().toISOString()};
+              setPlannerCards(prev=>[card,...prev]);dbUpsert("planner_cards",card);toast2("Card created from template.");};
+
+            // Render helpers
+            const initials=(name)=>name?name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase():"";
+            const checkProgress=(cl)=>{if(!cl||!cl.length)return null;const done=cl.filter(x=>x.done).length;return{done,total:cl.length,pct:Math.round(done/cl.length*100)};};
+
+            // ═══════════════════════════════════════════
+            // KANBAN VIEW
+            // ═══════════════════════════════════════════
+            const KanbanView=()=><div style={{display:"flex",gap:14,flex:1,overflowX:"auto",paddingBottom:16,alignItems:"flex-start"}}>
+              {columns.map(colName=>{const cards=filteredCards(colName);const isDone=colName.toLowerCase().match(/done|completed/);const colColors={"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706","Done":"#059669","Completed":"#059669"};const colColor=colColors[colName]||teamColor;
+              return<div key={colName} style={{minWidth:280,maxWidth:320,flex:"0 0 280px",display:"flex",flexDirection:"column",maxHeight:"calc(100vh - 220px)"}}
+                onDragOver={e=>{e.preventDefault();e.currentTarget.querySelector("[data-col-header]").style.borderColor=teamColor;}}
+                onDragLeave={e=>{e.currentTarget.querySelector("[data-col-header]").style.borderColor="transparent";}}
+                onDrop={e=>{e.preventDefault();e.currentTarget.querySelector("[data-col-header]").style.borderColor="transparent";const cardId=e.dataTransfer.getData("cardId");if(cardId)moveCard(cardId,colName);}}>
+                <div data-col-header="" style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",borderLeft:"3px solid "+colColor,borderRight:"3px solid transparent",marginBottom:4,transition:"border-color .15s"}}>
+                  <span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>{colName}</span>
+                  <span style={{fontSize:11,color:"#9ca3af",fontWeight:600}}>{cards.length}</span>
+                  <button onClick={()=>renameCol(colName)} style={{fontSize:10,color:"#9ca3af",background:"none",border:"none",cursor:"pointer",padding:2}}>✏️</button>
+                  {columns.length>1&&<button onClick={()=>delCol(colName)} style={{fontSize:10,color:"#d1d5db",background:"none",border:"none",cursor:"pointer",padding:2}}>✕</button>}
+                </div>
+                <div style={{flex:1,overflowY:"auto",padding:"0 4px",display:"flex",flexDirection:"column",gap:8}}>
+                  {cards.map(card=>{const cp=checkProgress(card.checklist);const age=getAge(card);const ac=ageColor(age);const isOverdue=card.dueDate&&card.dueDate<todayS&&!isDone;const assignees=card.assignees||[card.assignee].filter(Boolean);
+                  return<div key={card.id} draggable onDragStart={e=>{e.dataTransfer.setData("cardId",card.id);setDragCard(card.id);}} onDragEnd={()=>setDragCard(null)} onClick={()=>setViewCard(card)} style={{background:"#fff",borderRadius:10,padding:14,cursor:"pointer",border:"1px solid "+(dragCard===card.id?teamColor:"#f0f0f0"),boxShadow:dragCard===card.id?"0 8px 20px rgba(0,0,0,.12)":"0 1px 3px rgba(0,0,0,.04)",opacity:isDone?.5:1,transition:"all .15s",borderLeft:ac?"3px solid "+ac:"3px solid transparent"}}>
+                    {card.labels?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>{card.labels.map((l,i)=>{const lb=LABELS.find(x=>x.l===l);return<div key={i} style={{height:4,width:32,borderRadius:2,background:lb?.c||"#d1d5db"}} title={l}/>})}</div>}
+                    <div style={{fontSize:13,fontWeight:600,color:isDone?"#9ca3af":"#111827",textDecoration:isDone?"line-through":"none",lineHeight:1.4}}>{card.title}</div>
+                    {card.description&&<div style={{fontSize:11,color:"#9ca3af",lineHeight:1.4,overflow:"hidden",maxHeight:34,marginTop:4}}>{card.description}</div>}
+                    {cp&&<div style={{marginTop:8,display:"flex",alignItems:"center",gap:6}}><div style={{flex:1,height:4,background:"#e5e7eb",borderRadius:2,overflow:"hidden"}}><div style={{width:cp.pct+"%",height:"100%",background:cp.pct===100?"#059669":teamColor,borderRadius:2}}/></div><span style={{fontSize:9,color:"#6b7280",fontWeight:600}}>{cp.done+"/"+cp.total}</span></div>}
+                    {(card.links||[]).length>0&&<div style={{fontSize:9,color:"#2563eb",marginTop:4}}>{"🔗 "+card.links.length+" link"+(card.links.length>1?"s":"")}</div>}
+                    <div style={{display:"flex",gap:6,alignItems:"center",marginTop:8}}>
+                      {isOverdue&&<span style={{fontSize:9,color:"#dc2626",background:"#fef2f2",borderRadius:4,padding:"2px 6px",fontWeight:600}}>Overdue</span>}
+                      {card.dueDate&&!isOverdue&&<span style={{fontSize:9,color:"#6b7280"}}>{fmtNZDate(card.dueDate)}</span>}
+                      {card.comments?.length>0&&<span style={{fontSize:9,color:"#9ca3af"}}>{"💬 "+card.comments.length}</span>}
+                      {ac&&!isDone&&<span style={{fontSize:8,color:ac}} title={age+" days in column"}>{"🕐 "+age+"d"}</span>}
+                      <div style={{flex:1}}/>
+                      {assignees.slice(0,3).map((name,i)=><div key={i} style={{width:24,height:24,borderRadius:12,background:teamColor,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,marginLeft:i>0?-6:0,border:"2px solid #fff",position:"relative",zIndex:3-i}} title={name}>{initials(name)}</div>)}
+                      {assignees.length>3&&<span style={{fontSize:9,color:"#9ca3af"}}>{"+"+( assignees.length-3)}</span>}
+                    </div>
+                  </div>})}
+                </div>
+                {addingCard===colName?<div style={{padding:"8px 4px"}}><input id={"pc_title_"+colName.replace(/\s/g,"_")} placeholder="Task name..." autoFocus onKeyDown={e=>{if(e.key==="Enter")addCardFn(colName);if(e.key==="Escape")setAddingCard(null);}} style={{width:"100%",fontSize:12,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8,boxSizing:"border-box"}}/>
+                  <div style={{display:"flex",gap:6,marginTop:6}}><button onClick={()=>addCardFn(colName)} style={{fontSize:11,padding:"6px 16px",background:teamColor,color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontWeight:600}}>Add</button><button onClick={()=>setAddingCard(null)} style={{fontSize:11,color:"#6b7280",background:"none",border:"none",cursor:"pointer"}}>Cancel</button></div>
+                </div>:<button onClick={()=>setAddingCard(colName)} style={{margin:"8px 4px",padding:"8px",background:"transparent",border:"none",color:"#9ca3af",fontSize:12,cursor:"pointer",textAlign:"left",borderRadius:6}}>+ Add task</button>}
+              </div>})}
+              <div style={{minWidth:140,flex:"0 0 140px",paddingTop:10}}><button onClick={addCol} style={{width:"100%",padding:"10px",background:"transparent",border:"2px dashed #e5e7eb",borderRadius:10,color:"#9ca3af",fontSize:12,cursor:"pointer"}}>+ Column</button></div>
+            </div>;
+
+            // ═══════════════════════════════════════════
+            // LIST VIEW
+            // ═══════════════════════════════════════════
+            const ListView=()=>{
+              const allCards=[...boardCards].filter(c=>!filterAssignee||(c.assignees||[c.assignee]).includes(filterAssignee)).sort((a,b)=>{const order=columns.indexOf(a.column)-columns.indexOf(b.column);if(order!==0)return order;return(a.dueDate||"z").localeCompare(b.dueDate||"z");});
+              return<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
+                <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 80px",padding:"10px 16px",background:"#f9fafb",fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".03em"}}>
+                  <span>Task</span><span>Status</span><span>Assigned</span><span>Due</span><span>Progress</span>
+                </div>
+                {allCards.map(card=>{const cp=checkProgress(card.checklist);const isOverdue=card.dueDate&&card.dueDate<todayS&&!card.column?.toLowerCase().match(/done|completed/);const isDone=card.column?.toLowerCase().match(/done|completed/);const assignees=card.assignees||[card.assignee].filter(Boolean);
+                return<div key={card.id} onClick={()=>setViewCard(card)} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 80px",padding:"10px 16px",borderTop:"1px solid #f3f4f6",cursor:"pointer",opacity:isDone?.5:1,alignItems:"center"}} onMouseOver={e=>e.currentTarget.style.background="#f9fafb"} onMouseOut={e=>e.currentTarget.style.background="#fff"}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600,color:"#111827",textDecoration:isDone?"line-through":"none"}}>{card.title}</div>
+                    {card.labels?.length>0&&<div style={{display:"flex",gap:3,marginTop:3}}>{card.labels.map((l,i)=>{const lb=LABELS.find(x=>x.l===l);return<span key={i} style={{fontSize:8,color:lb?.c,fontWeight:700}}>{l}</span>})}</div>}
+                  </div>
+                  <span style={{fontSize:12,color:{"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706","Done":"#059669"}[card.column]||"#6b7280",fontWeight:600}}>{card.column}</span>
+                  <div style={{display:"flex",gap:2}}>{assignees.slice(0,2).map((n,i)=><span key={i} style={{fontSize:11,color:teamColor}}>{n.split(" ")[0]}</span>)}{assignees.length>2&&<span style={{fontSize:11,color:"#9ca3af"}}>{" +"+(assignees.length-2)}</span>}</div>
+                  <span style={{fontSize:12,color:isOverdue?"#dc2626":"#6b7280",fontWeight:isOverdue?700:400}}>{card.dueDate?fmtNZDate(card.dueDate):"—"}</span>
+                  <div>{cp?<div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,height:4,background:"#e5e7eb",borderRadius:2}}><div style={{width:cp.pct+"%",height:"100%",background:cp.pct===100?"#059669":teamColor,borderRadius:2}}/></div><span style={{fontSize:9,color:"#6b7280"}}>{cp.done+"/"+cp.total}</span></div>:<span style={{fontSize:10,color:"#d1d5db"}}>—</span>}</div>
+                </div>})}
+                {allCards.length===0&&<div style={{textAlign:"center",padding:30,color:"#9ca3af",fontSize:13}}>No tasks</div>}
+              </div>};
+
+            // ═══════════════════════════════════════════
+            // CALENDAR VIEW
+            // ═══════════════════════════════════════════
+            const CalendarView=()=>{
+              const datedCards=boardCards.filter(c=>c.dueDate).sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+              const groups={};datedCards.forEach(c=>{const w=c.dueDate.slice(0,7);if(!groups[w])groups[w]=[];groups[w].push(c);});
+              const undated=boardCards.filter(c=>!c.dueDate);
+              return<div>
+                {Object.entries(groups).sort(([a],[b])=>a.localeCompare(b)).map(([month,cards])=><div key={month} style={{marginBottom:20}}>
+                  <div style={{fontSize:14,fontWeight:700,color:"#111827",marginBottom:8}}>{new Date(month+"-01").toLocaleDateString("en-NZ",{month:"long",year:"numeric"})}</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {cards.map(card=>{const isOverdue=card.dueDate<todayS&&!card.column?.toLowerCase().match(/done|completed/);const isDone=card.column?.toLowerCase().match(/done|completed/);const assignees=card.assignees||[card.assignee].filter(Boolean);
+                    return<div key={card.id} onClick={()=>setViewCard(card)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#fff",borderRadius:8,border:"1px solid #f0f0f0",cursor:"pointer",opacity:isDone?.5:1}}>
+                      <div style={{width:44,textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:isOverdue?"#dc2626":"#111827",lineHeight:1}}>{card.dueDate.slice(8,10)}</div><div style={{fontSize:9,color:"#9ca3af",textTransform:"uppercase"}}>{new Date(card.dueDate).toLocaleDateString("en-NZ",{weekday:"short"})}</div></div>
+                      <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:"#111827",textDecoration:isDone?"line-through":"none"}}>{card.title}</div><span style={{fontSize:11,color:{"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706","Done":"#059669"}[card.column]||"#6b7280"}}>{card.column}</span></div>
+                      <div style={{display:"flex",gap:2}}>{assignees.slice(0,2).map((n,i)=><div key={i} style={{width:24,height:24,borderRadius:12,background:teamColor,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700}} title={n}>{initials(n)}</div>)}</div>
+                    </div>})}
+                  </div>
+                </div>)}
+                {undated.length>0&&<div style={{marginBottom:20}}>
+                  <div style={{fontSize:14,fontWeight:700,color:"#9ca3af",marginBottom:8}}>No due date</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>{undated.map(card=><div key={card.id} onClick={()=>setViewCard(card)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#fff",borderRadius:8,border:"1px solid #f0f0f0",cursor:"pointer"}}>
+                    <div style={{flex:1,fontSize:13,fontWeight:600,color:"#111827"}}>{card.title}</div>
+                    <span style={{fontSize:11,color:{"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706","Done":"#059669"}[card.column]||"#6b7280"}}>{card.column}</span>
+                  </div>)}</div>
+                </div>}
+                {boardCards.length===0&&<div style={{textAlign:"center",padding:30,color:"#9ca3af",fontSize:13}}>No tasks</div>}
+              </div>};
 
             return<div style={{height:"calc(100vh - 80px)",display:"flex",flexDirection:"column"}}>
               {/* Header */}
               <div style={{marginBottom:16}}>
-                {/* Team tabs (admin sees all, leaders see own) */}
-                {visibleTeams.length>1&&<div style={{display:"flex",gap:2,marginBottom:14}}>
-                  {visibleTeams.map(tn=>{const b=plannerBoards.find(x=>x.teamName===tn);const active=b?.id===selBoard;const tColor=tc[tn]?.color||"#6b7280";return<button key={tn} onClick={()=>{if(b)setSelBoard(b.id);setFilterAssignee("");}} style={{padding:"8px 20px",borderRadius:8,border:"none",background:active?tColor:"transparent",color:active?"#fff":"#6b7280",fontWeight:active?700:500,fontSize:13,cursor:"pointer",transition:"all .15s"}}>{tn}</button>})}
-                </div>}
-
+                {visibleTeams.length>1&&<div style={{display:"flex",gap:2,marginBottom:14}}>{visibleTeams.map(tn=>{const b=plannerBoards.find(x=>x.teamName===tn);const active=b?.id===selBoard;const tColor=tc[tn]?.color||"#6b7280";return<button key={tn} onClick={()=>{if(b)setSelBoard(b.id);setFilterAssignee("");}} style={{padding:"8px 20px",borderRadius:8,border:"none",background:active?tColor:"transparent",color:active?"#fff":"#6b7280",fontWeight:active?700:500,fontSize:13,cursor:"pointer",transition:"all .15s"}}>{tn}</button>})}</div>}
                 <div style={{display:"flex",alignItems:"center",gap:14}}>
-                  <div>
-                    <div style={{fontSize:20,fontWeight:800,color:"#111827"}}>{currentTeamName}</div>
-                    <div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{totalCards+" task"+(totalCards!==1?"s":"")+" · "+doneCards+" completed"+(overdueCards?" · "+overdueCards+" overdue":"")}</div>
-                  </div>
+                  <div><div style={{fontSize:20,fontWeight:800,color:"#111827"}}>{currentTeamName}</div>
+                  <div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{totalCards+" task"+(totalCards!==1?"s":"")+" · "+doneCards+" done"+(overdueCards?" · "+overdueCards+" overdue":"")}</div></div>
                   <div style={{flex:1}}/>
-                  {/* Progress bar */}
-                  {totalCards>0&&<div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{width:120,height:6,background:"#e5e7eb",borderRadius:3,overflow:"hidden"}}>
-                      <div style={{width:progressPct+"%",height:"100%",background:teamColor,borderRadius:3,transition:"width .3s"}}/>
-                    </div>
-                    <span style={{fontSize:12,fontWeight:700,color:teamColor}}>{progressPct+"%"}</span>
-                  </div>}
-                  {/* Filter */}
-                  {allAssignees.length>0&&<select value={filterAssignee} onChange={e=>setFilterAssignee(e.target.value)} style={{fontSize:12,padding:"6px 12px",border:"1px solid #e5e7eb",borderRadius:8,color:"#374151",background:"#fff"}}>
-                    <option value="">Everyone</option>
-                    {allAssignees.map(a=><option key={a}>{a}</option>)}
-                  </select>}
+                  {totalCards>0&&<div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:120,height:6,background:"#e5e7eb",borderRadius:3,overflow:"hidden"}}><div style={{width:progressPct+"%",height:"100%",background:teamColor,borderRadius:3,transition:"width .3s"}}/></div><span style={{fontSize:12,fontWeight:700,color:teamColor}}>{progressPct+"%"}</span></div>}
+                  {/* View toggle */}
+                  <div style={{display:"flex",background:"#f3f4f6",borderRadius:8,padding:2}}>
+                    {[{v:"kanban",l:"Board"},{v:"list",l:"List"},{v:"calendar",l:"Calendar"}].map(({v,l})=><button key={v} onClick={()=>setPlannerView(v)} style={{padding:"5px 12px",borderRadius:6,border:"none",background:plannerView===v?"#fff":"transparent",color:plannerView===v?"#111827":"#9ca3af",fontSize:11,fontWeight:600,cursor:"pointer",boxShadow:plannerView===v?"0 1px 2px rgba(0,0,0,.06)":"none"}}>{l}</button>)}
+                  </div>
+                  {allAssignees.length>0&&<select value={filterAssignee} onChange={e=>setFilterAssignee(e.target.value)} style={{fontSize:12,padding:"6px 12px",border:"1px solid #e5e7eb",borderRadius:8,color:"#374151",background:"#fff"}}><option value="">Everyone</option>{allAssignees.map(a=><option key={a}>{a}</option>)}</select>}
+                  <button onClick={createFromTemplate} style={{fontSize:11,padding:"6px 14px",background:"#f3f4f6",border:"1px solid #e5e7eb",borderRadius:8,cursor:"pointer",color:"#374151",fontWeight:600}}>📋 Template</button>
                 </div>
               </div>
 
-              {/* Kanban board */}
-              {board&&<div style={{display:"flex",gap:14,flex:1,overflowX:"auto",paddingBottom:16,alignItems:"flex-start"}}>
-                {columns.map(colName=>{const cards=filteredCards(colName);const isDone=colName.toLowerCase()==="done"||colName.toLowerCase()==="completed";const colColors={"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706","Done":"#059669"};const colColor=colColors[colName]||teamColor;
-                return<div key={colName} style={{minWidth:280,maxWidth:320,flex:"0 0 280px",display:"flex",flexDirection:"column",maxHeight:"calc(100vh - 200px)"}}
-                  onDragOver={e=>{e.preventDefault();e.currentTarget.style.boxShadow="inset 0 0 0 2px "+teamColor;}}
-                  onDragLeave={e=>{e.currentTarget.style.boxShadow="none";}}
-                  onDrop={e=>{e.preventDefault();e.currentTarget.style.boxShadow="none";const cardId=e.dataTransfer.getData("cardId");if(cardId)moveCard(cardId,colName);}}>
-
-                  {/* Column header */}
-                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",marginBottom:2}}>
-                    <div style={{width:3,height:16,borderRadius:2,background:colColor}}/>
-                    <span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>{colName}</span>
-                    <span style={{fontSize:11,color:"#9ca3af",fontWeight:600}}>{cards.length}</span>
-                    <button onClick={()=>renameCol(colName)} style={{fontSize:10,color:"#9ca3af",background:"none",border:"none",cursor:"pointer",padding:2}} title="Rename">✏️</button>
-                    {columns.length>1&&<button onClick={()=>delCol(colName)} style={{fontSize:10,color:"#d1d5db",background:"none",border:"none",cursor:"pointer",padding:2}} title="Delete column">✕</button>}
-                  </div>
-
-                  {/* Cards container */}
-                  <div style={{flex:1,overflowY:"auto",padding:"0 4px",display:"flex",flexDirection:"column",gap:8}}>
-                    {cards.map(card=>{
-                      const initials=card.assignee?card.assignee.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase():"";
-                      const isOverdue=card.dueDate&&card.dueDate<todayNZ()&&!isDone;
-                      return<div key={card.id} draggable onDragStart={e=>{e.dataTransfer.setData("cardId",card.id);setDragCard(card.id);}} onDragEnd={()=>setDragCard(null)} onClick={()=>setViewCard(card)} style={{background:"#fff",borderRadius:10,padding:14,cursor:"pointer",border:"1px solid "+(dragCard===card.id?teamColor:"#f0f0f0"),boxShadow:dragCard===card.id?"0 8px 20px rgba(0,0,0,.12)":"0 1px 3px rgba(0,0,0,.04)",opacity:isDone?.55:1,transition:"all .15s",position:"relative"}}>
-                      {/* Labels row */}
-                      {card.labels?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>{card.labels.map((l,i)=>{const lb=LABELS.find(x=>x.l===l);return<div key={i} style={{height:4,width:32,borderRadius:2,background:lb?.c||"#d1d5db"}} title={l}/>})}</div>}
-                      <div style={{fontSize:13,fontWeight:600,color:isDone?"#9ca3af":"#111827",textDecoration:isDone?"line-through":"none",lineHeight:1.4,marginBottom:card.description?6:0}}>{card.title}</div>
-                      {card.description&&<div style={{fontSize:11,color:"#9ca3af",lineHeight:1.4,overflow:"hidden",maxHeight:34,marginBottom:6}}>{card.description}</div>}
-                      <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6}}>
-                        {isOverdue&&<span style={{fontSize:9,color:"#dc2626",background:"#fef2f2",borderRadius:4,padding:"2px 6px",fontWeight:600}}>{"Overdue"}</span>}
-                        {card.dueDate&&!isOverdue&&<span style={{fontSize:9,color:"#6b7280"}}>{fmtNZDate(card.dueDate)}</span>}
-                        {card.comments?.length>0&&<span style={{fontSize:9,color:"#9ca3af"}}>{"💬 "+card.comments.length}</span>}
-                        <div style={{flex:1}}/>
-                        {card.assignee&&<div style={{width:24,height:24,borderRadius:12,background:teamColor,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700}} title={card.assignee}>{initials}</div>}
-                      </div>
-                    </div>})}
-                  </div>
-
-                  {/* Add card */}
-                  {addingCard===colName?<div style={{padding:"8px 4px"}}>
-                    <input id={"pc_title_"+colName.replace(/\s/g,"_")} placeholder="Task name..." autoFocus onKeyDown={e=>{if(e.key==="Enter")addCard(colName);if(e.key==="Escape")setAddingCard(null);}} style={{width:"100%",fontSize:12,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8,boxSizing:"border-box",background:"#fff"}}/>
-                    <div style={{display:"flex",gap:6,marginTop:6}}>
-                      <button onClick={()=>addCard(colName)} style={{fontSize:11,padding:"6px 16px",background:teamColor,color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontWeight:600}}>Add</button>
-                      <button onClick={()=>setAddingCard(null)} style={{fontSize:11,color:"#6b7280",background:"none",border:"none",cursor:"pointer"}}>Cancel</button>
-                    </div>
-                  </div>:<button onClick={()=>setAddingCard(colName)} style={{margin:"8px 4px",padding:"8px",background:"transparent",border:"none",color:"#9ca3af",fontSize:12,cursor:"pointer",textAlign:"left",borderRadius:6}} onMouseOver={e=>e.target.style.background="#f3f4f6"} onMouseOut={e=>e.target.style.background="transparent"}>{"+ Add task"}</button>}
-                </div>})}
-
-                {/* Add column */}
-                <div style={{minWidth:140,flex:"0 0 140px",paddingTop:10}}>
-                  <button onClick={addCol} style={{width:"100%",padding:"10px",background:"transparent",border:"2px dashed #e5e7eb",borderRadius:10,color:"#9ca3af",fontSize:12,cursor:"pointer",fontWeight:500}} onMouseOver={e=>{e.target.style.borderColor="#d1d5db";e.target.style.color="#6b7280";}} onMouseOut={e=>{e.target.style.borderColor="#e5e7eb";e.target.style.color="#9ca3af";}}>+ Column</button>
-                </div>
-              </div>}
-
+              {board&&plannerView==="kanban"&&<KanbanView/>}
+              {board&&plannerView==="list"&&<ListView/>}
+              {board&&plannerView==="calendar"&&<CalendarView/>}
               {!board&&<div style={{textAlign:"center",color:"#9ca3af",padding:60,fontSize:14}}>Loading boards...</div>}
 
               {/* Card detail modal */}
               {viewCard&&<Modal title="" onClose={()=>{setViewCard(null);setEditCard(null);}}>
-                {editCard?<div>
-                  <input value={editCard.title} onChange={e=>setEditCard({...editCard,title:e.target.value})} placeholder="Task name" style={{width:"100%",fontSize:16,fontWeight:700,padding:"8px 0",border:"none",borderBottom:"2px solid #e5e7eb",outline:"none",boxSizing:"border-box",marginBottom:12}}/>
-                  <textarea value={editCard.description||""} onChange={e=>setEditCard({...editCard,description:e.target.value})} rows={3} placeholder="Add description..." style={{width:"100%",fontSize:13,padding:"10px 12px",border:"1px solid #e5e7eb",borderRadius:8,resize:"vertical",boxSizing:"border-box",color:"#374151"}}/>
+                {editCard?<div style={{maxHeight:"70vh",overflowY:"auto"}}>
+                  <input value={editCard.title} onChange={e=>setEditCard({...editCard,title:e.target.value})} style={{width:"100%",fontSize:16,fontWeight:700,padding:"8px 0",border:"none",borderBottom:"2px solid #e5e7eb",outline:"none",boxSizing:"border-box",marginBottom:12}}/>
+                  <textarea value={editCard.description||""} onChange={e=>setEditCard({...editCard,description:e.target.value})} rows={3} placeholder="Description..." style={{width:"100%",fontSize:13,padding:"10px 12px",border:"1px solid #e5e7eb",borderRadius:8,resize:"vertical",boxSizing:"border-box"}}/>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:12}}>
                     <div><label style={{fontSize:11,fontWeight:600,color:"#6b7280",display:"block",marginBottom:4}}>Assign to</label>
-                    <select value={editCard.assignee||""} onChange={e=>setEditCard({...editCard,assignee:e.target.value})} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #e5e7eb",borderRadius:8,boxSizing:"border-box"}}>
-                      <option value="">Unassigned</option>
+                    <select multiple value={editCard.assignees||[]} onChange={e=>{const sel=[...e.target.selectedOptions].map(o=>o.value);setEditCard({...editCard,assignees:sel});}} style={{width:"100%",fontSize:12,padding:"6px",border:"1px solid #e5e7eb",borderRadius:8,boxSizing:"border-box",minHeight:80}}>
                       {allMembers.map(m=><option key={m}>{m}</option>)}
-                    </select></div>
+                    </select><div style={{fontSize:9,color:"#9ca3af",marginTop:2}}>Hold Ctrl/Cmd to select multiple</div></div>
                     <div><label style={{fontSize:11,fontWeight:600,color:"#6b7280",display:"block",marginBottom:4}}>Due date</label>
-                    <input type="date" value={editCard.dueDate||""} onChange={e=>setEditCard({...editCard,dueDate:e.target.value})} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #e5e7eb",borderRadius:8,boxSizing:"border-box"}}/></div>
+                    <input type="date" value={editCard.dueDate||""} onChange={e=>setEditCard({...editCard,dueDate:e.target.value})} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #e5e7eb",borderRadius:8,boxSizing:"border-box"}}/>
+                    <label style={{fontSize:11,fontWeight:600,color:"#6b7280",display:"block",marginBottom:4,marginTop:10}}>Move to</label>
+                    <select value={editCard.column} onChange={e=>setEditCard({...editCard,column:e.target.value})} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #e5e7eb",borderRadius:8,boxSizing:"border-box"}}>{columns.map(c=><option key={c}>{c}</option>)}</select></div>
                   </div>
-                  <div style={{marginTop:12}}><label style={{fontSize:11,fontWeight:600,color:"#6b7280",display:"block",marginBottom:4}}>Move to</label>
-                  <select value={editCard.column} onChange={e=>setEditCard({...editCard,column:e.target.value})} style={{fontSize:12,padding:"8px 10px",border:"1px solid #e5e7eb",borderRadius:8}}>
-                    {columns.map(c=><option key={c}>{c}</option>)}
-                  </select></div>
                   <div style={{marginTop:12}}><label style={{fontSize:11,fontWeight:600,color:"#6b7280",display:"block",marginBottom:6}}>Labels</label>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{LABELS.map(lb=>{const active=(editCard.labels||[]).includes(lb.l);return<button key={lb.l} onClick={()=>{setEditCard({...editCard,labels:active?(editCard.labels||[]).filter(x=>x!==lb.l):[...(editCard.labels||[]),lb.l]});}} style={{fontSize:11,padding:"4px 12px",borderRadius:20,border:"none",background:active?lb.c:"#f3f4f6",color:active?"#fff":"#6b7280",cursor:"pointer",fontWeight:600,transition:"all .1s"}}>{lb.l}</button>})}</div></div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{LABELS.map(lb=>{const active=(editCard.labels||[]).includes(lb.l);return<button key={lb.l} onClick={()=>{setEditCard({...editCard,labels:active?(editCard.labels||[]).filter(x=>x!==lb.l):[...(editCard.labels||[]),lb.l]});}} style={{fontSize:11,padding:"4px 12px",borderRadius:20,border:"none",background:active?lb.c:"#f3f4f6",color:active?"#fff":"#6b7280",cursor:"pointer",fontWeight:600}}>{lb.l}</button>})}</div></div>
+                  {/* Checklist editor */}
+                  <div style={{marginTop:12}}><label style={{fontSize:11,fontWeight:600,color:"#6b7280",display:"block",marginBottom:6}}>Checklist</label>
+                  {(editCard.checklist||[]).map((item,i)=><div key={item.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                    <input type="checkbox" checked={item.done} onChange={()=>{const cl=[...(editCard.checklist||[])];cl[i]={...cl[i],done:!cl[i].done};setEditCard({...editCard,checklist:cl});}}/>
+                    <input value={item.text} onChange={e=>{const cl=[...(editCard.checklist||[])];cl[i]={...cl[i],text:e.target.value};setEditCard({...editCard,checklist:cl});}} style={{flex:1,fontSize:12,padding:"4px 8px",border:"1px solid #e5e7eb",borderRadius:4}}/>
+                    <button onClick={()=>{setEditCard({...editCard,checklist:(editCard.checklist||[]).filter(x=>x.id!==item.id)});}} style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer"}}>✕</button>
+                  </div>)}
+                  <button onClick={()=>{setEditCard({...editCard,checklist:[...(editCard.checklist||[]),{id:uid(),text:"",done:false}]});}} style={{fontSize:11,color:teamColor,background:"none",border:"none",cursor:"pointer",fontWeight:600,marginTop:4}}>+ Add item</button></div>
+                  {/* Links editor */}
+                  <div style={{marginTop:12}}><label style={{fontSize:11,fontWeight:600,color:"#6b7280",display:"block",marginBottom:6}}>Links</label>
+                  {(editCard.links||[]).map((link,i)=><div key={link.id} style={{display:"flex",gap:6,marginBottom:4}}>
+                    <input value={link.label} onChange={e=>{const lk=[...(editCard.links||[])];lk[i]={...lk[i],label:e.target.value};setEditCard({...editCard,links:lk});}} placeholder="Label" style={{width:100,fontSize:12,padding:"4px 8px",border:"1px solid #e5e7eb",borderRadius:4}}/>
+                    <input value={link.url} onChange={e=>{const lk=[...(editCard.links||[])];lk[i]={...lk[i],url:e.target.value};setEditCard({...editCard,links:lk});}} placeholder="URL" style={{flex:1,fontSize:12,padding:"4px 8px",border:"1px solid #e5e7eb",borderRadius:4}}/>
+                    <button onClick={()=>{setEditCard({...editCard,links:(editCard.links||[]).filter(x=>x.id!==link.id)});}} style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer"}}>✕</button>
+                  </div>)}
+                  <button onClick={()=>{setEditCard({...editCard,links:[...(editCard.links||[]),{id:uid(),label:"",url:""}]});}} style={{fontSize:11,color:teamColor,background:"none",border:"none",cursor:"pointer",fontWeight:600,marginTop:4}}>+ Add link</button></div>
                   <div style={{display:"flex",gap:8,marginTop:16}}>
-                    <button onClick={()=>{updateCard(editCard.id,editCard);setViewCard(editCard);setEditCard(null);toast2("Updated.");}} style={{padding:"8px 24px",background:teamColor,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>Save Changes</button>
-                    <button onClick={()=>setEditCard(null)} style={{padding:"8px 16px",color:"#6b7280",background:"#f3f4f6",border:"none",borderRadius:8,cursor:"pointer",fontSize:13}}>Cancel</button>
+                    <button onClick={()=>{
+                      // Track changes for activity log
+                      const oldCard=viewCard;const acts=[...(editCard.activity||[])];
+                      if(editCard.column!==oldCard.column)acts.push({id:uid(),action:"moved to "+editCard.column,by:currentUser?.displayName,at:new Date().toISOString()});
+                      const oldAssignees=(oldCard.assignees||[]).join(",");const newAssignees=(editCard.assignees||[]).join(",");
+                      if(newAssignees!==oldAssignees){
+                        const added=(editCard.assignees||[]).filter(n=>!(oldCard.assignees||[]).includes(n));
+                        if(added.length)acts.push({id:uid(),action:"assigned "+added.join(", "),by:currentUser?.displayName,at:new Date().toISOString()});
+                        // Notify new assignees
+                        added.forEach(name=>{const acct=liveAccounts.find(a=>a.displayName===name);if(acct&&acct.username!==currentUser?.username)addNotif(acct.username,"You were assigned to '"+editCard.title+"' by "+currentUser?.displayName);});
+                      }
+                      const updated={...editCard,activity:acts};saveCard(updated);setViewCard(updated);setEditCard(null);toast2("Updated.");
+                    }} style={{padding:"8px 24px",background:teamColor,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>Save</button>
+                    <button onClick={()=>setEditCard(null)} style={{padding:"8px 16px",color:"#6b7280",background:"#f3f4f6",border:"none",borderRadius:8,cursor:"pointer"}}>Cancel</button>
                   </div>
-                </div>:<div>
-                  <div style={{fontSize:18,fontWeight:800,color:"#111827",marginBottom:4}}>{viewCard.title}</div>
+                </div>:<div style={{maxHeight:"70vh",overflowY:"auto"}}>
+                  <div style={{fontSize:18,fontWeight:800,color:"#111827",marginBottom:6}}>{viewCard.title}</div>
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
                     <span style={{fontSize:11,color:"#fff",background:{"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706","Done":"#059669"}[viewCard.column]||teamColor,borderRadius:20,padding:"3px 12px",fontWeight:600}}>{viewCard.column}</span>
-                    {viewCard.assignee&&<span style={{fontSize:11,color:teamColor,fontWeight:600}}>{viewCard.assignee}</span>}
-                    {viewCard.dueDate&&<span style={{fontSize:11,color:viewCard.dueDate<todayNZ()?"#dc2626":"#6b7280"}}>{(viewCard.dueDate<todayNZ()?"⚠ Overdue: ":"Due: ")+fmtNZDate(viewCard.dueDate)}</span>}
+                    {(viewCard.assignees||[viewCard.assignee]).filter(Boolean).map((n,i)=><span key={i} style={{fontSize:11,color:teamColor,fontWeight:600}}>{n}</span>)}
+                    {viewCard.dueDate&&<span style={{fontSize:11,color:viewCard.dueDate<todayS?"#dc2626":"#6b7280"}}>{(viewCard.dueDate<todayS?"⚠ Overdue: ":"Due: ")+fmtNZDate(viewCard.dueDate)}</span>}
                   </div>
                   {viewCard.labels?.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>{viewCard.labels.map((l,i)=>{const lb=LABELS.find(x=>x.l===l);return<span key={i} style={{fontSize:11,fontWeight:600,color:"#fff",background:lb?.c||"#6b7280",borderRadius:20,padding:"3px 12px"}}>{l}</span>})}</div>}
                   {viewCard.description?<div style={{fontSize:13,color:"#374151",lineHeight:1.6,marginBottom:14,padding:"12px 16px",background:"#f9fafb",borderRadius:10,whiteSpace:"pre-wrap"}}>{viewCard.description}</div>:<div style={{fontSize:12,color:"#d1d5db",fontStyle:"italic",marginBottom:14}}>No description</div>}
+                  {/* Checklist */}
+                  {(viewCard.checklist||[]).length>0&&<div style={{marginBottom:14}}><div style={{fontSize:13,fontWeight:700,color:"#111827",marginBottom:6}}>{"Checklist ("+viewCard.checklist.filter(x=>x.done).length+"/"+viewCard.checklist.length+")"}</div>
+                  <div style={{marginBottom:6,height:4,background:"#e5e7eb",borderRadius:2,overflow:"hidden"}}><div style={{width:Math.round(viewCard.checklist.filter(x=>x.done).length/viewCard.checklist.length*100)+"%",height:"100%",background:teamColor,borderRadius:2}}/></div>
+                  {viewCard.checklist.map(item=><div key={item.id} onClick={()=>{const cl=viewCard.checklist.map(x=>x.id===item.id?{...x,done:!x.done}:x);const updated={...viewCard,checklist:cl};saveCard(updated);setViewCard(updated);}} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",cursor:"pointer"}}><div style={{width:16,height:16,borderRadius:4,border:"2px solid "+(item.done?"#059669":"#d1d5db"),background:item.done?"#059669":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:10,flexShrink:0}}>{item.done?"✓":""}</div><span style={{fontSize:12,color:item.done?"#9ca3af":"#111827",textDecoration:item.done?"line-through":"none"}}>{item.text}</span></div>)}</div>}
+                  {/* Links */}
+                  {(viewCard.links||[]).length>0&&<div style={{marginBottom:14}}><div style={{fontSize:13,fontWeight:700,color:"#111827",marginBottom:6}}>Links</div>
+                  {viewCard.links.map(link=><a key={link.id} href={link.url.startsWith("http")?link.url:"https://"+link.url} target="_blank" rel="noopener" style={{display:"block",fontSize:12,color:"#2563eb",marginBottom:4,textDecoration:"underline"}}>{"🔗 "+(link.label||link.url)}</a>)}</div>}
                   <div style={{fontSize:10,color:"#9ca3af",marginBottom:14}}>{"Created by "+viewCard.createdBy+" · "+fmtNZDate(viewCard.createdAt?.slice(0,10))}</div>
-
                   {/* Comments */}
                   <div style={{borderTop:"1px solid #f0f0f0",paddingTop:14}}>
                     <div style={{fontSize:13,fontWeight:700,color:"#111827",marginBottom:10}}>{"Comments"+(viewCard.comments?.length?" ("+viewCard.comments.length+")":"")}</div>
-                    {(viewCard.comments||[]).length===0&&<div style={{fontSize:12,color:"#d1d5db",fontStyle:"italic",marginBottom:10}}>No comments yet</div>}
-                    {(viewCard.comments||[]).map(c=><div key={c.id} style={{padding:"10px 12px",background:"#f9fafb",borderRadius:8,marginBottom:6}}>
-                      <div style={{fontSize:12,color:"#111827",lineHeight:1.5}}>{c.text}</div>
-                      <div style={{fontSize:10,color:"#9ca3af",marginTop:4}}>{c.by+" · "+new Date(c.at).toLocaleString("en-NZ",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
-                    </div>)}
-                    <div style={{display:"flex",gap:8,marginTop:8}}>
-                      <input id="pc_comment" placeholder="Write a comment..." onKeyDown={e=>{if(e.key==="Enter"){addComment(viewCard.id,e.target.value);e.target.value="";}}} style={{flex:1,fontSize:12,padding:"10px 12px",border:"1px solid #e5e7eb",borderRadius:8}}/>
-                      <button onClick={()=>{const el=document.getElementById("pc_comment");if(el){addComment(viewCard.id,el.value);el.value="";}}} style={{fontSize:12,padding:"10px 16px",background:teamColor,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>Post</button>
-                    </div>
+                    {(viewCard.comments||[]).map(c=><div key={c.id} style={{padding:"10px 12px",background:"#f9fafb",borderRadius:8,marginBottom:6}}><div style={{fontSize:12,color:"#111827",lineHeight:1.5}}>{c.text}</div><div style={{fontSize:10,color:"#9ca3af",marginTop:4}}>{c.by+" · "+new Date(c.at).toLocaleString("en-NZ",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div></div>)}
+                    <div style={{display:"flex",gap:8,marginTop:8}}><input id="pc_comment" placeholder="Write a comment..." onKeyDown={e=>{if(e.key==="Enter"){addComment(viewCard.id,e.target.value);e.target.value="";}}} style={{flex:1,fontSize:12,padding:"10px 12px",border:"1px solid #e5e7eb",borderRadius:8}}/><button onClick={()=>{const el=document.getElementById("pc_comment");if(el){addComment(viewCard.id,el.value);el.value="";}}} style={{fontSize:12,padding:"10px 16px",background:teamColor,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>Post</button></div>
                   </div>
-
+                  {/* Activity log */}
+                  {(viewCard.activity||[]).length>0&&<div style={{borderTop:"1px solid #f0f0f0",paddingTop:14,marginTop:14}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#111827",marginBottom:8}}>Activity</div>
+                    {[...(viewCard.activity||[])].reverse().slice(0,15).map(a=><div key={a.id} style={{fontSize:11,color:"#9ca3af",padding:"4px 0",display:"flex",gap:6}}><span style={{fontWeight:600,color:"#6b7280"}}>{a.by}</span><span>{a.action}</span><span style={{marginLeft:"auto",fontSize:10,whiteSpace:"nowrap"}}>{new Date(a.at).toLocaleString("en-NZ",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</span></div>)}
+                  </div>}
                   <div style={{display:"flex",gap:8,marginTop:16,borderTop:"1px solid #f0f0f0",paddingTop:14}}>
-                    <button onClick={()=>setEditCard({...viewCard})} style={{padding:"8px 20px",background:teamColor,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>Edit</button>
+                    <button onClick={()=>setEditCard({...viewCard})} style={{padding:"8px 20px",background:teamColor,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>Edit</button>
                     <button onClick={()=>deleteCard(viewCard.id)} style={{padding:"8px 16px",color:"#dc2626",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,cursor:"pointer",fontSize:12}}>Delete</button>
                   </div>
                 </div>}

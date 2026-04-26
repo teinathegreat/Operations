@@ -401,6 +401,7 @@ function App(){
   const[plannerView,setPlannerView]=useState("kanban");
   const[plannerSearch,setPlannerSearch]=useState("");
   const[showArchive,setShowArchive]=useState(false);
+  const[tgtOwners,setTgtOwners]=useState({});
   const[alertNameRevealed,setAlertNameRevealed]=useState(false);
 
   const addNotif=(forUser,msg)=>{const n={id:Date.now().toString(36),forUser,msg,read:false,createdAt:new Date().toISOString()};setNotifications(prev=>[n,...prev.slice(0,100)]);dbUpsert("notif_entries",n);};
@@ -795,7 +796,7 @@ function App(){
     setSbMsg("Loading from Supabase...");
     try{
       // Load row-level tables + config from config_rows
-      const[cr2,ai2,td2,dr2,mn2,ah2,gl2,au2,nf2,aa2,pb2,pc2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence]=await Promise.all([
+      const[cr2,ai2,td2,dr2,mn2,ah2,gl2,au2,nf2,aa2,pb2,pc2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence,rc_tgt]=await Promise.all([
         dbLoadAll("call_reviews"),dbLoadAll("action_items"),dbLoadAll("todos"),dbLoadAll("daily_reports"),
         dbLoadAll("meeting_notes"),dbLoadAll("assess_history"),dbLoadAll("goals"),
         dbLoadAll("audit_entries"),dbLoadAll("notif_entries"),dbLoadAll("alert_entries"),
@@ -803,7 +804,7 @@ function App(){
         dbLoadConfig("caps"),dbLoadConfig("capcrit"),dbLoadConfig("notes"),dbLoadConfig("onboard"),
         dbLoadConfig("perms"),dbLoadConfig("dailycfg"),dbLoadConfig("snooze"),
         dbLoadConfig("sched"),dbLoadConfig("ic"),dbLoadConfig("icppt"),
-        dbLoadConfig("weights"),dbLoadConfig("revcrit"),dbLoadConfig("sys"),dbLoadConfig("presence")
+        dbLoadConfig("weights"),dbLoadConfig("revcrit"),dbLoadConfig("sys"),dbLoadConfig("presence"),dbLoadConfig("tgt")
       ]);
       // sys config holds app_data, accounts, api_keys, quick_refs, update_notes, etc.
       const sysConf=rc_sys||{};
@@ -883,6 +884,7 @@ function App(){
       if(f_qr&&Array.isArray(f_qr))setQuickRefs(f_qr);
       if(f_un&&Array.isArray(f_un))setUpdateNotes(f_un);
       if(f_rcc&&typeof f_rcc==="object")setReviewCriteriaConfig(f_rcc);
+      if(rc_tgt&&typeof rc_tgt==="object")setTgtOwners(rc_tgt);
       if(f_ak&&typeof f_ak==="object"){if(f_ak.openai){setOpenaiKey(f_ak.openai);try{localStorage.setItem("bc_openai_key",f_ak.openai);}catch{}}if(f_ak.claude){setClaudeKey(f_ak.claude);try{localStorage.setItem("bc_claude_key",f_ak.claude);}catch{}}}
       setSbMsg("Data loaded ✓");
       // Run migrations if needed (one-time)
@@ -5148,6 +5150,49 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}><div style={{fontSize:14,fontWeight:700,color:"#111827",flex:1}}>{"Today's Submissions"}</div>
                 {morningData&&<button onClick={()=>{const fields=cfg.morning.filter(f=>f.t!=="members"&&f.k!=="agents");const checks={};fields.forEach(f=>{checks[f.k]=true;});setReportTeamChecks(checks);setReportTeamModal({teamName:myTeam,morning:morningData,evening:eveningData,cfg});}} style={{fontSize:11,color:"#fff",background:"#0d9488",border:"none",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontWeight:600}}>Report To Team</button>}
                 </div>
+
+                {/* Target Ownership */}
+                {morningData&&(()=>{
+                  const dateKey=myTeam+":"+todayNZ();
+                  const owners=tgtOwners[dateKey]||{};
+                  const metricFields=cfg.morning.filter(f=>f.t!=="members"&&f.k!=="agents");
+                  const tgtFields=metricFields.filter(f=>{const tgtKey="_tgt_"+f.k;return morningData.fields?.[tgtKey];});
+                  const teamMems=(roster[myTeam]?.members||[]).map(m=>m.name);
+                  if(!tgtFields.length)return null;
+                  const setOwner=(metricKey,name)=>{const curr=Array.isArray(owners[metricKey])?owners[metricKey]:owners[metricKey]?[owners[metricKey]]:[];const next=curr.includes(name)?curr.filter(n=>n!==name):[...curr,name];const updated={...owners,[metricKey]:next};const newTgt={...tgtOwners,[dateKey]:updated};setTgtOwners(newTgt);dbSaveConfigKey("tgt",dateKey,updated);};
+                  const getOwnerList=(metricKey)=>{const v=owners[metricKey];if(!v)return[];if(Array.isArray(v))return v;return v?[v]:[];};
+                  // Progress icons: ✅ hit, 🔶 good progress (>=80%), ❌ no change or worse
+                  const progressIcon=(morningVal,eveningVal,targetVal)=>{const m=parseFloat(morningVal)||0;const e=parseFloat(eveningVal);const t=parseFloat(targetVal);if(isNaN(e)||isNaN(t))return{icon:"—",label:"No data",color:"#9ca3af"};if(e>=t)return{icon:"✅",label:"HIT",color:"#059669"};const progress=t>0?(e/t)*100:0;if(e>m&&progress>=80)return{icon:"🔶",label:"CLOSE ("+Math.round(progress)+"%)",color:"#d97706"};if(e>m)return{icon:"📈",label:"PROGRESS ("+Math.round(progress)+"%)",color:"#2563eb"};if(e<=m)return{icon:"❌",label:"NO CHANGE",color:"#dc2626"};return{icon:"—",label:"",color:"#9ca3af"};};
+                  const copyMorningBrief=()=>{let msg="☀️ "+myTeam+" — Morning Brief ("+todayNZ()+")\n"+"═".repeat(40)+"\n\n";
+                    msg+="📊 TODAY'S TARGETS & OWNERSHIP\n\n";
+                    tgtFields.forEach(f=>{const tgtVal=morningData.fields?.["_tgt_"+f.k]||"—";const currentVal=morningData.fields?.[f.k]||"0";const ol=getOwnerList(f.k);msg+="• "+f.l+": "+currentVal+" → Target: "+tgtVal+(ol.length?" — 👤 "+ol.join(", "):"")+"\n";});
+                    const unassigned=tgtFields.filter(f=>!getOwnerList(f.k).length);
+                    if(unassigned.length)msg+="\n⚠ "+unassigned.length+" target"+(unassigned.length>1?"s":"")+" unassigned\n";
+                    msg+="\n📌 REMINDERS\n• If you feel you won't hit your target, let your team leader know a few hours before end of shift so we can re-prioritise the workload.\n• Check in at the halfway point — don't wait until the end.\n\nLet's have a great day! 💪";
+                    try{navigator.clipboard.writeText(msg);toast2("Morning brief copied!");}catch{toast2("Copy failed");}};
+                  const copyEveningWrap=()=>{let msg="🌙 "+myTeam+" — Evening Wrap-Up ("+todayNZ()+")\n"+"═".repeat(40)+"\n\n";
+                    msg+="📊 RESULTS vs TARGETS\n\n";
+                    let hitCount=0;
+                    tgtFields.forEach(f=>{const tgtVal=morningData.fields?.["_tgt_"+f.k]||"—";const mVal=morningData.fields?.[f.k]||"0";const evVal=eveningData?.fields?.[f.k]||mVal;const ol=getOwnerList(f.k);const p=progressIcon(mVal,evVal,tgtVal);if(p.icon==="✅")hitCount++;msg+=p.icon+" "+f.l+": "+evVal+" / "+tgtVal+(ol.length?" — 👤 "+ol.join(", "):"")+" "+p.label+"\n";});
+                    msg+="\n📈 "+hitCount+"/"+tgtFields.length+" targets hit\n";
+                    msg+="\nGreat work today team! 🙌";
+                    try{navigator.clipboard.writeText(msg);toast2("Evening wrap-up copied!");}catch{toast2("Copy failed");}};
+                  return<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"16px 20px",marginBottom:12}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                      <span style={{fontSize:14}}>🎯</span>
+                      <span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>Target Ownership</span>
+                      <button onClick={copyMorningBrief} style={{fontSize:10,color:"#fff",background:"#d97706",border:"none",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontWeight:600}}>☀️ Copy Morning Brief</button>
+                      {eveningData&&<button onClick={copyEveningWrap} style={{fontSize:10,color:"#fff",background:"#7c3aed",border:"none",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontWeight:600}}>🌙 Copy Evening Wrap-Up</button>}
+                    </div>
+                    {tgtFields.map(f=>{const tgtVal=morningData.fields?.["_tgt_"+f.k]||"—";const ol=getOwnerList(f.k);
+                    return<div key={f.k} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #f3f4f6"}}>
+                      <div style={{width:140}}><div style={{fontSize:12,fontWeight:600,color:"#111827"}}>{f.l}</div><div style={{fontSize:11,color:"#6b7280"}}>{"Target: "+tgtVal}</div></div>
+                      <div style={{flex:1,display:"flex",gap:4,flexWrap:"wrap"}}>
+                        {teamMems.map(m=>{const active=ol.includes(m);return<button key={m} onClick={()=>setOwner(f.k,m)} style={{fontSize:10,padding:"3px 10px",borderRadius:20,border:"none",background:active?"#0d9488":"#f3f4f6",color:active?"#fff":"#6b7280",cursor:"pointer",fontWeight:active?700:500,transition:"all .1s"}}>{m.split(" ")[0]}</button>})}
+                      </div>
+                    </div>})}
+                  </div>;
+                })()}
 
                 {/* Side-by-side comparison when both exist */}
                 {morningData&&eveningData&&(()=>{

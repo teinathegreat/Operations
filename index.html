@@ -864,8 +864,9 @@ function App(){
       // Run migrations if needed (one-time)
       if(useFallback)setTimeout(()=>{console.log("Triggering array migration...");migrateToRows();},2000);
       if(!configMigrated)setTimeout(()=>{console.log("Triggering config migration...");migrateConfigToRows();migrateSysToRows();},3000);
-      // Always check if sys data needs migrating (may have been missed)
-      if(Object.keys(sysConf).length===0)setTimeout(()=>{console.log("Triggering sys migration...");migrateSysToRows();},3500);
+      // Check if specific sys keys are missing and need migrating
+      const sysMissing=!sysConf.quick_refs&&!sysConf.update_notes&&!sysConf.app_data;
+      if(sysMissing)setTimeout(()=>{console.log("Triggering sys migration (missing keys)...");migrateSysToRows();},3500);
       // Check if audit/notifs/alerts need re-migration from bc_store
       if(f_au.length===0||f_nf.length===0){
         setTimeout(async()=>{

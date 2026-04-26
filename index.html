@@ -22,6 +22,35 @@ table{font-variant-numeric:tabular-nums;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 @keyframes slideIn{from{opacity:0;transform:translateX(-12px);}to{opacity:1;transform:translateX(0);}}
 @keyframes toastPop{from{opacity:0;transform:translateY(-10px) scale(.95);}to{opacity:1;transform:translateY(0) scale(1);}}
+@keyframes toastSlide{from{opacity:0;transform:translateX(30px);}to{opacity:1;transform:translateX(0);}}
+@keyframes modalSlideUp{from{opacity:0;transform:translateY(20px) scale(.98);}to{opacity:1;transform:translateY(0) scale(1);}}
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+@keyframes shimmer{0%{background-position:-200px 0;}100%{background-position:calc(200px + 100%) 0;}}
+/* Smooth interactions */
+.bc-card-hover{transition:transform .15s,box-shadow .15s;}
+.bc-card-hover:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.08)!important;}
+/* Button hover */
+button{transition:opacity .12s,transform .12s,background .15s,color .15s,border-color .15s,box-shadow .15s;}
+button:active{transform:scale(.97);}
+/* Input focus */
+input:focus,textarea:focus,select:focus{outline:none;border-color:#0d9488!important;box-shadow:0 0 0 3px rgba(13,148,136,.1);}
+/* Smooth scroll */
+html{scroll-behavior:smooth;}
+/* Custom scrollbar */
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:#9ca3af;}
+/* Selection color */
+::selection{background:#ccfbf1;color:#0f766e;}
+/* Modal backdrop */
+.bc-modal-backdrop{animation:fadeIn .2s ease;}
+.bc-modal-content{animation:modalSlideUp .25s ease;}
+/* Page fade in */
+.bc-page-fade{animation:fadeUp .25s ease;}
+/* Sidebar link hover */
+.bc-sidebar-link{transition:all .12s;border-radius:8px;}
+.bc-sidebar-link:hover{background:rgba(255,255,255,.08);}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
 .bc-sidebar-item{display:flex;align-items:center;gap:10px;width:100%;padding:9px 16px;border:none;background:transparent;color:#9ca3af;font-size:13px;font-weight:500;cursor:pointer;border-radius:8px;text-align:left;transition:all .15s;font-family:inherit;letter-spacing:.01em;}
 .bc-sidebar-item:hover{background:rgba(255,255,255,.06);color:#e5e7eb;}
@@ -228,8 +257,8 @@ const S={
 
 function Modal({title,sub,onClose,children,footer,wide}){
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:20,animation:"fadeUp .2s ease"}}>
-      <div style={{background:"#fff",borderRadius:10,width:"100%",maxWidth:wide?740:540,maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 25px 60px rgba(0,0,0,.15)"}}>
+    <div className="bc-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:20}}>
+      <div className="bc-modal-content" style={{background:"#fff",borderRadius:14,width:"100%",maxWidth:wide?740:540,maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 25px 60px rgba(0,0,0,.18)"}}>
         <div style={{padding:"16px 22px",borderBottom:"1px solid #f3f4f6",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
           <div><div style={{fontWeight:700,fontSize:16,color:"#111827"}}>{title}</div>{sub&&<div style={{fontSize:12,color:"#9ca3af",marginTop:2}}>{sub}</div>}</div>
           <button onClick={onClose} style={{background:"#f9fafb",border:"1px solid #e5e7eb",cursor:"pointer",fontSize:16,color:"#9ca3af",lineHeight:1,width:30,height:30,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
@@ -584,6 +613,31 @@ function App(){
   // ── ROW-LEVEL DATABASE OPERATIONS ──────────────────────────────────────
   // Each record is its own row. No more giant JSON blobs. No more conflicts.
   const dbHeaders=()=>{const k=sbKeyRef.current;return{"apikey":k,"Authorization":"Bearer "+k,"Content-Type":"application/json"};};
+  // ── OFFLINE QUEUE & SAVE INDICATOR ──────────────────────────────
+  const offlineQueue=useRef([]);
+  const[saveStatus,setSaveStatus]=useState("saved"); // saved | saving | offline | error
+  const[queueCount,setQueueCount]=useState(0);
+  const activeSaves=useRef(0);
+  const updateSaveStatus=()=>{if(offlineQueue.current.length>0){setSaveStatus("offline");setQueueCount(offlineQueue.current.length);}else if(activeSaves.current>0)setSaveStatus("saving");else setSaveStatus("saved");};
+  const addToQueue=(op)=>{offlineQueue.current.push({...op,attempts:0,addedAt:new Date().toISOString()});updateSaveStatus();};
+  // Retry queue every 15 seconds
+  useEffect(()=>{const iv=setInterval(async()=>{if(!offlineQueue.current.length||!sbUrlRef.current)return;
+    const batch=[...offlineQueue.current];offlineQueue.current=[];let failed=[];
+    for(const op of batch){
+      try{let resp;
+        if(op.type==="upsert")resp=await fetch(sbUrlRef.current+"/rest/v1/"+op.table,{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(op.body)});
+        else if(op.type==="delete")resp=await fetch(sbUrlRef.current+"/rest/v1/"+op.table+"?id=eq."+encodeURIComponent(op.id),{method:"DELETE",headers:{"apikey":sbKeyRef.current,"Authorization":"Bearer "+sbKeyRef.current}});
+        else if(op.type==="config")resp=await fetch(sbUrlRef.current+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(op.body)});
+        if(!resp?.ok){op.attempts++;if(op.attempts<10)failed.push(op);}
+      }catch{op.attempts++;if(op.attempts<10)failed.push(op);}
+    }
+    offlineQueue.current=failed;updateSaveStatus();
+    if(failed.length===0&&batch.length>0)toast3("✓ All queued saves synced","success");
+  },15000);return()=>clearInterval(iv);},[]);
+  // Enhanced toast
+  const[toasts,setToasts]=useState([]);
+  const toast3=(msg,type="info")=>{const id=Date.now();setToasts(prev=>[...prev,{id,msg,type}]);setTimeout(()=>setToasts(prev=>prev.filter(t=>t.id!==id)),4000);};
+  const toast2=(msg)=>{if(msg.includes("⚠")||msg.includes("fail")||msg.includes("Failed"))toast3(msg,"error");else if(msg.includes("✓")||msg.includes("saved")||msg.includes("copied")||msg.includes("Added")||msg.includes("Resolved")||msg.includes("Updated")||msg.includes("Deleted")||msg.includes("Copied")||msg.includes("created")||msg.includes("Assigned")||msg.includes("Actioned"))toast3(msg,"success");else toast3(msg,"info");};
   const dbLoadAll=async(table)=>{
     const url=sbUrlRef.current,key=sbKeyRef.current;if(!url||!key)return[];
     try{const resp=await fetch(url+"/rest/v1/"+table+"?select=id,data&order=created_at.desc&limit=5000",{headers:{"apikey":key,"Authorization":"Bearer "+key}});
@@ -592,13 +646,18 @@ function App(){
   };
   const dbUpsert=async(table,item)=>{
     const url=sbUrlRef.current,key=sbKeyRef.current;if(!url||!key||!item?.id)return;
-    try{const resp=await fetch(url+"/rest/v1/"+table,{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id:item.id,data:item,updated_at:new Date().toISOString()})});
-    if(!resp.ok){const txt=await resp.text().catch(()=>"");console.error("dbUpsert "+table+" FAILED ("+resp.status+"):",txt);toast2("⚠ Save failed — check your connection and try again.");}}catch(e){console.error("dbUpsert "+table+" error:",e);toast2("⚠ Save failed — check your connection.");}
+    activeSaves.current++;updateSaveStatus();
+    const body={id:item.id,data:item,updated_at:new Date().toISOString()};
+    try{const resp=await fetch(url+"/rest/v1/"+table,{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(body)});
+    if(!resp.ok){addToQueue({type:"upsert",table,body});toast3("⚠ Save queued — will retry","warning");}}catch(e){addToQueue({type:"upsert",table,body});toast3("⚠ Offline — save queued","warning");}
+    finally{activeSaves.current--;updateSaveStatus();}
   };
   const dbDeleteRow=async(table,id)=>{
     const url=sbUrlRef.current,key=sbKeyRef.current;if(!url||!key||!id)return;
+    activeSaves.current++;updateSaveStatus();
     try{const resp=await fetch(url+"/rest/v1/"+table+"?id=eq."+encodeURIComponent(id),{method:"DELETE",headers:{"apikey":key,"Authorization":"Bearer "+key}});
-    if(!resp.ok)toast2("⚠ Delete may have failed — refresh to check.");}catch(e){console.error("dbDelete "+table+" error:",e);toast2("⚠ Delete failed — check your connection.");}
+    if(!resp.ok)addToQueue({type:"delete",table,id});}catch(e){addToQueue({type:"delete",table,id});}
+    finally{activeSaves.current--;updateSaveStatus();}
   };
   const dbBulkInsert=async(table,items)=>{
     const url=sbUrlRef.current,key=sbKeyRef.current;if(!url||!key||!items?.length)return;
@@ -622,9 +681,11 @@ function App(){
   };
   const dbSaveConfigKey=async(prefix,key,value)=>{
     const url=sbUrlRef.current,k=sbKeyRef.current;if(!url||!k||!key)return;
-    const id=prefix+":"+key;
-    try{const resp=await fetch(url+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id,data:value,updated_at:new Date().toISOString()})});
-    if(!resp.ok){console.error("dbSaveConfigKey "+id+" failed:",resp.status);toast2("⚠ Save failed — check your connection.");}}catch(e){console.error("dbSaveConfigKey error:",e);toast2("⚠ Save failed — check your connection.");}
+    activeSaves.current++;updateSaveStatus();
+    const id=prefix+":"+key;const body={id,data:value,updated_at:new Date().toISOString()};
+    try{const resp=await fetch(url+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(body)});
+    if(!resp.ok)addToQueue({type:"config",body});}catch(e){addToQueue({type:"config",body});}
+    finally{activeSaves.current--;updateSaveStatus();}
   };
   const dbDeleteConfigKey=async(prefix,key)=>{
     const url=sbUrlRef.current,k=sbKeyRef.current;if(!url||!k)return;
@@ -1218,7 +1279,7 @@ function App(){
   const setRV=(v)=>{setRemoteVersion(v);try{localStorage.setItem("bc_remote_ver",v);}catch{}};
   useEffect(()=>{setVersionOutdated(!!(remoteVersion&&remoteVersion!==APP_VERSION&&remoteVersion>APP_VERSION&&currentUser?.role!=="admin"));},[remoteVersion]);
   useEffect(()=>{if(!currentUser||!sbUrl||!sbKey)return;const checkKill=async()=>{try{const killData=await dbLoadConfig("sys");const killVal=killData?.["kill_"+currentUser.username];if(killVal&&killVal>sessionStart.current){toast2("You've been signed out by an admin.");logout();}}catch{}};const heartbeat=async()=>{try{await dbSaveConfigKey("presence",currentUser.username,{displayName:currentUser.displayName,role:currentUser.role,team:currentUser.team,lastSeen:new Date().toISOString(),version:remoteVersion||APP_VERSION});const presence=await dbLoadConfig("presence")||{};onlineUsersRef.current=presence;}catch{}};const checkVersion=async()=>{try{const sysConf=await dbLoadConfig("sys");const rv=sysConf?.app_version;if(rv){setRV(rv);}}catch{}};const publishVersion=async()=>{if(currentUser?.username==="Teina"&&remoteVersion){try{await dbSaveConfigKey("sys","app_version",remoteVersion);}catch{}}};checkKill();heartbeat();checkVersion();publishVersion();const iv=setInterval(()=>{checkKill();heartbeat();checkVersion();},30000);return()=>clearInterval(iv);},[currentUser?.username,remoteVersion]);
-  const toast2=(m)=>{setToast(m);setTimeout(()=>setToast(""),3000);};
+  // toast2 defined in db section above
 
   const pk=pt==="month"?`m__${mo}`:`w__${wk}`;
   useEffect(()=>{setInlineKpi(null);recalculateAllProductivity();},[team,pk]);
@@ -3601,7 +3662,17 @@ function App(){
             <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8}}>
               {[{l:"Productivity",v:mCProd!=null?mCProd:"—"},{l:"Hours",v:mCHrs||"—"},{l:"Tickets",v:mCStats?.closed||"—"},{l:"Emails",v:mCStats?.emails||"—"},{l:"Calls",v:mCStats?.calls||"—"},{l:"WFs",v:mCStats?.wfs||"—"}].map(c=><div key={c.l} style={{textAlign:"center",padding:"8px 4px",background:"#f9fafb",borderRadius:8}}><div style={{fontSize:15,fontWeight:800,color:"#111827"}}>{c.v}</div><div style={{fontSize:9,color:"#6b7280"}}>{c.l}</div></div>)}
             </div>
-            {mActiveGoals.length>0&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f3f4f6"}}><div style={{fontSize:11,fontWeight:700,color:"#4b5563",marginBottom:4}}>Active Goals</div>{mActiveGoals.map(g=><div key={g.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#111827",marginBottom:4}}><div style={{width:6,height:6,borderRadius:3,background:"#0d9488",flexShrink:0}}/><span style={{flex:1}}>{g.title}</span><span style={{fontSize:11,color:"#0d9488",fontWeight:700}}>{g.progress+"%"}</span></div>)}</div>}
+            {mActiveGoals.length>0&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f3f4f6"}}><div style={{fontSize:11,fontWeight:700,color:"#4b5563",marginBottom:6}}>Active Goals</div>{mActiveGoals.map(g=><div key={g.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#111827",marginBottom:6,padding:"4px 0"}}>
+              <div onClick={()=>{const updated={...g,status:"complete",completedAt:new Date().toISOString()};setGoals(prev=>prev.map(x=>x.id===g.id?updated:x));dbUpsert("goals",updated);addAudit("Goal Completed",g.title+" for "+name);toast2("Goal completed.");}} style={{width:18,height:18,borderRadius:5,border:"2px solid #d1d5db",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}} title="Mark complete"/>
+              <span style={{flex:1}}>{g.title}</span>
+              {g.dueDate&&<span style={{fontSize:9,color:g.dueDate<todayNZ()?"#dc2626":"#9ca3af"}}>{fmtNZDate(g.dueDate)}</span>}
+              <button onClick={()=>{if(window.confirm("Delete goal?")){{setGoals(prev=>prev.filter(x=>x.id!==g.id));dbDeleteRow("goals",g.id);toast2("Goal deleted.");}}}} style={{fontSize:9,color:"#dc2626",background:"none",border:"none",cursor:"pointer",padding:2}}>✕</button>
+            </div>)}</div>}
+            {pGoalsDone.length>0&&<div style={{marginTop:6}}><div style={{fontSize:10,color:"#9ca3af",marginBottom:4}}>Completed</div>{pGoalsDone.slice(0,3).map(g=><div key={g.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"#9ca3af",marginBottom:3}}>
+              <div style={{width:16,height:16,borderRadius:4,background:"#059669",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:9,flexShrink:0}}>✓</div>
+              <span style={{flex:1,textDecoration:"line-through"}}>{g.title}</span>
+              <button onClick={()=>{if(window.confirm("Delete goal?")){{setGoals(prev=>prev.filter(x=>x.id!==g.id));dbDeleteRow("goals",g.id);}}}} style={{fontSize:9,color:"#dc2626",background:"none",border:"none",cursor:"pointer",padding:2}}>✕</button>
+            </div>)}</div>}
           </div>
           <div style={{background:"#fff",borderRadius:10,border:"1px solid #e5e7eb",padding:"18px 20px",marginBottom:16}}>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}><div style={{fontWeight:700,fontSize:14,color:"#111827",flex:1}}>New 1:1 Meeting Note</div><span style={{fontSize:11,color:"#9ca3af"}}>{"Will log: "+new Date().toLocaleDateString("en-NZ",{day:"2-digit",month:"short",year:"numeric"})+" "+new Date().toLocaleTimeString("en-NZ",{hour:"2-digit",minute:"2-digit"})}</span></div>
@@ -4200,7 +4271,15 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
 
   return(
     <div style={{fontFamily:"'Plus Jakarta Sans',-apple-system,sans-serif",minHeight:"100vh",display:"flex",background:"#f8f9fb"}}>
-      {toast&&<div style={{position:"fixed",top:20,right:20,zIndex:1000,background:"#111827",color:"#fff",padding:"12px 20px",borderRadius:10,fontSize:13,boxShadow:"0 8px 30px rgba(0,0,0,.25)",maxWidth:320,animation:"toastPop .25s ease",fontWeight:500,border:"1px solid #1f2937"}}>{toast}</div>}
+      {/* Enhanced Toasts */}
+      <div style={{position:"fixed",top:16,right:16,zIndex:10000,display:"flex",flexDirection:"column",gap:8,pointerEvents:"none"}}>
+        {toasts.map(t=><div key={t.id} style={{background:t.type==="success"?"#059669":t.type==="error"||t.type==="warning"?"#dc2626":"#111827",color:"#fff",padding:"10px 18px",borderRadius:10,fontSize:12,boxShadow:"0 8px 30px rgba(0,0,0,.2)",maxWidth:340,fontWeight:500,animation:"toastSlide .3s ease",pointerEvents:"auto",display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:14}}>{t.type==="success"?"✓":t.type==="error"||t.type==="warning"?"⚠":"ℹ"}</span>{t.msg}</div>)}
+      </div>
+      {/* Save Indicator */}
+      <div style={{position:"fixed",bottom:16,right:16,zIndex:9999,display:"flex",alignItems:"center",gap:6,background:saveStatus==="saved"?"#f0fdf4":saveStatus==="saving"?"#fefce8":saveStatus==="offline"?"#fef2f2":"#fef2f2",border:"1px solid "+(saveStatus==="saved"?"#bbf7d0":saveStatus==="saving"?"#fde68a":"#fecaca"),borderRadius:20,padding:"6px 14px",fontSize:11,fontWeight:600,color:saveStatus==="saved"?"#059669":saveStatus==="saving"?"#d97706":"#dc2626",boxShadow:"0 2px 8px rgba(0,0,0,.06)",transition:"all .3s"}}>
+        <div style={{width:7,height:7,borderRadius:4,background:saveStatus==="saved"?"#059669":saveStatus==="saving"?"#d97706":"#dc2626",animation:saveStatus==="saving"?"pulse 1s infinite":"none"}}/>
+        {saveStatus==="saved"?"All saved":saveStatus==="saving"?"Saving...":"Offline"+(queueCount?" ("+queueCount+" queued)":"")}
+      </div>
 
       {/* ═══ SIDEBAR ═══ */}
       <div style={{width:220,background:"#111827",display:"flex",flexDirection:"column",flexShrink:0,position:"fixed",top:0,bottom:0,left:0,zIndex:60,borderRight:"1px solid #1f2937"}}>
@@ -4219,7 +4298,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         <div className="bc-sidebar-scroll" style={{padding:"12px 10px",flex:1,overflowY:"auto"}}>
           <div style={{fontSize:10,fontWeight:600,color:"#4b5563",textTransform:"uppercase",letterSpacing:".08em",padding:"4px 16px 8px",marginBottom:2}}>Menu</div>
           {TABS.filter(t=>!["Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"].includes(t)).filter(t=>{if(isAdmin)return true;return(myPerms.menu||[]).includes(t);}).map(t=>{const icons={"Home":"🏠","Dashboard":"📊","People":"👥","Schedule":"📅","Reports":"📋","Call Reviews":"📞","Action List":"📋","To-Do List":"✅","Daily":"📝","Quick References":"📌","Planner":"🗂️"};const displayNames={"Daily":"Daily Reports"};return(
-            <button key={t} onClick={()=>{setTab(t.toLowerCase());setProfilePerson(null);}}
+            <button key={t} className="bc-sidebar-link" onClick={()=>{setTab(t.toLowerCase());setProfilePerson(null);}}
               style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 16px",border:"none",
                 background:tab===t.toLowerCase()?"rgba(13,148,136,.12)":"transparent",
                 color:tab===t.toLowerCase()?"#5eead4":"#9ca3af",fontSize:13,fontWeight:tab===t.toLowerCase()?600:500,
@@ -4451,7 +4530,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             <button onClick={()=>setTab("audit")} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"4px 14px",fontSize:12,cursor:"pointer",marginLeft:4,fontWeight:500}}>Review</button>
           </div>
         )}
-        <div style={{maxWidth:tab==="planner"?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":"24px 28px"}}>
+        <div key={tab} className="bc-page-fade" style={{maxWidth:tab==="planner"?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":"24px 28px"}}>
 
         {/* Profile View takes over main content */}
         {tab==="dashboard"&&isAdmin&&(
@@ -4833,7 +4912,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   <div style={{padding:"12px 16px",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"center"}}><span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>My To-Dos Today</span><button onClick={()=>setTab("to-do list")} style={{fontSize:10,color:"#0d9488",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>View all</button></div>
                   <div style={{padding:"8px 12px",maxHeight:200,overflowY:"auto"}}>{todayTodos2.length?todayTodos2.slice(0,6).map(td=><div key={td.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 4px",borderBottom:"1px solid #f9fafb"}}><div onClick={()=>{if(td.assignedBy){if(!window.confirm("Are you sure this is finished? This will alert "+td.assignedBy+" that the task has been completed."))return;addNotif(liveAccounts.find(a=>a.displayName===td.assignedBy)?.username||"",td.title+" — completed by "+(currentUser?.displayName||"User"));addAudit("Admin Task Completed",td.title+" (assigned by "+td.assignedBy+")");}const tdUpdated={...td,status:"done",completedAt:new Date().toISOString()};setTodos(prev=>prev.map(x=>x.id===td.id?tdUpdated:x));dbUpsert("todos",tdUpdated);
               // If recurring, create next occurrence
-              if(td.recurring){const nextDue=new Date(td.due||new Date());if(td.recurring==="daily")nextDue.setDate(nextDue.getDate()+1);else if(td.recurring==="weekdays"){nextDue.setDate(nextDue.getDate()+1);while(nextDue.getDay()===0||nextDue.getDay()===6)nextDue.setDate(nextDue.getDate()+1);}else if(td.recurring==="weekly")nextDue.setDate(nextDue.getDate()+7);else if(td.recurring==="fortnightly")nextDue.setDate(nextDue.getDate()+14);else if(td.recurring==="monthly")nextDue.setMonth(nextDue.getMonth()+1);const nds=nextDue.toISOString().slice(0,10);const nextTd2={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),owner:td.owner,title:td.title,note:td.note||"",due:nds,priority:"today",status:"open",createdAt:new Date().toISOString(),assignedBy:td.assignedBy||null,recurring:td.recurring};setTodos(prev=>[nextTd2,...prev]);dbUpsert("todos",nextTd2);}}} style={{width:18,height:18,borderRadius:5,border:"2px solid #d1d5db",cursor:"pointer",flexShrink:0}}/><span style={{fontSize:11,color:"#111827"}}>{td.title}</span></div>):<div style={{color:"#9ca3af",fontSize:11,textAlign:"center",padding:12}}>Nothing due today</div>}</div>
+              if(td.recurring){const nextDue=new Date(td.due||new Date());if(td.recurring==="daily")nextDue.setDate(nextDue.getDate()+1);else if(td.recurring==="weekdays"){nextDue.setDate(nextDue.getDate()+1);while(nextDue.getDay()===0||nextDue.getDay()===6)nextDue.setDate(nextDue.getDate()+1);}else if(td.recurring==="weekly")nextDue.setDate(nextDue.getDate()+7);else if(td.recurring==="fortnightly")nextDue.setDate(nextDue.getDate()+14);else if(td.recurring==="monthly")nextDue.setMonth(nextDue.getMonth()+1);const nds=nextDue.toISOString().slice(0,10);const nextTd2={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),owner:td.owner,title:td.title,note:td.note||"",due:nds,priority:"today",status:"open",createdAt:new Date().toISOString(),assignedBy:td.assignedBy||null,recurring:td.recurring};setTodos(prev=>[nextTd2,...prev]);dbUpsert("todos",nextTd2);}}} style={{width:18,height:18,borderRadius:5,border:"2px solid #d1d5db",cursor:"pointer",flexShrink:0}}/><span style={{fontSize:11,color:"#111827"}}>{td.title}</span></div>):<div style={{textAlign:"center",padding:16}}><div style={{fontSize:24,marginBottom:4,opacity:.3}}>✅</div><div style={{fontSize:11,color:"#d1d5db"}}>Nothing due today</div></div>}</div>
                 </div>}
 
                 {/* Actions / Alerts */}
@@ -4874,7 +4953,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   <button onClick={()=>{var ver=(document.getElementById("un_version")?.value||"").trim();var title=(document.getElementById("un_title")?.value||"").trim();var body=(document.getElementById("un_body")?.value||"").trim();if(!ver)return toast2("Enter a version number.");if(!body)return toast2("Enter the changes.");setUpdateNotes(prev=>[{id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),version:ver,title:title||null,body:body,createdAt:new Date().toISOString()},...prev]);document.getElementById("un_version").value="";document.getElementById("un_title").value="";document.getElementById("un_body").value="";document.getElementById("update_note_form").style.display="none";addAudit("Update Note Added","v"+ver);toast2("Update note published.");}} style={S.p1}>Publish Update</button>
                 </div>}
                 <div style={{maxHeight:400,overflowY:"auto"}}>
-                  {updateNotes.length===0&&<div style={{padding:20,textAlign:"center",color:"#9ca3af",fontSize:12}}>No update notes yet.</div>}
+                  {updateNotes.length===0&&<div style={{padding:24,textAlign:"center"}}><div style={{fontSize:32,marginBottom:6,opacity:.3}}>📢</div><div style={{fontSize:12,color:"#d1d5db"}}>No updates posted yet</div></div>}
                   {updateNotes.map((n,ni)=><div key={n.id} style={{padding:"14px 16px",borderBottom:ni<updateNotes.length-1?"1px solid #f3f4f6":"none"}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                       <span style={{fontSize:11,fontWeight:800,color:"#fff",background:"#0d9488",padding:"2px 8px",borderRadius:5}}>{"v"+n.version}</span>
@@ -5356,7 +5435,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const del=(id)=>{setTodos(prev=>prev.filter(td=>td.id!==id));dbDeleteRow("todos",id);};
             const saveTodos=(newTodos)=>{setTodos(newTodos);};
             const addTodo=()=>{var titleEl=document.getElementById("todo_title");var title=titleEl?.value?.trim();if(!title)return toast2("Enter a task.");var noteEl=document.getElementById("todo_note");var dateEl=document.getElementById("todo_due2");var prioEl=document.getElementById("todo_prio2");var assignEl=document.getElementById("todo_assign");var recurEl=document.getElementById("todo_recur");var prio=prioEl?.value||"today";var due=null;if(prio==="set_date"){due=dateEl?.value||null;prio=due&&due<=todayStr?"today":due&&due<=weekEndStr?"this_week":"later";}else{due=todayStr;prio="today";}var assignTo=assignEl?.value||"";var owner=assignTo||currentUser?.username;var recur=recurEl?.value||"";var newTd={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),owner:owner,title:title,note:noteEl?.value?.trim()||"",due:due,priority:prio,status:"open",createdAt:new Date().toISOString(),assignedBy:assignTo?currentUser?.displayName:null};if(recur)newTd.recurring=recur;setTodos(prev=>[newTd,...prev]);dbUpsert("todos",newTd);titleEl.value="";if(noteEl)noteEl.value="";if(dateEl)dateEl.value="";if(assignEl)assignEl.value="";if(recurEl)recurEl.value="";if(assignTo){addNotif(assignTo,"Task assigned: "+title+" by "+(currentUser?.displayName||"Admin"));if(currentUser?.role==="admin")addAdminAlert(assignTo,"todo","New Task Assigned",title,currentUser?.displayName||"Admin");}toast2(assignTo?"Assigned to "+(liveAccounts.find(a=>a.username===assignTo)?.displayName||assignTo):"Added.");};
-            const renderItem=(td)=>{const od=td.due&&td.due<todayStr&&td.status!=="done";return<div key={td.id} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 10px",background:td.status==="done"?"#f9fafb":"#fff",borderRadius:8,border:"1px solid "+(od?"#fecaca":td.status==="done"?"#e5e7eb":"#e5e7eb"),marginBottom:4}}>
+            const renderItem=(td)=>{const od=td.due&&td.due<todayStr&&td.status!=="done";return<div key={td.id} className="bc-card-hover" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 10px",background:td.status==="done"?"#f9fafb":"#fff",borderRadius:8,border:"1px solid "+(od?"#fecaca":td.status==="done"?"#e5e7eb":"#e5e7eb"),marginBottom:4}}>
               <div onClick={()=>toggle(td.id)} style={{width:20,height:20,borderRadius:5,border:"2px solid "+(td.status==="done"?"#059669":"#d1d5db"),background:td.status==="done"?"#059669":"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,marginTop:2,color:"#fff",fontSize:10,fontWeight:700}}>{td.status==="done"?"\u2713":""}</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12,fontWeight:500,color:td.status==="done"?"#9ca3af":"#111827",textDecoration:td.status==="done"?"line-through":"none"}}>{td.title}</div>
@@ -5454,7 +5533,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 <div style={colStyle}>
                   {colHead("Today",todayItems.length,"#dc2626")}
                   <div style={{background:"#fef2f2",borderRadius:10,padding:todayItems.length?"10px":"20px 10px",minHeight:80,border:"1px solid #fecaca"}}>
-                    {todayItems.length?todayItems.map(renderItem):<div style={{textAlign:"center",color:"#d1d5db",fontSize:11,padding:10}}>Nothing due today</div>}
+                    {todayItems.length?todayItems.map(renderItem):<div style={{textAlign:"center",padding:14}}><div style={{fontSize:20,opacity:.3}}>📋</div><div style={{fontSize:11,color:"#d1d5db",marginTop:2}}>All clear for today</div></div>}
                   </div>
                 </div>
                 <div style={colStyle}>
@@ -5582,7 +5661,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             </div>;})()}
             {openActions.length>0&&<div style={{marginBottom:20}}>
               <div style={{fontSize:12,fontWeight:700,color:"#dc2626",textTransform:"uppercase",marginBottom:8}}>{"Open ("+openActions.length+")"}</div>
-              {openActions.map(a=>{var tc2=getTC(a.type);var refLabels={teams_post:{l:"Teams Post",ic:"💬"},property_id:{l:"Property ID",ic:"🏠"},booking_id:{l:"Booking ID",ic:"📅"},call_link:{l:"Phone Call Link",ic:"📞"},intercom_link:{l:"Intercom Link",ic:"💭"}};return<div key={a.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",borderLeft:"4px solid "+tc2.c,marginBottom:10,overflow:"hidden"}}>
+              {openActions.map(a=>{var tc2=getTC(a.type);var refLabels={teams_post:{l:"Teams Post",ic:"💬"},property_id:{l:"Property ID",ic:"🏠"},booking_id:{l:"Booking ID",ic:"📅"},call_link:{l:"Phone Call Link",ic:"📞"},intercom_link:{l:"Intercom Link",ic:"💭"}};return<div key={a.id} className="bc-card-hover" style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",borderLeft:"4px solid "+tc2.c,marginBottom:10,overflow:"hidden"}}>
                 {/* Header */}
                 <div style={{padding:"14px 18px",borderBottom:"1px solid #f3f4f6"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
@@ -5619,7 +5698,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               {snoozedActions.map(a=>{var tc2=getTC(a.type);return<div key={a.id} style={{background:"#fffbeb",borderRadius:10,border:"1px solid #fde68a",padding:"12px 16px",marginBottom:6,opacity:.8}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:11,color:tc2.c,fontWeight:700}}>{tc2.l}</span><span style={{fontWeight:600,fontSize:12,color:"#111827",flex:1}}>{a.title+" - "+a.personName}</span><span style={{fontSize:10,color:"#d97706"}}>{"Until "+fmtNZDate(a.snoozeUntil?.slice(0,10))}</span>
                   <button onClick={()=>{const woken={...a,status:"open",snoozeUntil:null};setActionItems(prev=>prev.map(x=>x.id===a.id?woken:x));dbUpsert("action_items",woken);}} style={{fontSize:10,color:"#4b5563",background:"#fff",border:"1px solid #e5e7eb",borderRadius:4,padding:"2px 8px",cursor:"pointer"}}>Wake</button>
-                  {isAdmin&&<button onClick={()=>{if(!window.confirm("Delete this action permanently?"))return;setActionItems(prev=>prev.filter(x=>x.id!==a.id));toast2("Deleted.");}} style={{fontSize:10,color:"#dc2626",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:4,padding:"2px 8px",cursor:"pointer"}}>Delete</button>}
+                  {isAdmin&&<button onClick={()=>{if(!window.confirm("Delete this action permanently?"))return;dbDeleteRow("action_items",a.id);setActionItems(prev=>prev.filter(x=>x.id!==a.id));toast2("Deleted.");}} style={{fontSize:10,color:"#dc2626",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:4,padding:"2px 8px",cursor:"pointer"}}>Delete</button>}
                 </div>
               </div>})}
             </div>}
@@ -5645,7 +5724,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 {isAdmin&&<div style={{padding:"4px 16px 8px",borderTop:"1px solid #f3f4f6"}}><button onClick={()=>{if(window.confirm("Delete this resolved action?")){setActionItems(prev=>prev.filter(x=>x.id!==a.id));dbDeleteRow("action_items",a.id);}}} style={{fontSize:10,color:"#dc2626",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:4,padding:"2px 8px",cursor:"pointer"}}>Delete</button></div>}
               </div>})}
             </div>}
-            {myActions.length===0&&<div style={{background:"#fff",borderRadius:10,border:"1px solid #e5e7eb",padding:32,textAlign:"center",color:"#9ca3af",fontSize:13}}>No actions logged yet.</div>}
+            {myActions.length===0&&<div style={{background:"#fff",borderRadius:10,border:"1px solid #e5e7eb",padding:32,textAlign:"center",color:"#9ca3af",fontSize:13}}>No actions logged yet. Use the form above to track mistakes, reminders, and concerns.</div>}
             </div>;
           })()}
         </div>}
@@ -5754,7 +5833,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 </div>
                 <div style={{flex:1,overflowY:"auto",padding:"0 4px",display:"flex",flexDirection:"column",gap:8}}>
                   {cards.map(card=>{const cp=checkProgress(card.checklist);const age=getAge(card);const ac=ageColor(age);const isOverdue=card.dueDate&&card.dueDate<todayS&&!isDone;const assignees=card.assignees||[card.assignee].filter(Boolean);
-                  return<div key={card.id} draggable onDragStart={e=>{e.dataTransfer.setData("cardId",card.id);setDragCard(card.id);}} onDragEnd={()=>setDragCard(null)} onClick={()=>setViewCard(card)} style={{background:"#fff",borderRadius:10,padding:14,cursor:"pointer",border:"1px solid "+(dragCard===card.id?teamColor:"#f0f0f0"),boxShadow:dragCard===card.id?"0 8px 20px rgba(0,0,0,.12)":"0 1px 3px rgba(0,0,0,.04)",opacity:isDone?.5:1,transition:"all .15s",borderLeft:ac?"3px solid "+ac:"3px solid transparent"}}>
+                  return<div key={card.id} className="bc-card-hover" draggable onDragStart={e=>{e.dataTransfer.setData("cardId",card.id);setDragCard(card.id);}} onDragEnd={()=>setDragCard(null)} onClick={()=>setViewCard(card)} style={{background:"#fff",borderRadius:10,padding:14,cursor:"pointer",border:"1px solid "+(dragCard===card.id?teamColor:"#f0f0f0"),boxShadow:dragCard===card.id?"0 8px 20px rgba(0,0,0,.12)":"0 1px 3px rgba(0,0,0,.04)",opacity:isDone?.5:1,transition:"all .15s",borderLeft:ac?"3px solid "+ac:"3px solid transparent"}}>
                     {card.labels?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>{card.labels.map((l,i)=>{const lb=LABELS.find(x=>x.l===l);return<div key={i} style={{height:4,width:32,borderRadius:2,background:lb?.c||"#d1d5db"}} title={l}/>})}</div>}
                     <div style={{fontSize:13,fontWeight:600,color:isDone?"#9ca3af":"#111827",textDecoration:isDone?"line-through":"none",lineHeight:1.4}}>{card.title}</div>
                     {card.description&&<div style={{fontSize:11,color:"#9ca3af",lineHeight:1.4,overflow:"hidden",maxHeight:34,marginTop:4}}>{card.description}</div>}
@@ -6012,7 +6091,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               </div>}
 
               {/* Reference List */}
-              {quickRefs.length===0&&!qrForm&&<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:40,textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>📌</div><div style={{fontSize:14,color:"#9ca3af"}}>No references yet.{isAdmin?" Click 'Add Reference' to get started.":""}</div></div>}
+              {quickRefs.length===0&&!qrForm&&<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:40,textAlign:"center"}}><div style={{fontSize:48,marginBottom:12,opacity:.4}}>📌</div><div style={{fontSize:14,color:"#9ca3af",fontWeight:500}}>No references yet</div><div style={{fontSize:12,color:"#d1d5db",marginTop:4}}>{isAdmin?"Add shared links, documents, and resources for the team":"Your team leader will add references here"}</div></div>}
 
               {quickRefs.map((r,ri)=>{const expanded=qrExpanded===r.id;return<div key={r.id} style={{background:"#fff",borderRadius:10,border:"1px solid "+(expanded?"#0d9488":"#e5e7eb"),marginBottom:6,overflow:"hidden",transition:"border-color .15s"}}>
                 <div onClick={()=>setQrExpanded2(expanded?null:r.id)} style={{padding:"12px 18px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>

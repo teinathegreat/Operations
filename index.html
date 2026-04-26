@@ -67,8 +67,8 @@ button{transition:all .15s cubic-bezier(.22,1,.36,1);font-family:'Plus Jakarta S
 button:active{transform:scale(.97);}
 /* Input focus */
 input:focus,textarea:focus,select:focus{outline:none;border-color:#0d9488!important;box-shadow:0 0 0 3px rgba(13,148,136,.1);}
-[draggable]:focus{outline:none!important;}
-[draggable]{-webkit-user-select:none;user-select:none;}
+[draggable]:focus,[draggable]:focus-visible{outline:none!important;box-shadow:none!important;}
+[draggable]{-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
 /* Smooth scroll */
 html{scroll-behavior:smooth;}
 /* Custom scrollbar */
@@ -486,6 +486,8 @@ function App(){
   const[viewCard,setViewCard]=useState(null);
   const[editCard,setEditCard]=useState(null);
   const[dragCard,setDragCard]=useState(null);
+  const[dragOverCard,setDragOverCard]=useState(null);
+  const dragStartPos=useRef(null);
   const[filterAssignee,setFilterAssignee]=useState("");
   const[plannerView,setPlannerView]=useState("kanban");
   const[plannerSearch,setPlannerSearch]=useState("");
@@ -5832,9 +5834,17 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               // Notify assignee
               const acct=liveAccounts.find(a=>a.displayName===assignee);if(acct&&acct.username!==currentUser?.username)addNotif(acct.username,"You were assigned to '"+title+"' by "+currentUser?.displayName);
               toast2("Task created.");};
-            const moveCard=(cardId,toCol)=>{const card=plannerCards.find(c=>c.id===cardId);if(!card||card.column===toCol)return;const updated={...card,column:toCol,movedAt:new Date().toISOString(),activity:[...(card.activity||[]),{id:uid(),action:"moved to "+toCol,by:currentUser?.displayName,at:new Date().toISOString()}]};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);
-              // If moved to Done and recurring, create next card
-              if(toCol.toLowerCase().match(/done|completed/)&&card.recurring)completeRecurring(card);};
+            const moveCard=(cardId,toCol,beforeCardId)=>{const card=plannerCards.find(c=>c.id===cardId);if(!card)return;const updated={...card,column:toCol,movedAt:new Date().toISOString(),activity:[...(card.activity||[])]};if(card.column!==toCol)updated.activity.push({id:uid(),action:"moved to "+toCol,by:currentUser?.displayName,at:new Date().toISOString()});
+              // Reorder: set order based on target position
+              const colCards=plannerCards.filter(c=>c.boardId===board?.id&&c.column===toCol&&c.id!==cardId&&c.status!=="archived").sort((a,b)=>(a.order||0)-(b.order||0));
+              if(beforeCardId){const idx=colCards.findIndex(c=>c.id===beforeCardId);updated.order=idx>=0?idx:colCards.length;}else{updated.order=colCards.length;}
+              // Re-index all cards in the target column
+              const reindexed=[];let ord=0;colCards.forEach(c=>{if(c.id===beforeCardId){reindexed.push({...updated,order:ord});ord++;}reindexed.push({...c,order:ord});ord++;});
+              if(!beforeCardId)reindexed.push({...updated,order:ord});
+              reindexed.forEach(c=>{setPlannerCards(prev=>prev.map(x=>x.id===c.id?c:x));dbUpsert("planner_cards",c);});
+              if(!reindexed.find(c=>c.id===cardId)){setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);}
+              if(toCol.toLowerCase().match(/done|completed/)&&card.column!==toCol&&card.recurring)completeRecurring(card);
+              setDragOverCard(null);};
             const saveCard=(card)=>{setPlannerCards(prev=>prev.map(c=>c.id===card.id?card:c));dbUpsert("planner_cards",card);};
             const deleteCard=(cardId)=>{if(!window.confirm("Delete this card?"))return;setPlannerCards(prev=>prev.filter(c=>c.id!==cardId));dbDeleteRow("planner_cards",cardId);setViewCard(null);toast2("Deleted.");};
             const addComment=(cardId,text)=>{if(!text?.trim())return;const card=plannerCards.find(c=>c.id===cardId);if(!card)return;const comment={id:uid(),text:text.trim(),by:currentUser?.displayName,at:new Date().toISOString()};const updated={...card,comments:[...(card.comments||[]),comment],activity:[...(card.activity||[]),{id:uid(),action:"commented",by:currentUser?.displayName,at:new Date().toISOString()}]};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);setViewCard(updated);
@@ -5893,8 +5903,8 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               {columns.map(colName=>{const cards=filteredCards(colName);const isDone=colName.toLowerCase().match(/done|completed/);const colColors={"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706","Done":"#059669","Completed":"#059669"};const colColor=colColors[colName]||teamColor;
               return<div key={colName} style={{minWidth:280,maxWidth:320,flex:"0 0 280px",display:"flex",flexDirection:"column",maxHeight:"calc(100vh - 220px)",background:"#f8f9fa",borderRadius:12,padding:"4px",transition:"all .15s"}}
                 onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect="move";e.currentTarget.style.background="#ecfdf5";e.currentTarget.style.outline="2px dashed "+teamColor;e.currentTarget.style.outlineOffset="-2px";}}
-                onDragLeave={e=>{e.currentTarget.style.background="#f8f9fa";e.currentTarget.style.outline="none";}}
-                onDrop={e=>{e.preventDefault();e.currentTarget.style.background="#f8f9fa";e.currentTarget.style.outline="none";const cardId=e.dataTransfer.getData("cardId");if(cardId)moveCard(cardId,colName);}}>
+                onDragLeave={e=>{e.currentTarget.style.background="#f8f9fa";e.currentTarget.style.outline="none";setDragOverCard(null);}}
+                onDrop={e=>{e.preventDefault();e.currentTarget.style.background="#f8f9fa";e.currentTarget.style.outline="none";const cardId=e.dataTransfer.getData("cardId");if(cardId)moveCard(cardId,colName,dragOverCard);setDragOverCard(null);}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",marginBottom:4}}>
                   <div style={{width:3,height:16,borderRadius:2,background:colColor}}/>
                   <span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>{colName}</span>
@@ -5902,18 +5912,24 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   {!DEFAULT_COLS.includes(colName)&&<button onClick={()=>renameCol(colName)} style={{fontSize:10,color:"#9ca3af",background:"none",border:"none",cursor:"pointer",padding:2}}>✏️</button>}
                   {!DEFAULT_COLS.includes(colName)&&<button onClick={()=>delCol(colName)} style={{fontSize:10,color:"#d1d5db",background:"none",border:"none",cursor:"pointer",padding:2}}>✕</button>}
                 </div>
-                <div style={{flex:1,overflowY:"auto",padding:"0 4px",display:"flex",flexDirection:"column",gap:8}}>
+                <div style={{flex:1,overflowY:"auto",padding:"0 4px",display:"flex",flexDirection:"column",gap:2}}>
                   {cards.map(card=>{const cp=checkProgress(card.checklist);const age=getAge(card);const ac=ageColor(age);const isOverdue=card.dueDate&&card.dueDate<todayS&&!isDone;const assignees=card.assignees||[card.assignee].filter(Boolean);
-                  return<div key={card.id} className="bc-card-hover" draggable
-                    onDragStart={e=>{e.dataTransfer.setData("cardId",card.id);e.dataTransfer.effectAllowed="move";setDragCard(card.id);}}
-                    onDragEnd={()=>setDragCard(null)}
-                    onClick={()=>{if(dragCard)return;setViewCard(card);}}
+                  return<React.Fragment key={card.id}>
+                    {/* Drop indicator line */}
+                    {dragOverCard===card.id&&dragCard!==card.id&&<div style={{height:3,background:teamColor,borderRadius:2,margin:"2px 0",transition:"all .1s"}}/>}
+                    <div tabIndex={-1} draggable
+                    onMouseDown={e=>{dragStartPos.current={x:e.clientX,y:e.clientY};}}
+                    onMouseUp={e=>{if(!dragStartPos.current)return;const dx=Math.abs(e.clientX-dragStartPos.current.x);const dy=Math.abs(e.clientY-dragStartPos.current.y);dragStartPos.current=null;if(dx<5&&dy<5&&!dragCard)setViewCard(card);}}
+                    onDragStart={e=>{e.dataTransfer.setData("cardId",card.id);e.dataTransfer.effectAllowed="move";setDragCard(card.id);dragStartPos.current=null;}}
+                    onDragEnd={()=>{setDragCard(null);setDragOverCard(null);}}
+                    onDragOver={e=>{e.preventDefault();e.stopPropagation();setDragOverCard(card.id);}}
                     style={{background:dragCard===card.id?"#f0fdfa":"#fff",borderRadius:12,padding:16,cursor:"grab",
-                      border:dragCard===card.id?"2px solid "+teamColor:"1px solid "+(ac?"transparent":"#f0f0f0"),
+                      border:dragCard===card.id?"2px solid "+teamColor:"1px solid #f0f0f0",
                       borderLeft:ac&&dragCard!==card.id?"3px solid "+ac:undefined,
                       outline:"none",
                       boxShadow:dragCard===card.id?"0 8px 24px rgba(0,0,0,.15)":"0 1px 3px rgba(0,0,0,.04)",
-                      opacity:isDone?.5:1,transition:"all .15s"}}>
+                      opacity:dragCard===card.id?.6:isDone?.5:1,transition:"opacity .15s,box-shadow .15s",
+                      marginBottom:4}}>
                     {card.labels?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>{card.labels.map((l,i)=>{const lb=LABELS.find(x=>x.l===l);return<div key={i} style={{height:4,width:32,borderRadius:2,background:lb?.c||"#d1d5db"}} title={l}/>})}</div>}
                     <div style={{fontSize:14,fontWeight:600,color:isDone?"#9ca3af":"#111827",textDecoration:isDone?"line-through":"none",lineHeight:1.4,marginBottom:4}}>{card.title}</div>
                     {card.description&&<div style={{fontSize:11,color:"#6b7280",lineHeight:1.5,overflow:"hidden",maxHeight:40,marginBottom:4}}>{card.description}</div>}
@@ -5929,7 +5945,8 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                       {assignees.slice(0,3).map((name,i)=><div key={i} style={{width:26,height:26,borderRadius:13,background:teamColor,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,marginLeft:i>0?-8:0,border:"2px solid #fff",position:"relative",zIndex:3-i}} title={name}>{initials(name)}</div>)}
                       {assignees.length>3&&<span style={{fontSize:9,color:"#9ca3af"}}>{"+"+( assignees.length-3)}</span>}
                     </div>
-                  </div>})}
+                  </div>
+                  </React.Fragment>})}
                 </div>
                 {addingCard===colName?<div style={{padding:"8px 4px"}}>
                   <div style={{background:"#fff",borderRadius:10,border:"1px solid #d1d5db",padding:14,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>

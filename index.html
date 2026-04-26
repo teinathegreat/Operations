@@ -4953,10 +4953,16 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                         <button onClick={copyMB2} style={{fontSize:9,color:"#92400e",background:"#fef3c7",border:"1px solid #fde68a",borderRadius:4,padding:"2px 8px",cursor:"pointer",fontWeight:600}}>☀️ Morning</button>
                         {eveningR&&<button onClick={copyEW2} style={{fontSize:9,color:"#5b21b6",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:4,padding:"2px 8px",cursor:"pointer",fontWeight:600}}>🌙 Evening</button>}
                       </div>
-                      {tgtFields2.map(f=>{const tv=morningR.fields?.["_tgt_"+f.k]||"—";const ol=getOL2(f.k);return<div key={f.k} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0",fontSize:11}}>
-                        <span style={{width:130,color:"#374151",fontWeight:500}}>{f.l}</span>
-                        <span style={{width:40,color:"#6b7280",textAlign:"center",fontWeight:600}}>{tv}</span>
-                        <div style={{flex:1,display:"flex",gap:3,flexWrap:"wrap"}}>{teamMems2.map(m=>{const active=ol.includes(m);return<button key={m} onClick={()=>setOwner2(f.k,m)} style={{fontSize:9,padding:"1px 8px",borderRadius:12,border:"none",background:active?"#0d9488":"#f3f4f6",color:active?"#fff":"#9ca3af",cursor:"pointer",fontWeight:active?700:400}}>{m.split(" ")[0]}</button>})}</div>
+                      {tgtFields2.map(f=>{const tv=morningR.fields?.["_tgt_"+f.k]||"—";const ol=getOL2(f.k);return<div key={f.k} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:"1px solid #fef3c7",fontSize:11}}>
+                        <span style={{width:140,color:"#374151",fontWeight:500}}>{f.l}</span>
+                        <span style={{width:30,color:"#92400e",textAlign:"center",fontWeight:700,fontSize:12}}>{tv}</span>
+                        <div style={{flex:1,display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+                          {ol.map(n=><span key={n} onClick={()=>setOwner2(f.k,n)} style={{fontSize:9,padding:"2px 8px",borderRadius:10,background:"#0d9488",color:"#fff",cursor:"pointer",fontWeight:600}} title="Click to remove">{n.split(" ")[0]} ✕</span>)}
+                          <select onChange={e=>{if(e.target.value){setOwner2(f.k,e.target.value);e.target.value="";}}} value="" style={{fontSize:9,padding:"2px 4px",border:"1px solid #e5e7eb",borderRadius:4,color:"#9ca3af",background:"#fff",width:20,cursor:"pointer"}} title="Assign person">
+                            <option value="">+</option>
+                            {teamMems2.filter(m=>!ol.includes(m)).map(m=><option key={m}>{m}</option>)}
+                          </select>
+                        </div>
                       </div>})}
                     </div>;})()}
                     {/* Edit form for today */}
@@ -5196,7 +5202,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     msg+="\n📈 "+hitCount+"/"+tgtFields.length+" targets hit\n";
                     msg+="\nGreat work today team! 🙌";
                     try{navigator.clipboard.writeText(msg);toast2("Evening wrap-up copied!");}catch{toast2("Copy failed");}};
-                  return<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"16px 20px",marginBottom:12}}>
+                    return<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"16px 20px",marginBottom:12}}>
                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                       <span style={{fontSize:14}}>🎯</span>
                       <span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>Target Ownership</span>
@@ -5205,9 +5211,14 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     </div>
                     {tgtFields.map(f=>{const tgtVal=morningData.fields?.["_tgt_"+f.k]||"—";const ol=getOwnerList(f.k);
                     return<div key={f.k} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #f3f4f6"}}>
-                      <div style={{width:140}}><div style={{fontSize:12,fontWeight:600,color:"#111827"}}>{f.l}</div><div style={{fontSize:11,color:"#6b7280"}}>{"Target: "+tgtVal}</div></div>
-                      <div style={{flex:1,display:"flex",gap:4,flexWrap:"wrap"}}>
-                        {teamMems.map(m=>{const active=ol.includes(m);return<button key={m} onClick={()=>setOwner(f.k,m)} style={{fontSize:10,padding:"3px 10px",borderRadius:20,border:"none",background:active?"#0d9488":"#f3f4f6",color:active?"#fff":"#6b7280",cursor:"pointer",fontWeight:active?700:500,transition:"all .1s"}}>{m.split(" ")[0]}</button>})}
+                      <div style={{width:160}}><div style={{fontSize:12,fontWeight:600,color:"#111827"}}>{f.l}</div></div>
+                      <div style={{width:40,fontSize:13,color:"#374151",textAlign:"center",fontWeight:700}}>{tgtVal}</div>
+                      <div style={{flex:1,display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+                        {ol.map(n=><span key={n} onClick={()=>setOwner(f.k,n)} style={{fontSize:10,padding:"3px 10px",borderRadius:20,background:"#0d9488",color:"#fff",cursor:"pointer",fontWeight:600}} title="Click to remove">{n.split(" ")[0]} ✕</span>)}
+                        <select onChange={e=>{if(e.target.value){setOwner(f.k,e.target.value);e.target.value="";}}} value="" style={{fontSize:10,padding:"3px 6px",border:"1px solid #e5e7eb",borderRadius:6,color:"#9ca3af",background:"#fff",cursor:"pointer"}}>
+                          <option value="">+ Assign</option>
+                          {teamMems.filter(m=>!ol.includes(m)).map(m=><option key={m}>{m}</option>)}
+                        </select>
                       </div>
                     </div>})}
                   </div>;

@@ -389,6 +389,8 @@ function App(){
   useEffect(()=>{setTodoViewUser(null);},[currentUser?.username]);
   const[notifications,setNotifications]=useState(()=>{return[];});
   const[adminAlerts,setAdminAlerts]=useState(()=>{return[];});
+  const[plannerBoards,setPlannerBoards]=useState([]);
+  const[plannerCards,setPlannerCards]=useState([]);
   const[alertNameRevealed,setAlertNameRevealed]=useState(false);
 
   const addNotif=(forUser,msg)=>{const n={id:Date.now().toString(36),forUser,msg,read:false,createdAt:new Date().toISOString()};setNotifications(prev=>[n,...prev.slice(0,100)]);dbUpsert("notif_entries",n);};
@@ -735,6 +737,8 @@ function App(){
       await dbBulkInsert("audit_entries",auditLog.slice(-200));
       await dbBulkInsert("notif_entries",notifications);
       await dbBulkInsert("alert_entries",adminAlerts);
+      await dbBulkInsert("planner_boards",plannerBoards);
+      await dbBulkInsert("planner_cards",plannerCards);
       // Config rows
       await dbSaveConfigAll("caps",capabilities);
       await dbSaveConfigAll("capcrit",capCriteria);
@@ -781,10 +785,11 @@ function App(){
     setSbMsg("Loading from Supabase...");
     try{
       // Load row-level tables + config from config_rows
-      const[cr2,ai2,td2,dr2,mn2,ah2,gl2,au2,nf2,aa2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence]=await Promise.all([
+      const[cr2,ai2,td2,dr2,mn2,ah2,gl2,au2,nf2,aa2,pb2,pc2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence]=await Promise.all([
         dbLoadAll("call_reviews"),dbLoadAll("action_items"),dbLoadAll("todos"),dbLoadAll("daily_reports"),
         dbLoadAll("meeting_notes"),dbLoadAll("assess_history"),dbLoadAll("goals"),
         dbLoadAll("audit_entries"),dbLoadAll("notif_entries"),dbLoadAll("alert_entries"),
+        dbLoadAll("planner_boards"),dbLoadAll("planner_cards"),
         dbLoadConfig("caps"),dbLoadConfig("capcrit"),dbLoadConfig("notes"),dbLoadConfig("onboard"),
         dbLoadConfig("perms"),dbLoadConfig("dailycfg"),dbLoadConfig("snooze"),
         dbLoadConfig("sched"),dbLoadConfig("ic"),dbLoadConfig("icppt"),
@@ -851,6 +856,7 @@ function App(){
       setCallReviews(f_cr);setActionItems(f_ai);setTodos(f_td);setDailyReports(f_dr);
       setMeetingNotes(f_mn);setAssessHistory(f_ah);setGoals(f_gl);
       setAuditLog(f_au);setNotifications(f_nf);setAdminAlerts(f_aa);
+      setPlannerBoards(pb2);setPlannerCards(pc2);
       if(f_caps&&typeof f_caps==="object")setCapabilities(f_caps);
       if(f_cc&&typeof f_cc==="object")setCapCriteria(f_cc);
       if(f_qn&&typeof f_qn==="object")setQuickNotes(f_qn);
@@ -910,7 +916,7 @@ function App(){
       setTimeout(()=>{
         saveEnabled.current=true;
         // Initialize _prev with current data so only future changes trigger syncs
-        _prev.current={cr:[...callReviews],ai:[...actionItems],td:[...todos],dr:[...dailyReports],mn:[...meetingNotes],ah:[...assessHistory],gl:[...goals],au:[...auditLog].slice(0,200),nf:[...notifications],aa:[...adminAlerts]};
+        _prev.current={cr:[...callReviews],ai:[...actionItems],td:[...todos],dr:[...dailyReports],mn:[...meetingNotes],ah:[...assessHistory],gl:[...goals],au:[...auditLog].slice(0,200),nf:[...notifications],aa:[...adminAlerts],pb:[...plannerBoards],pc:[...plannerCards]};
         console.log("Save-backs enabled — Supabase data confirmed loaded");
       },1000);
     }
@@ -921,7 +927,7 @@ function App(){
   const[liveAccounts,setLiveAccounts]=React.useState(()=>{
     return ACCOUNTS;
   });
-  const getUserPerms=(username)=>{const acct=liveAccounts.find(a=>a.username===username)||currentUser;const stored=permissions[username];if(acct?.role==="admin")return{menu:["Home","Daily","To-Do List","Dashboard","People","Schedule","Reports","Call Reviews","Action List","Quick References"],teams:["All Teams"],admin:["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria"]};if(stored?.menu)return stored;if(acct?.role==="guest")return{menu:["Home","Daily"],teams:acct?.team?[acct.team]:[],admin:[]};return{menu:["Home","Daily","To-Do List","Dashboard","People","Schedule","Reports","Call Reviews","Action List","Quick References"],teams:acct?.team?[acct.team]:[],admin:[]};};
+  const getUserPerms=(username)=>{const acct=liveAccounts.find(a=>a.username===username)||currentUser;const stored=permissions[username];if(acct?.role==="admin")return{menu:["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Schedule","Reports","Call Reviews","Quick References"],teams:["All Teams"],admin:["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria"]};if(stored?.menu)return stored;if(acct?.role==="guest")return{menu:["Home","Daily"],teams:acct?.team?[acct.team]:[],admin:[]};return{menu:["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Schedule","Reports","Call Reviews","Quick References"],teams:acct?.team?[acct.team]:[],admin:[]};};
   const myPerms=getUserPerms(currentUser?.username);
   const allowedTeams=(myPerms.teams||[]).includes("All Teams")?tNames:tNames.filter(t=>(myPerms.teams||[]).includes(t));
   const[permEditUser,setPermEditUser]=useState(null);
@@ -961,7 +967,7 @@ function App(){
   // ── ROW-LEVEL SYNC EFFECTS ──────────────────────────────────────────
   // Detect changes to migrated arrays and sync only the differences to row tables.
   // Adds/updates → dbUpsert. Deletes → dbDeleteRow. Only runs after Supabase loaded.
-  const _prev=useRef({cr:[],ai:[],td:[],dr:[],mn:[],ah:[],gl:[],au:[],nf:[],aa:[]});
+  const _prev=useRef({cr:[],ai:[],td:[],dr:[],mn:[],ah:[],gl:[],au:[],nf:[],aa:[],pb:[],pc:[]});
   const syncRows=(table,curr,prevKey)=>{
     if(!saveEnabled.current)return;
     const prev=_prev.current[prevKey];
@@ -985,6 +991,8 @@ function App(){
   useEffect(()=>syncRows("audit_entries",auditLog.slice(0,200),"au"),[auditLog]);
   useEffect(()=>syncRows("notif_entries",notifications,"nf"),[notifications]);
   useEffect(()=>syncRows("alert_entries",adminAlerts,"aa"),[adminAlerts]);
+  useEffect(()=>syncRows("planner_boards",plannerBoards,"pb"),[plannerBoards]);
+  useEffect(()=>syncRows("planner_cards",plannerCards,"pc"),[plannerCards]);
 
   // Auto-save config keys (these stay in bc_store — single writer, low conflict risk)
 
@@ -2172,7 +2180,7 @@ function App(){
     );
   }
 
-  const TABS=["Home","Daily","To-Do List","Action List","Dashboard","People","Schedule","Reports","Call Reviews","Quick References","Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"];
+  const TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Schedule","Reports","Call Reviews","Quick References","Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"];
   const ePK=exPt==="month"?`m__${exMo}`:`w__${exWk}`;
 
 
@@ -3623,7 +3631,7 @@ function App(){
     const setLocalAccounts=(updated)=>{setLiveAccounts(updated);saveAccountsToSupabase(updated);};
     const pending=pendingEdits.filter(r=>r.status==="pending");
     const resolved=pendingEdits.filter(r=>r.status!=="pending").slice(0,20);
-    const MENU_TABS=["Home","Daily","To-Do List","Action List","Dashboard","People","Schedule","Reports","Call Reviews","Quick References"];
+    const MENU_TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Schedule","Reports","Call Reviews","Quick References"];
     const ADMIN_TABS=["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria"];
     const ALL_TEAMS=["All Teams",...tNames];
     const getDefPerms=(acct)=>{if(acct.role==="admin")return{menu:[...MENU_TABS],teams:["All Teams"],admin:[...ADMIN_TABS]};if(acct.role==="guest")return{menu:["Home","Daily"],teams:acct.team?[acct.team]:[],admin:[]};return{menu:[...MENU_TABS],teams:acct.team?[acct.team]:[],admin:[]};};
@@ -4197,7 +4205,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         {/* Navigation */}
         <div className="bc-sidebar-scroll" style={{padding:"12px 10px",flex:1,overflowY:"auto"}}>
           <div style={{fontSize:10,fontWeight:600,color:"#4b5563",textTransform:"uppercase",letterSpacing:".08em",padding:"4px 16px 8px",marginBottom:2}}>Menu</div>
-          {TABS.filter(t=>!["Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"].includes(t)).filter(t=>{if(isAdmin)return true;return(myPerms.menu||[]).includes(t);}).map(t=>{const icons={"Home":"🏠","Dashboard":"📊","People":"👥","Schedule":"📅","Reports":"📋","Call Reviews":"📞","Action List":"📋","To-Do List":"✅","Daily":"📝","Quick References":"📌"};const displayNames={"Daily":"Daily Reports"};return(
+          {TABS.filter(t=>!["Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"].includes(t)).filter(t=>{if(isAdmin)return true;return(myPerms.menu||[]).includes(t);}).map(t=>{const icons={"Home":"🏠","Dashboard":"📊","People":"👥","Schedule":"📅","Reports":"📋","Call Reviews":"📞","Action List":"📋","To-Do List":"✅","Daily":"📝","Quick References":"📌","Planner":"🗂️"};const displayNames={"Daily":"Daily Reports"};return(
             <button key={t} onClick={()=>{setTab(t.toLowerCase());setProfilePerson(null);}}
               style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 16px",border:"none",
                 background:tab===t.toLowerCase()?"rgba(13,148,136,.12)":"transparent",
@@ -5529,6 +5537,171 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               </div>})}
             </div>}
             {myActions.length===0&&<div style={{background:"#fff",borderRadius:10,border:"1px solid #e5e7eb",padding:32,textAlign:"center",color:"#9ca3af",fontSize:13}}>No actions logged yet.</div>}
+            </div>;
+          })()}
+        </div>}
+
+        {tab==="planner"&&<div>
+          {(()=>{
+            const[selBoard,setSelBoard]=React.useState(plannerBoards[0]?.id||"");
+            const[newBoardName,setNewBoardName]=React.useState("");
+            const[addingCard,setAddingCard]=React.useState(null);
+            const[viewCard,setViewCard]=React.useState(null);
+            const[editCard,setEditCard]=React.useState(null);
+            const[dragCard,setDragCard]=React.useState(null);
+            const[filterAssignee,setFilterAssignee]=React.useState("");
+            const LABELS=[{l:"High Priority",c:"#dc2626",bg:"#fef2f2"},{l:"Medium",c:"#d97706",bg:"#fffbeb"},{l:"Low",c:"#059669",bg:"#ecfdf5"},{l:"Blocked",c:"#7c3aed",bg:"#f5f3ff"},{l:"Bug",c:"#e11d48",bg:"#fff1f2"},{l:"Feature",c:"#0ea5e9",bg:"#f0f9ff"}];
+            const board=plannerBoards.find(b=>b.id===selBoard);
+            const boardCards=plannerCards.filter(c=>c.boardId===selBoard);
+            const columns=board?.columns||["To Do","In Progress","Review","Done"];
+            const allAssignees=[...new Set(boardCards.map(c=>c.assignee).filter(Boolean))];
+
+            const createBoard=()=>{if(!newBoardName.trim())return;const b={id:uid(),name:newBoardName.trim(),columns:["To Do","In Progress","Review","Done"],createdBy:currentUser?.displayName,createdAt:new Date().toISOString()};setPlannerBoards(prev=>[b,...prev]);dbUpsert("planner_boards",b);setSelBoard(b.id);setNewBoardName("");addAudit("Board Created",b.name);toast2("Board created.");};
+
+            const addCol=()=>{if(!board)return;const name=window.prompt("Column name:");if(!name?.trim())return;const updated={...board,columns:[...columns,name.trim()]};setPlannerBoards(prev=>prev.map(b=>b.id===board.id?updated:b));dbUpsert("planner_boards",updated);};
+
+            const renameCol=(oldName)=>{const name=window.prompt("Rename column:",oldName);if(!name?.trim()||name===oldName)return;const updated={...board,columns:columns.map(c=>c===oldName?name.trim():c)};setPlannerBoards(prev=>prev.map(b=>b.id===board.id?updated:b));dbUpsert("planner_boards",updated);setPlannerCards(prev=>prev.map(c=>c.boardId===board.id&&c.column===oldName?{...c,column:name.trim()}:c));boardCards.filter(c=>c.column===oldName).forEach(c=>dbUpsert("planner_cards",{...c,column:name.trim()}));};
+
+            const delCol=(colName)=>{if(!window.confirm("Delete column '"+colName+"' and all its cards?"))return;const cards=boardCards.filter(c=>c.column===colName);cards.forEach(c=>dbDeleteRow("planner_cards",c.id));setPlannerCards(prev=>prev.filter(c=>!(c.boardId===board.id&&c.column===colName)));const updated={...board,columns:columns.filter(c=>c!==colName)};setPlannerBoards(prev=>prev.map(b=>b.id===board.id?updated:b));dbUpsert("planner_boards",updated);};
+
+            const addCard=(colName)=>{const titleEl=document.getElementById("pc_title_"+colName.replace(/\s/g,"_"));const title=titleEl?.value?.trim();if(!title)return;const card={id:uid(),boardId:selBoard,column:colName,title:title,description:"",assignee:"",dueDate:"",labels:[],comments:[],order:boardCards.filter(c=>c.column===colName).length,createdBy:currentUser?.displayName,createdAt:new Date().toISOString()};setPlannerCards(prev=>[card,...prev]);dbUpsert("planner_cards",card);titleEl.value="";setAddingCard(null);addAudit("Card Created",title+" → "+colName);};
+
+            const moveCard=(cardId,toCol)=>{const card=plannerCards.find(c=>c.id===cardId);if(!card||card.column===toCol)return;const updated={...card,column:toCol,movedAt:new Date().toISOString()};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);addAudit("Card Moved",card.title+" → "+toCol);};
+
+            const updateCard=(cardId,updates)=>{setPlannerCards(prev=>prev.map(c=>{if(c.id!==cardId)return c;const u={...c,...updates};dbUpsert("planner_cards",u);return u;}));};
+
+            const deleteCard=(cardId)=>{if(!window.confirm("Delete this card?"))return;setPlannerCards(prev=>prev.filter(c=>c.id!==cardId));dbDeleteRow("planner_cards",cardId);setViewCard(null);toast2("Card deleted.");};
+
+            const addComment=(cardId,text)=>{if(!text?.trim())return;const card=plannerCards.find(c=>c.id===cardId);if(!card)return;const comment={id:uid(),text:text.trim(),by:currentUser?.displayName,at:new Date().toISOString()};const updated={...card,comments:[...(card.comments||[]),comment]};setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);setViewCard(updated);};
+
+            const filteredCards=(colName)=>{let cards=boardCards.filter(c=>c.column===colName);if(filterAssignee)cards=cards.filter(c=>c.assignee===filterAssignee);return cards.sort((a,b)=>(a.order||0)-(b.order||0));};
+
+            const members=[...new Set(tNames.flatMap(tn=>(roster[tn]?.members||[]).map(m=>m.name))),...liveAccounts.filter(a=>a.role==="leader"||a.role==="admin").map(a=>a.displayName)].filter((v,i,a)=>a.indexOf(v)===i);
+
+            return<div>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+                <div style={{fontSize:18,fontWeight:700,color:"#111827",flex:1}}>Planner</div>
+                {allAssignees.length>0&&<select value={filterAssignee} onChange={e=>setFilterAssignee(e.target.value)} style={{fontSize:12,padding:"6px 10px",border:"1px solid #d1d5db",borderRadius:6}}>
+                  <option value="">All people</option>
+                  {allAssignees.map(a=><option key={a}>{a}</option>)}
+                </select>}
+              </div>
+
+              {/* Board selector */}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
+                {plannerBoards.map(b=><button key={b.id} onClick={()=>setSelBoard(b.id)} style={{padding:"8px 16px",borderRadius:8,border:selBoard===b.id?"2px solid #0d9488":"1px solid #e5e7eb",background:selBoard===b.id?"#f0fdfa":"#fff",color:selBoard===b.id?"#0d9488":"#374151",fontWeight:selBoard===b.id?700:500,fontSize:13,cursor:"pointer"}}>{b.name}</button>)}
+                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                  <input value={newBoardName} onChange={e=>setNewBoardName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createBoard();}} placeholder="New board..." style={{fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,width:140}}/>
+                  <button onClick={createBoard} style={{...S.p1,fontSize:11,padding:"8px 12px"}}>+</button>
+                </div>
+                {board&&isAdmin&&<button onClick={()=>{if(!window.confirm("Delete board '"+board.name+"' and all its cards?"))return;boardCards.forEach(c=>dbDeleteRow("planner_cards",c.id));setPlannerCards(prev=>prev.filter(c=>c.boardId!==board.id));setPlannerBoards(prev=>prev.filter(b=>b.id!==board.id));dbDeleteRow("planner_boards",board.id);setSelBoard(plannerBoards.filter(b=>b.id!==board.id)[0]?.id||"");toast2("Board deleted.");}} style={{fontSize:10,color:"#dc2626",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"6px 10px",cursor:"pointer"}}>Delete Board</button>}
+              </div>
+
+              {!board&&<div style={{textAlign:"center",color:"#9ca3af",padding:40,fontSize:14}}>Create a board to get started.</div>}
+
+              {/* Kanban columns */}
+              {board&&<div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:16,alignItems:"flex-start"}}>
+                {columns.map(colName=>{const cards=filteredCards(colName);const isDone=colName.toLowerCase()==="done"||colName.toLowerCase()==="completed";
+                return<div key={colName} style={{minWidth:260,maxWidth:300,flex:"0 0 260px",background:"#f3f4f6",borderRadius:12,padding:12}}
+                  onDragOver={e=>{e.preventDefault();e.currentTarget.style.background="#e0f2fe";}}
+                  onDragLeave={e=>{e.currentTarget.style.background="#f3f4f6";}}
+                  onDrop={e=>{e.preventDefault();e.currentTarget.style.background="#f3f4f6";const cardId=e.dataTransfer.getData("cardId");if(cardId)moveCard(cardId,colName);}}>
+
+                  {/* Column header */}
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10,padding:"0 4px"}}>
+                    <span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>{colName}</span>
+                    <span style={{fontSize:10,color:"#9ca3af",background:"#e5e7eb",borderRadius:10,padding:"1px 7px",fontWeight:600}}>{cards.length}</span>
+                    <button onClick={()=>renameCol(colName)} style={{fontSize:9,color:"#6b7280",background:"none",border:"none",cursor:"pointer"}}>✏️</button>
+                    {columns.length>1&&<button onClick={()=>delCol(colName)} style={{fontSize:9,color:"#dc2626",background:"none",border:"none",cursor:"pointer"}}>✕</button>}
+                  </div>
+
+                  {/* Cards */}
+                  <div style={{display:"flex",flexDirection:"column",gap:6,minHeight:40}}>
+                    {cards.map(card=><div key={card.id} draggable onDragStart={e=>{e.dataTransfer.setData("cardId",card.id);setDragCard(card.id);}} onDragEnd={()=>setDragCard(null)} onClick={()=>setViewCard(card)} style={{background:"#fff",borderRadius:8,padding:"10px 12px",cursor:"pointer",border:"1px solid "+(dragCard===card.id?"#0d9488":"#e5e7eb"),boxShadow:dragCard===card.id?"0 4px 12px rgba(0,0,0,.15)":"0 1px 2px rgba(0,0,0,.05)",opacity:isDone?.6:1,transition:"box-shadow .1s"}}>
+                      {/* Labels */}
+                      {card.labels?.length>0&&<div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:6}}>{card.labels.map((l,i)=>{const lb=LABELS.find(x=>x.l===l);return<span key={i} style={{fontSize:8,fontWeight:700,color:lb?.c||"#6b7280",background:lb?.bg||"#f3f4f6",borderRadius:3,padding:"1px 6px"}}>{l}</span>})}</div>}
+                      <div style={{fontSize:12,fontWeight:600,color:isDone?"#9ca3af":"#111827",textDecoration:isDone?"line-through":"none"}}>{card.title}</div>
+                      {card.description&&<div style={{fontSize:10,color:"#9ca3af",marginTop:3,lineHeight:1.4,overflow:"hidden",maxHeight:32}}>{card.description}</div>}
+                      <div style={{display:"flex",gap:6,alignItems:"center",marginTop:6,flexWrap:"wrap"}}>
+                        {card.assignee&&<span style={{fontSize:9,color:"#0d9488",background:"#f0fdfa",border:"1px solid #ccfbf1",borderRadius:4,padding:"1px 6px",fontWeight:600}}>{card.assignee.split(" ")[0]}</span>}
+                        {card.dueDate&&<span style={{fontSize:9,color:card.dueDate<todayNZ()?"#dc2626":"#6b7280"}}>{fmtNZDate(card.dueDate)}</span>}
+                        {card.comments?.length>0&&<span style={{fontSize:9,color:"#6b7280"}}>{"💬 "+card.comments.length}</span>}
+                      </div>
+                    </div>)}
+                  </div>
+
+                  {/* Add card */}
+                  {addingCard===colName?<div style={{marginTop:8}}>
+                    <input id={"pc_title_"+colName.replace(/\s/g,"_")} placeholder="Card title..." autoFocus onKeyDown={e=>{if(e.key==="Enter")addCard(colName);if(e.key==="Escape")setAddingCard(null);}} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,boxSizing:"border-box"}}/>
+                    <div style={{display:"flex",gap:4,marginTop:4}}>
+                      <button onClick={()=>addCard(colName)} style={{...S.p1,fontSize:11,padding:"4px 12px"}}>Add</button>
+                      <button onClick={()=>setAddingCard(null)} style={{...S.ghost,fontSize:11}}>Cancel</button>
+                    </div>
+                  </div>:<button onClick={()=>setAddingCard(colName)} style={{marginTop:8,width:"100%",padding:"6px",background:"transparent",border:"1px dashed #d1d5db",borderRadius:6,color:"#9ca3af",fontSize:11,cursor:"pointer",fontWeight:500}}>+ Add card</button>}
+                </div>})}
+
+                {/* Add column button */}
+                <div style={{minWidth:120,flex:"0 0 120px"}}>
+                  <button onClick={addCol} style={{width:"100%",padding:"12px",background:"#f9fafb",border:"2px dashed #d1d5db",borderRadius:12,color:"#9ca3af",fontSize:12,cursor:"pointer",fontWeight:600}}>+ Add Column</button>
+                </div>
+              </div>}
+
+              {/* Card detail modal */}
+              {viewCard&&<Modal title="Card Details" onClose={()=>{setViewCard(null);setEditCard(null);}}>
+                {editCard?<div>
+                  <label style={S.lbl}>Title</label>
+                  <input value={editCard.title} onChange={e=>setEditCard({...editCard,title:e.target.value})} style={S.inp}/>
+                  <label style={{...S.lbl,marginTop:10}}>Description</label>
+                  <textarea value={editCard.description||""} onChange={e=>setEditCard({...editCard,description:e.target.value})} rows={3} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical",boxSizing:"border-box"}}/>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
+                    <div><label style={S.lbl}>Assignee</label>
+                    <select value={editCard.assignee||""} onChange={e=>setEditCard({...editCard,assignee:e.target.value})} style={S.sel}>
+                      <option value="">Unassigned</option>
+                      {members.map(m=><option key={m}>{m}</option>)}
+                    </select></div>
+                    <div><label style={S.lbl}>Due Date</label>
+                    <input type="date" value={editCard.dueDate||""} onChange={e=>setEditCard({...editCard,dueDate:e.target.value})} style={S.inp}/></div>
+                  </div>
+                  <div style={{marginTop:10}}><label style={S.lbl}>Move to Column</label>
+                  <select value={editCard.column} onChange={e=>setEditCard({...editCard,column:e.target.value})} style={S.sel}>
+                    {columns.map(c=><option key={c}>{c}</option>)}
+                  </select></div>
+                  <div style={{marginTop:10}}><label style={S.lbl}>Labels</label>
+                  <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{LABELS.map(lb=><button key={lb.l} onClick={()=>{const has=(editCard.labels||[]).includes(lb.l);setEditCard({...editCard,labels:has?(editCard.labels||[]).filter(x=>x!==lb.l):[...(editCard.labels||[]),lb.l]});}} style={{fontSize:10,padding:"3px 8px",borderRadius:4,border:"1px solid "+(editCard.labels?.includes(lb.l)?lb.c:"#e5e7eb"),background:editCard.labels?.includes(lb.l)?lb.bg:"#fff",color:editCard.labels?.includes(lb.l)?lb.c:"#6b7280",cursor:"pointer",fontWeight:600}}>{lb.l}</button>)}</div></div>
+                  <div style={{display:"flex",gap:8,marginTop:14}}>
+                    <button onClick={()=>{updateCard(editCard.id,editCard);setViewCard(editCard);setEditCard(null);toast2("Card updated.");}} style={S.p1}>Save</button>
+                    <button onClick={()=>setEditCard(null)} style={S.out}>Cancel</button>
+                  </div>
+                </div>:<div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#111827",marginBottom:4}}>{viewCard.title}</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                    <span style={{fontSize:11,color:"#6b7280",background:"#f3f4f6",borderRadius:4,padding:"2px 8px"}}>{viewCard.column}</span>
+                    {viewCard.assignee&&<span style={{fontSize:11,color:"#0d9488",background:"#f0fdfa",borderRadius:4,padding:"2px 8px"}}>{viewCard.assignee}</span>}
+                    {viewCard.dueDate&&<span style={{fontSize:11,color:viewCard.dueDate<todayNZ()?"#dc2626":"#6b7280",background:viewCard.dueDate<todayNZ()?"#fef2f2":"#f3f4f6",borderRadius:4,padding:"2px 8px"}}>{viewCard.dueDate<todayNZ()?"Overdue: ":"Due: "}{fmtNZDate(viewCard.dueDate)}</span>}
+                  </div>
+                  {viewCard.labels?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>{viewCard.labels.map((l,i)=>{const lb=LABELS.find(x=>x.l===l);return<span key={i} style={{fontSize:10,fontWeight:600,color:lb?.c||"#6b7280",background:lb?.bg||"#f3f4f6",borderRadius:4,padding:"2px 8px"}}>{l}</span>})}</div>}
+                  {viewCard.description&&<div style={{fontSize:13,color:"#374151",lineHeight:1.6,marginBottom:12,padding:"10px 14px",background:"#f9fafb",borderRadius:8,whiteSpace:"pre-wrap"}}>{viewCard.description}</div>}
+                  <div style={{fontSize:10,color:"#9ca3af",marginBottom:12}}>{"Created by "+viewCard.createdBy+" · "+fmtNZDate(viewCard.createdAt?.slice(0,10))}</div>
+
+                  {/* Comments */}
+                  <div style={{borderTop:"1px solid #e5e7eb",paddingTop:12}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#111827",marginBottom:8}}>{"Comments ("+(viewCard.comments?.length||0)+")"}</div>
+                    {(viewCard.comments||[]).map(c=><div key={c.id} style={{padding:"8px 10px",background:"#f9fafb",borderRadius:6,marginBottom:4}}>
+                      <div style={{fontSize:12,color:"#111827"}}>{c.text}</div>
+                      <div style={{fontSize:9,color:"#9ca3af",marginTop:2}}>{c.by+" · "+new Date(c.at).toLocaleString("en-NZ",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
+                    </div>)}
+                    <div style={{display:"flex",gap:6,marginTop:6}}>
+                      <input id="pc_comment" placeholder="Add a comment..." onKeyDown={e=>{if(e.key==="Enter"){addComment(viewCard.id,e.target.value);e.target.value="";}}} style={{flex:1,fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6}}/>
+                      <button onClick={()=>{const el=document.getElementById("pc_comment");if(el){addComment(viewCard.id,el.value);el.value="";}}} style={{...S.p1,fontSize:11,padding:"8px 12px"}}>Post</button>
+                    </div>
+                  </div>
+
+                  <div style={{display:"flex",gap:8,marginTop:14,borderTop:"1px solid #e5e7eb",paddingTop:12}}>
+                    <button onClick={()=>setEditCard({...viewCard})} style={S.p1}>Edit Card</button>
+                    <button onClick={()=>deleteCard(viewCard.id)} style={{...S.ghost,color:"#dc2626"}}>Delete</button>
+                  </div>
+                </div>}
+              </Modal>}
             </div>;
           })()}
         </div>}

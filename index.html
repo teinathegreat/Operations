@@ -67,6 +67,8 @@ button{transition:all .15s cubic-bezier(.22,1,.36,1);font-family:'Plus Jakarta S
 button:active{transform:scale(.97);}
 /* Input focus */
 input:focus,textarea:focus,select:focus{outline:none;border-color:#0d9488!important;box-shadow:0 0 0 3px rgba(13,148,136,.1);}
+[draggable]:focus{outline:none!important;}
+[draggable]{-webkit-user-select:none;user-select:none;}
 /* Smooth scroll */
 html{scroll-behavior:smooth;}
 /* Custom scrollbar */
@@ -5889,11 +5891,12 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             // ═══════════════════════════════════════════
             const KanbanView=()=><div style={{display:"flex",gap:14,flex:1,overflowX:"auto",paddingBottom:16,paddingRight:40,alignItems:"flex-start"}}>
               {columns.map(colName=>{const cards=filteredCards(colName);const isDone=colName.toLowerCase().match(/done|completed/);const colColors={"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706","Done":"#059669","Completed":"#059669"};const colColor=colColors[colName]||teamColor;
-              return<div key={colName} style={{minWidth:280,maxWidth:320,flex:"0 0 280px",display:"flex",flexDirection:"column",maxHeight:"calc(100vh - 220px)"}}
-                onDragOver={e=>{e.preventDefault();e.currentTarget.querySelector("[data-col-header]").style.borderColor=teamColor;}}
-                onDragLeave={e=>{e.currentTarget.querySelector("[data-col-header]").style.borderColor="transparent";}}
-                onDrop={e=>{e.preventDefault();e.currentTarget.querySelector("[data-col-header]").style.borderColor="transparent";const cardId=e.dataTransfer.getData("cardId");if(cardId)moveCard(cardId,colName);}}>
-                <div data-col-header="" style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",borderLeft:"3px solid "+colColor,borderRight:"3px solid transparent",marginBottom:4,transition:"border-color .15s"}}>
+              return<div key={colName} style={{minWidth:280,maxWidth:320,flex:"0 0 280px",display:"flex",flexDirection:"column",maxHeight:"calc(100vh - 220px)",background:"#f8f9fa",borderRadius:12,padding:"4px",transition:"all .15s"}}
+                onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect="move";e.currentTarget.style.background="#ecfdf5";e.currentTarget.style.outline="2px dashed "+teamColor;e.currentTarget.style.outlineOffset="-2px";}}
+                onDragLeave={e=>{e.currentTarget.style.background="#f8f9fa";e.currentTarget.style.outline="none";}}
+                onDrop={e=>{e.preventDefault();e.currentTarget.style.background="#f8f9fa";e.currentTarget.style.outline="none";const cardId=e.dataTransfer.getData("cardId");if(cardId)moveCard(cardId,colName);}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",marginBottom:4}}>
+                  <div style={{width:3,height:16,borderRadius:2,background:colColor}}/>
                   <span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>{colName}</span>
                   <span style={{fontSize:11,color:"#9ca3af",fontWeight:600}}>{cards.length}</span>
                   {!DEFAULT_COLS.includes(colName)&&<button onClick={()=>renameCol(colName)} style={{fontSize:10,color:"#9ca3af",background:"none",border:"none",cursor:"pointer",padding:2}}>✏️</button>}
@@ -5901,16 +5904,14 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 </div>
                 <div style={{flex:1,overflowY:"auto",padding:"0 4px",display:"flex",flexDirection:"column",gap:8}}>
                   {cards.map(card=>{const cp=checkProgress(card.checklist);const age=getAge(card);const ac=ageColor(age);const isOverdue=card.dueDate&&card.dueDate<todayS&&!isDone;const assignees=card.assignees||[card.assignee].filter(Boolean);
-                  let _dragged=false;
                   return<div key={card.id} className="bc-card-hover" draggable
-                    onDragStart={e=>{e.dataTransfer.setData("cardId",card.id);setDragCard(card.id);_dragged=true;}}
-                    onDragEnd={()=>{setDragCard(null);setTimeout(()=>{_dragged=false;},100);}}
-                    onMouseUp={()=>{if(!_dragged)setViewCard(card);}}
-                    style={{background:"#fff",borderRadius:12,padding:16,cursor:"grab",
-                      border:"1px solid "+(ac?"transparent":"#f0f0f0"),
-                      borderLeft:ac?"3px solid "+ac:"3px solid #f0f0f0",
-                      outline:dragCard===card.id?"2px solid "+teamColor:"none",
-                      outlineOffset:-1,
+                    onDragStart={e=>{e.dataTransfer.setData("cardId",card.id);e.dataTransfer.effectAllowed="move";setDragCard(card.id);}}
+                    onDragEnd={()=>setDragCard(null)}
+                    onClick={()=>{if(dragCard)return;setViewCard(card);}}
+                    style={{background:dragCard===card.id?"#f0fdfa":"#fff",borderRadius:12,padding:16,cursor:"grab",
+                      border:dragCard===card.id?"2px solid "+teamColor:"1px solid "+(ac?"transparent":"#f0f0f0"),
+                      borderLeft:ac&&dragCard!==card.id?"3px solid "+ac:undefined,
+                      outline:"none",
                       boxShadow:dragCard===card.id?"0 8px 24px rgba(0,0,0,.15)":"0 1px 3px rgba(0,0,0,.04)",
                       opacity:isDone?.5:1,transition:"all .15s"}}>
                     {card.labels?.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>{card.labels.map((l,i)=>{const lb=LABELS.find(x=>x.l===l);return<div key={i} style={{height:4,width:32,borderRadius:2,background:lb?.c||"#d1d5db"}} title={l}/>})}</div>}
@@ -6122,10 +6123,12 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     {(viewCard.comments||[]).map(c=><div key={c.id} style={{padding:"10px 12px",background:"#f9fafb",borderRadius:8,marginBottom:6}}><div style={{fontSize:12,color:"#111827",lineHeight:1.5}}>{c.text}</div><div style={{fontSize:10,color:"#9ca3af",marginTop:4}}>{c.by+" · "+new Date(c.at).toLocaleString("en-NZ",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div></div>)}
                     <div style={{display:"flex",gap:8,marginTop:8}}><input id="pc_comment" placeholder="Write a comment..." onKeyDown={e=>{if(e.key==="Enter"){addComment(viewCard.id,e.target.value);e.target.value="";}}} style={{flex:1,fontSize:12,padding:"10px 12px",border:"1px solid #e5e7eb",borderRadius:8}}/><button onClick={()=>{const el=document.getElementById("pc_comment");if(el){addComment(viewCard.id,el.value);el.value="";}}} style={{fontSize:12,padding:"10px 16px",background:teamColor,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>Post</button></div>
                   </div>
-                  {/* Activity log */}
-                  {(viewCard.activity||[]).length>0&&<div style={{borderTop:"1px solid #f0f0f0",paddingTop:14,marginTop:14}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"#111827",marginBottom:8}}>Activity</div>
-                    {[...(viewCard.activity||[])].reverse().slice(0,15).map(a=><div key={a.id} style={{fontSize:11,color:"#9ca3af",padding:"4px 0",display:"flex",gap:6}}><span style={{fontWeight:600,color:"#6b7280"}}>{a.by}</span><span>{a.action}</span><span style={{marginLeft:"auto",fontSize:10,whiteSpace:"nowrap"}}>{new Date(a.at).toLocaleString("en-NZ",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</span></div>)}
+                  {/* Activity log - compact scrollable */}
+                  {(viewCard.activity||[]).length>0&&<div style={{borderTop:"1px solid #f0f0f0",paddingTop:12,marginTop:12}}>
+                    <div style={{fontSize:11,fontWeight:600,color:"#9ca3af",marginBottom:6}}>Activity</div>
+                    <div style={{maxHeight:100,overflowY:"auto",background:"#f9fafb",borderRadius:8,padding:"6px 10px"}}>
+                    {[...(viewCard.activity||[])].reverse().slice(0,20).map(a=><div key={a.id} style={{fontSize:10,color:"#9ca3af",padding:"3px 0",display:"flex",gap:4,borderBottom:"1px solid #f3f4f6"}}><span style={{fontWeight:600,color:"#6b7280"}}>{(a.by||"").split(" ")[0]}</span><span>{a.action}</span><span style={{marginLeft:"auto",fontSize:9,whiteSpace:"nowrap",color:"#d1d5db"}}>{new Date(a.at).toLocaleString("en-NZ",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</span></div>)}
+                    </div>
                   </div>}
                   <div style={{display:"flex",gap:8,marginTop:16,borderTop:"1px solid #f0f0f0",paddingTop:14}}>
                     <button onClick={()=>setEditCard({...viewCard})} style={{padding:"8px 20px",background:teamColor,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>Edit</button>

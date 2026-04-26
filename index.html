@@ -67,7 +67,7 @@ const ACCOUNTS=[
 
 const SK="bc_v3";
 // Auto-clear stale localStorage data from old versions — Supabase is the only source of truth
-try{["bc_v3","bc_sched","bc_quick_notes","bc_notifs","bc_alert_snz","bc_cap_criteria","bc_caps","bc_daily","bc_todos","bc_assess_hist","bc_daily_cfg","bc_ppt","bc_ic","bc_audit","bc_meetings","bc_assess_timer","bc_goals","bc_onboard","bc_weights","bc_pending","bc_reviews","bc_perms","bc_actions"].forEach(k=>localStorage.removeItem(k));}catch{}
+try{["bc_v3","bc_sched","bc_quick_notes","bc_notifs","bc_alert_snz","bc_cap_criteria","bc_caps","bc_daily","bc_todos","bc_assess_hist","bc_daily_cfg","bc_ppt","bc_ic","bc_audit","bc_meetings","bc_assess_timer","bc_goals","bc_onboard","bc_weights","bc_pending","bc_reviews","bc_perms","bc_actions","bc_accounts","bc_data"].forEach(k=>localStorage.removeItem(k));}catch{}
 
 const DEFAULT_TEAMS={
   "Guest Support":{color:"#0d9488",lightBg:"#ecfdf5",kpis:[
@@ -360,21 +360,7 @@ function App(){
   const sbUrlRef=useRef(sbUrl);const sbKeyRef=useRef(sbKey);
   useEffect(()=>{sbUrlRef.current=sbUrl;sbKeyRef.current=sbKey;},[sbUrl,sbKey]);
   const sbSaveNow=(table,key,val)=>{if(sbUrlRef.current&&sbKeyRef.current)return sbSave(table,key,val);return Promise.resolve();};
-  // Direct save using refs - bypasses all closure issues
-  const directSaveTimers=useRef({});
-  const directSave=(key,val)=>{
-    const url=sbUrlRef.current;const k=sbKeyRef.current;
-    if(!url||!k){console.warn("directSave skipped — no credentials for "+key);return;}
-    if(directSaveTimers.current[key])clearTimeout(directSaveTimers.current[key]);
-    directSaveTimers.current[key]=setTimeout(()=>{
-      delete directSaveTimers.current[key];
-      const headers={"Content-Type":"application/json","apikey":k,"Authorization":`Bearer ${k}`,"Prefer":"resolution=merge-duplicates,return=minimal"};
-      fetch(`${url}/rest/v1/bc_store?on_conflict=key`,{
-        method:"POST",headers,
-        body:JSON.stringify([{key,value:JSON.stringify(val),updated_at:new Date().toISOString()}])
-      }).then(r=>{if(!r.ok){console.error("Save failed for "+key+": "+r.status);toast2("\u26a0 Cloud save failed for "+key);}}).catch(e=>{console.error("Save error:",e);toast2("\u26a0 Cloud save failed");});
-    },500);
-  };
+  // directSave removed — all saves now go to config_rows or row tables
   const[sbStatus,setSbStatus]=useState("ok");// idle | testing | ok | error
   const[sbMsg,setSbMsg]=useState("");
   const[pendingEdits,setPendingEdits]=useState([]);
@@ -405,8 +391,8 @@ function App(){
   const[adminAlerts,setAdminAlerts]=useState(()=>{return[];});
   const[alertNameRevealed,setAlertNameRevealed]=useState(false);
 
-  const addNotif=(forUser,msg)=>{setNotifications(prev=>[{id:Date.now().toString(36),forUser,msg,read:false,createdAt:new Date().toISOString()},...prev.slice(0,100)]);};
-  const addAdminAlert=(forUser,type,title,detail,createdBy)=>{setAdminAlerts(prev=>[{id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),forUser,type,title,detail,createdBy,createdAt:new Date().toISOString(),dismissed:false},...prev.slice(0,200)]);};
+  const addNotif=(forUser,msg)=>{const n={id:Date.now().toString(36),forUser,msg,read:false,createdAt:new Date().toISOString()};setNotifications(prev=>[n,...prev.slice(0,100)]);dbUpsert("notif_entries",n);};
+  const addAdminAlert=(forUser,type,title,detail,createdBy)=>{const a={id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),forUser,type,title,detail,createdBy,createdAt:new Date().toISOString(),dismissed:false};setAdminAlerts(prev=>[a,...prev.slice(0,200)]);dbUpsert("alert_entries",a);};
   const DEFAULT_DAILY_CONFIG={"Guest Support":{morning:[{k:"agents",l:"Total Guest Agents Working",t:"number"},{k:"intercom",l:"Intercom Conversations",t:"number"},{k:"enterprise",l:"Enterprise Inbox",t:"number"},{k:"reservations",l:"Reservation Requests",t:"number"},{k:"airbnb_unread",l:"Airbnb Unread",t:"number"},{k:"workflows",l:"Workflows",t:"number"},{k:"lost_property",l:"Lost Property",t:"number"},{k:"bonds",l:"Bonds Outstanding",t:"number"},{k:"rehouse",l:"Dashboard Rehouse Bookings",t:"number"},{k:"pending_cod",l:"Dashboard Pending COD",t:"number"},{k:"tl_approvals",l:"TL Approvals Outstanding",t:"number"},{k:"meetings_planned",l:"1-on-1 Meetings Planned",t:"members"},{k:"reviews_planned",l:"Call Reviews Planned",t:"number"}],evening:[{k:"intercom",l:"Intercom Conversations",t:"number"},{k:"enterprise",l:"Enterprise Inbox",t:"number"},{k:"reservations",l:"Reservation Requests",t:"number"},{k:"airbnb_unread",l:"Airbnb Unread",t:"number"},{k:"workflows",l:"Workflows",t:"number"},{k:"lost_property",l:"Lost Property",t:"number"},{k:"bonds",l:"Bonds Outstanding",t:"number"},{k:"rehouse",l:"Dashboard Rehouse Bookings",t:"number"},{k:"pending_cod",l:"Dashboard Pending COD",t:"number"},{k:"tl_approvals",l:"TL Approvals Outstanding",t:"number"},{k:"meetings_done",l:"1-on-1 Meetings Completed",t:"members"},{k:"reviews_done",l:"Call Reviews Completed",t:"number"}]},"Owner Support":{morning:[{k:"agents",l:"Total Owner Agents Working",t:"number"},{k:"intercom",l:"Intercom Conversations",t:"number"},{k:"enterprise",l:"Enterprise Inbox",t:"number"},{k:"owner_msgs",l:"Owner Messages",t:"number"},{k:"callbacks",l:"Owner Call Backs Outstanding",t:"number"},{k:"meetings_planned",l:"1-on-1 Meetings Planned",t:"members"},{k:"reviews_planned",l:"Call Reviews Planned",t:"number"},{k:"withdraws",l:"Withdraws Outstanding",t:"number"}],evening:[{k:"intercom",l:"Intercom Conversations",t:"number"},{k:"enterprise",l:"Enterprise Inbox",t:"number"},{k:"owner_msgs",l:"Owner Messages",t:"number"},{k:"callbacks",l:"Owner Call Backs Outstanding",t:"number"},{k:"meetings_done",l:"1-on-1 Meetings Completed",t:"members"},{k:"reviews_done",l:"Call Reviews Completed",t:"number"},{k:"withdraws",l:"Withdraws Outstanding",t:"number"}]},"Reputation and Resolutions":{morning:[{k:"agents",l:"Total R&R Agents Working",t:"number"},{k:"intercom",l:"Intercom Conversations",t:"number"},{k:"enterprise",l:"Enterprise Inbox",t:"number"},{k:"case_files",l:"Total Case Files",t:"number"},{k:"feedback_wfs",l:"Total Feedback Workflows",t:"number"},{k:"bachcare_reviews",l:"Total Bachcare Reviews",t:"number"},{k:"airbnb_reviews",l:"Total Airbnb Reviews",t:"number"},{k:"booking_reviews",l:"Total Booking.com Reviews",t:"number"},{k:"vrbo_reviews",l:"Total VRBO Reviews",t:"number"},{k:"meetings_planned",l:"1-on-1 Meetings Planned",t:"members"},{k:"reviews_planned",l:"Call Reviews Planned",t:"number"}],evening:[{k:"intercom",l:"Intercom Conversations",t:"number"},{k:"enterprise",l:"Enterprise Inbox",t:"number"},{k:"case_files",l:"Total Case Files",t:"number"},{k:"feedback_wfs",l:"Total Feedback Workflows",t:"number"},{k:"bachcare_reviews",l:"Total Bachcare Reviews",t:"number"},{k:"airbnb_reviews",l:"Total Airbnb Reviews",t:"number"},{k:"booking_reviews",l:"Total Booking.com Reviews",t:"number"},{k:"vrbo_reviews",l:"Total VRBO Reviews",t:"number"},{k:"meetings_done",l:"1-on-1 Meetings Completed",t:"members"},{k:"reviews_done",l:"Call Reviews Completed",t:"number"}]}};
   const[dailyReports,setDailyReports]=useState(()=>{return[];});
 
@@ -443,7 +429,7 @@ function App(){
   // Sync API keys to both localStorage and Supabase
   const saveApiKeys=(oKey,cKey)=>{
     try{localStorage.setItem("bc_openai_key",oKey);localStorage.setItem("bc_claude_key",cKey);}catch{}
-    if(sbUrlRef.current&&sbKeyRef.current)sbSaveNow("bc_store","api_keys",{openai:oKey,claude:cKey});
+    if(sbUrlRef.current&&sbKeyRef.current)dbSaveConfigKey("sys","api_keys",{openai:oKey,claude:cKey});
   };
   const[txStatus,setTxStatus]=useState("idle");
   const[txResult,setTxResult]=useState("");
@@ -540,8 +526,10 @@ function App(){
   },[currentUser?.username]);
 
   const addAudit=(action,details)=>{
-    setAuditLog(prev=>[{id:uid(),user:currentUser?.displayName||"?",role:currentUser?.role||"?",
-      action,details,ts:nowNZ()},...prev]);
+    const entry={id:uid(),user:currentUser?.displayName||"?",role:currentUser?.role||"?",
+      action,details,ts:nowNZ()};
+    setAuditLog(prev=>[entry,...prev]);
+    dbUpsert("audit_entries",entry);
   };
   // Auto-create a follow-up todo for the team leader when an action is created
   const createActionTodo=(personName,teamName,actionTitle,actionType)=>{
@@ -578,7 +566,7 @@ function App(){
     return sbFetch(`${table}?on_conflict=key`,"POST",[{key,value:JSON.stringify(value),updated_at:new Date().toISOString()}]);
   };
 
-  const saveKey=async(key,value)=>{if(sbUrlRef.current&&sbKeyRef.current)try{await sbSave("bc_store",key,value);}catch(e){console.error("Save error for "+key+":",e);}};
+  // saveKey removed — all saves now go to row tables or config_rows
 
   // ── ROW-LEVEL DATABASE OPERATIONS ──────────────────────────────────────
   // Each record is its own row. No more giant JSON blobs. No more conflicts.
@@ -674,6 +662,26 @@ function App(){
     }
     console.log("Config migration complete!");
   };
+  const migrateSysToRows=async()=>{
+    console.log("Migrating system config to config_rows...");
+    const sysKeys=["app_data","pending_edits","call_review_teams","sync_version","quick_refs","update_notes","api_keys","app_version","accounts"];
+    for(const key of sysKeys){
+      try{const val=await sbLoad("bc_store",key);
+      if(val!==null&&val!==undefined){
+        console.log("Migrating sys:"+key);
+        await dbSaveConfigKey("sys",key,val);
+      }}catch(e){console.error("Sys migration error for "+key+":",e);}
+    }
+    // Migrate presence
+    try{const pres=await sbLoad("bc_store","presence");
+    if(pres&&typeof pres==="object"){
+      for(const[username,data] of Object.entries(pres)){
+        await dbSaveConfigKey("presence",username,data);
+      }
+      console.log("Migrated presence: "+Object.keys(pres).length+" users");
+    }}catch{}
+    console.log("System migration complete!");
+  };
 
   const sbLoad=async(table,key)=>{
     const r=await sbFetch(`${table}?key=eq.${encodeURIComponent(key)}&select=value,updated_at&order=updated_at.desc&limit=1`);
@@ -699,43 +707,39 @@ function App(){
   };
 
   const syncVersion=useRef(0);
-  // Arrays now save directly via wrapped setters - no auto-sync needed
-  const forceSaveArr=(key,local)=>{
-    const url=sbUrlRef.current;const k=sbKeyRef.current;
-    if(!url||!k){toast2("Save failed — not connected");return;}
-    fetch(`${url}/rest/v1/bc_store?on_conflict=key`,{
-      method:"POST",
-      headers:{"Content-Type":"application/json","apikey":k,"Authorization":`Bearer ${k}`,"Prefer":"resolution=merge-duplicates,return=minimal"},
-      body:JSON.stringify([{key,value:JSON.stringify(local),updated_at:new Date().toISOString()}])
-    }).then(r=>{if(r.ok)toast2("Saved ✓");else toast2("Save failed");}).catch(()=>toast2("Save failed"));
-  };
+  // forceSaveArr removed — all saves now go to row tables directly
   const isLoading=useRef(false);
   const syncToSupabase=async()=>{
-    if(!sbUrl||!sbKey||sbStatus!=="ok"||isLoading.current)return;
+    if(!sbUrl||!sbKey||sbStatus!=="ok")return;
     try{
-      await sbSave("bc_store","app_data",{...data,_r:roster,_tc:tc});
-      await sbSave("bc_store","audit_log",auditLog.slice(-200));
-      await sbSave("bc_store","pending_edits",pendingEdits);
-      await sbSave("bc_store","daily_reports",dailyReports);
-      await sbSave("bc_store","call_reviews",callReviews);
-      await sbSave("bc_store","action_items",actionItems);
-      await sbSave("bc_store","todos",todos);
-      await sbSave("bc_store","meeting_notes",meetingNotes);
-      await sbSave("bc_store","assess_history",assessHistory);
-      await sbSave("bc_store","notifications",notifications);
-      await sbSave("bc_store","capabilities",capabilities);
-      await sbSave("bc_store","cap_criteria",capCriteria);
-      await sbSave("bc_store","permissions",permissions);
-      if(dailyConfig)await sbSave("bc_store","daily_config",dailyConfig);
-      await sbSave("bc_store","quick_notes",quickNotes);
-      await sbSave("bc_store","goals",goals);
-      await sbSave("bc_store","onboarding",onboarding);
-      await sbSave("bc_store","alert_snooze",alertSnooze);
-      await sbSave("bc_store","sched_data",schedData);
-      await sbSave("bc_store","ic_data",icData);
-      await sbSave("bc_store","ic_ppt",icPPT);
-      await sbSave("bc_store","weights",allWeights);
-      await sbSave("bc_store","call_review_teams",callReviewTeams);
+      // Config data (bc_store)
+      await dbSaveConfigKey("sys","app_data",{...data,_r:roster,_tc:tc});
+      await dbSaveConfigKey("sys","pending_edits",pendingEdits);
+      await dbSaveConfigKey("sys","call_review_teams",callReviewTeams);
+      // Row-level tables (bulk upsert)
+      await dbBulkInsert("call_reviews",callReviews);
+      await dbBulkInsert("action_items",actionItems);
+      await dbBulkInsert("todos",todos);
+      await dbBulkInsert("daily_reports",dailyReports);
+      await dbBulkInsert("meeting_notes",meetingNotes);
+      await dbBulkInsert("assess_history",assessHistory);
+      await dbBulkInsert("goals",goals);
+      await dbBulkInsert("audit_entries",auditLog.slice(-200));
+      await dbBulkInsert("notif_entries",notifications);
+      await dbBulkInsert("alert_entries",adminAlerts);
+      // Config rows
+      await dbSaveConfigAll("caps",capabilities);
+      await dbSaveConfigAll("capcrit",capCriteria);
+      await dbSaveConfigAll("perms",permissions);
+      if(dailyConfig)await dbSaveConfigAll("dailycfg",dailyConfig);
+      await dbSaveConfigAll("notes",quickNotes);
+      await dbSaveConfigAll("onboard",onboarding);
+      await dbSaveConfigAll("snooze",alertSnooze);
+      await dbSaveConfigAll("sched",schedData);
+      await dbSaveConfigAll("ic",icData);
+      await dbSaveConfigAll("icppt",icPPT);
+      await dbSaveConfigAll("weights",allWeights);
+      await dbSaveConfigAll("revcrit",reviewCriteriaConfig);
     }catch(e){console.error("Supabase sync error:",e);}
   };
   const saveAccountsToSupabase=async(accounts)=>{
@@ -743,7 +747,7 @@ function App(){
     
     // Save to Supabase if connected
     if(!sbUrl||!sbKey||sbStatus!=="ok")return;
-    try{await sbSave("bc_store","accounts",accounts);}catch(e){}
+    try{await dbSaveConfigKey("sys","accounts",accounts);}catch(e){}
   };
 
   const mergeArrays=(local,remote)=>{
@@ -768,21 +772,29 @@ function App(){
     isLoading.current=true;
     setSbMsg("Loading from Supabase...");
     try{
-      // Load row-level tables (new) + config data (still in bc_store)
-      const[cr2,ai2,td2,dr2,mn2,ah2,gl2,au2,nf2,aa2,d,pe,caps2,cc2,qn2,ob2,pm2,dc2,as2,sd2,id2,ip2,wt2,crt2,sv2,qr2,un2,rcc2,ak2]=await Promise.all([
+      // Load row-level tables + config from config_rows
+      const[cr2,ai2,td2,dr2,mn2,ah2,gl2,au2,nf2,aa2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence]=await Promise.all([
         dbLoadAll("call_reviews"),dbLoadAll("action_items"),dbLoadAll("todos"),dbLoadAll("daily_reports"),
         dbLoadAll("meeting_notes"),dbLoadAll("assess_history"),dbLoadAll("goals"),
         dbLoadAll("audit_entries"),dbLoadAll("notif_entries"),dbLoadAll("alert_entries"),
-        sbLoad("bc_store","app_data"),sbLoad("bc_store","pending_edits"),
-        sbLoad("bc_store","capabilities"),sbLoad("bc_store","cap_criteria"),
-        sbLoad("bc_store","quick_notes"),sbLoad("bc_store","onboarding"),
-        sbLoad("bc_store","permissions"),sbLoad("bc_store","daily_config"),
-        sbLoad("bc_store","alert_snooze"),sbLoad("bc_store","sched_data"),
-        sbLoad("bc_store","ic_data"),sbLoad("bc_store","ic_ppt"),sbLoad("bc_store","weights"),
-        sbLoad("bc_store","call_review_teams"),sbLoad("bc_store","sync_version"),
-        sbLoad("bc_store","quick_refs"),sbLoad("bc_store","update_notes"),
-        sbLoad("bc_store","review_criteria_config"),sbLoad("bc_store","api_keys")
+        dbLoadConfig("caps"),dbLoadConfig("capcrit"),dbLoadConfig("notes"),dbLoadConfig("onboard"),
+        dbLoadConfig("perms"),dbLoadConfig("dailycfg"),dbLoadConfig("snooze"),
+        dbLoadConfig("sched"),dbLoadConfig("ic"),dbLoadConfig("icppt"),
+        dbLoadConfig("weights"),dbLoadConfig("revcrit"),dbLoadConfig("sys"),dbLoadConfig("presence")
       ]);
+      // sys config holds app_data, accounts, api_keys, quick_refs, update_notes, etc.
+      const sysConf=rc_sys||{};
+      const d=sysConf.app_data||null;
+      const pe=sysConf.pending_edits||null;
+      const crt2=sysConf.call_review_teams||null;
+      const sv2=sysConf.sync_version||null;
+      const qr2=sysConf.quick_refs||null;
+      const un2=sysConf.update_notes||null;
+      const ak2=sysConf.api_keys||null;
+      if(sysConf.app_version)setRV(sysConf.app_version);
+      if(rc_presence)onlineUsersRef.current=rc_presence;
+      // Check if config_rows has data — if not, fall back to bc_store for migration
+      const configMigrated=rc_caps!==null||rc_pm!==null||rc_sd!==null||Object.keys(sysConf).length>0;
       // If row tables empty, fall back to bc_store (pre-migration)
       const useFallback=cr2.length===0&&ai2.length===0&&td2.length===0&&dr2.length===0;
       console.log("Row tables check — cr:"+cr2.length+" ai:"+ai2.length+" td:"+td2.length+" dr:"+dr2.length+" → fallback:"+useFallback);
@@ -802,54 +814,56 @@ function App(){
         f_gl=Array.isArray(o_gl)?o_gl:[];f_au=Array.isArray(o_au)?o_au:[];
         f_nf=Array.isArray(o_nf)?o_nf:[];f_aa=Array.isArray(o_aa)?o_aa:[];
       }
-      // Load config objects from config_rows (new) with bc_store fallback
-      const[rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_dc,rc_rcc]=await Promise.all([
-        dbLoadConfig("caps"),dbLoadConfig("capcrit"),dbLoadConfig("notes"),dbLoadConfig("onboard"),
-        dbLoadConfig("perms"),dbLoadConfig("snooze"),dbLoadConfig("sched"),
-        dbLoadConfig("ic"),dbLoadConfig("icppt"),dbLoadConfig("weights"),
-        dbLoadConfig("dailycfg"),dbLoadConfig("revcrit")
-      ]);
-      const configMigrated=rc_caps!==null||rc_pm!==null||rc_sd!==null;
-      // Use row data if available, else bc_store fallback
-      const f_caps=rc_caps||(caps2&&typeof caps2==="object"?caps2:null);
-      const f_cc=rc_cc||(cc2&&typeof cc2==="object"?cc2:null);
-      const f_qn=rc_qn||(qn2&&typeof qn2==="object"?qn2:null);
-      const f_ob=rc_ob||(ob2&&typeof ob2==="object"?ob2:null);
-      const f_pm=rc_pm||(pm2&&typeof pm2==="object"?pm2:null);
-      const f_as=rc_as||(as2&&typeof as2==="object"?as2:null);
-      const f_sd=rc_sd||(sd2&&typeof sd2==="object"?sd2:null);
-      const f_id=rc_id||(id2&&typeof id2==="object"?id2:null);
-      const f_ip=rc_ip||(ip2&&typeof ip2==="object"?ip2:null);
-      const f_wt=rc_wt||(wt2&&typeof wt2==="object"?wt2:null);
-      const f_dc=rc_dc||(dc2&&typeof dc2==="object"?dc2:null);
-      const f_rcc=rc_rcc||(rcc2&&typeof rcc2==="object"?rcc2:null);
+      // If config_rows empty, fall back to bc_store for config data
+      let f_d=d,f_pe=pe,f_caps=rc_caps,f_cc=rc_cc,f_qn=rc_qn,f_ob=rc_ob,f_pm=rc_pm;
+      let f_dc=rc_dc,f_as=rc_as,f_sd=rc_sd,f_id=rc_id,f_ip=rc_ip,f_wt=rc_wt,f_rcc=rc_rcc;
+      let f_crt=crt2,f_sv=sv2,f_qr=qr2,f_un=un2,f_ak=ak2;
+      if(!configMigrated){
+        console.log("Config rows empty — loading from bc_store fallback");
+        const[bc_d,bc_pe,bc_caps,bc_cc,bc_qn,bc_ob,bc_pm,bc_dc,bc_as,bc_sd,bc_id,bc_ip,bc_wt,bc_crt,bc_sv,bc_qr,bc_un,bc_rcc,bc_ak]=await Promise.all([
+          sbLoad("bc_store","app_data"),sbLoad("bc_store","pending_edits"),
+          sbLoad("bc_store","capabilities"),sbLoad("bc_store","cap_criteria"),
+          sbLoad("bc_store","quick_notes"),sbLoad("bc_store","onboarding"),
+          sbLoad("bc_store","permissions"),sbLoad("bc_store","daily_config"),
+          sbLoad("bc_store","alert_snooze"),sbLoad("bc_store","sched_data"),
+          sbLoad("bc_store","ic_data"),sbLoad("bc_store","ic_ppt"),sbLoad("bc_store","weights"),
+          sbLoad("bc_store","call_review_teams"),sbLoad("bc_store","sync_version"),
+          sbLoad("bc_store","quick_refs"),sbLoad("bc_store","update_notes"),
+          sbLoad("bc_store","review_criteria_config"),sbLoad("bc_store","api_keys")
+        ]);
+        f_d=bc_d||f_d;f_pe=bc_pe||f_pe;
+        f_caps=bc_caps||f_caps;f_cc=bc_cc||f_cc;f_qn=bc_qn||f_qn;f_ob=bc_ob||f_ob;f_pm=bc_pm||f_pm;
+        f_dc=bc_dc||f_dc;f_as=bc_as||f_as;f_sd=bc_sd||f_sd;f_id=bc_id||f_id;f_ip=bc_ip||f_ip;
+        f_wt=bc_wt||f_wt;f_rcc=bc_rcc||f_rcc;
+        f_crt=bc_crt||f_crt;f_sv=bc_sv||f_sv;f_qr=bc_qr||f_qr;f_un=bc_un||f_un;f_ak=bc_ak||f_ak;
+      }
       // Set all state
-      if(d){const{_r,_tc,...rest}=d;if(_r){const mr=migrateRoster(fixRosterNames(_r));setRoster(mr);}if(_tc)setTc(_tc);setData(rest);}
-      if(pe)setPendingEdits(pe);
+      if(f_d){const{_r,_tc,...rest}=f_d;if(_r){const mr=migrateRoster(fixRosterNames(_r));setRoster(mr);}if(_tc)setTc(_tc);setData(rest);}
+      if(f_pe)setPendingEdits(f_pe);
       setCallReviews(f_cr);setActionItems(f_ai);setTodos(f_td);setDailyReports(f_dr);
       setMeetingNotes(f_mn);setAssessHistory(f_ah);setGoals(f_gl);
       setAuditLog(f_au);setNotifications(f_nf);setAdminAlerts(f_aa);
-      if(f_caps)setCapabilities(f_caps);
-      if(f_cc)setCapCriteria(f_cc);
-      if(f_qn)setQuickNotes(f_qn);
-      if(f_ob)setOnboarding(f_ob);
-      if(f_pm)setPermissions(f_pm);
-      if(f_dc)setDailyConfig(f_dc);
-      if(f_as)setAlertSnooze(f_as);
-      if(f_sd)setSchedData(f_sd);
-      if(f_id)setIcData(f_id);
-      if(f_ip)setIcPPT(f_ip);
-      if(f_wt)setAllWeights(f_wt);
-      if(crt2&&Array.isArray(crt2))setCallReviewTeams(crt2);
-      if(sv2&&typeof sv2==="number")syncVersion.current=sv2;
-      if(qr2&&Array.isArray(qr2))setQuickRefs(qr2);
-      if(un2&&Array.isArray(un2))setUpdateNotes(un2);
-      if(f_rcc)setReviewCriteriaConfig(f_rcc);
-      if(ak2&&typeof ak2==="object"){if(ak2.openai){setOpenaiKey(ak2.openai);try{localStorage.setItem("bc_openai_key",ak2.openai);}catch{}}if(ak2.claude){setClaudeKey(ak2.claude);try{localStorage.setItem("bc_claude_key",ak2.claude);}catch{}}}
+      if(f_caps&&typeof f_caps==="object")setCapabilities(f_caps);
+      if(f_cc&&typeof f_cc==="object")setCapCriteria(f_cc);
+      if(f_qn&&typeof f_qn==="object")setQuickNotes(f_qn);
+      if(f_ob&&typeof f_ob==="object")setOnboarding(f_ob);
+      if(f_pm&&typeof f_pm==="object")setPermissions(f_pm);
+      if(f_dc&&typeof f_dc==="object")setDailyConfig(f_dc);
+      if(f_as&&typeof f_as==="object")setAlertSnooze(f_as);
+      if(f_sd&&typeof f_sd==="object")setSchedData(f_sd);
+      if(f_id&&typeof f_id==="object")setIcData(f_id);
+      if(f_ip&&typeof f_ip==="object")setIcPPT(f_ip);
+      if(f_wt&&typeof f_wt==="object")setAllWeights(f_wt);
+      if(f_crt&&Array.isArray(f_crt))setCallReviewTeams(f_crt);
+      if(f_sv&&typeof f_sv==="number")syncVersion.current=f_sv;
+      if(f_qr&&Array.isArray(f_qr))setQuickRefs(f_qr);
+      if(f_un&&Array.isArray(f_un))setUpdateNotes(f_un);
+      if(f_rcc&&typeof f_rcc==="object")setReviewCriteriaConfig(f_rcc);
+      if(f_ak&&typeof f_ak==="object"){if(f_ak.openai){setOpenaiKey(f_ak.openai);try{localStorage.setItem("bc_openai_key",f_ak.openai);}catch{}}if(f_ak.claude){setClaudeKey(f_ak.claude);try{localStorage.setItem("bc_claude_key",f_ak.claude);}catch{}}}
       setSbMsg("Data loaded ✓");
       // Run migrations if needed (one-time)
       if(useFallback)setTimeout(()=>{console.log("Triggering array migration...");migrateToRows();},2000);
-      if(!configMigrated)setTimeout(()=>{console.log("Triggering config migration...");migrateConfigToRows();},3000);
+      if(!configMigrated)setTimeout(()=>{console.log("Triggering config migration...");migrateConfigToRows();migrateSysToRows();},3000);
     }catch(e){setSbMsg("Load failed: "+e.message);}
     sbDataReceived.current=true;
   };
@@ -874,7 +888,6 @@ function App(){
   // Auto-sync to Supabase when data changes
   // Sync accounts to Supabase separately so password resets survive file updates
   const[liveAccounts,setLiveAccounts]=React.useState(()=>{
-    try{const s=localStorage.getItem("bc_accounts");if(s){const p=JSON.parse(s);if(Array.isArray(p)&&p.length)return p;}}catch{}
     return ACCOUNTS;
   });
   const getUserPerms=(username)=>{const acct=liveAccounts.find(a=>a.username===username)||currentUser;const stored=permissions[username];if(acct?.role==="admin")return{menu:["Home","Daily","To-Do List","Dashboard","People","Schedule","Reports","Call Reviews","Action List","Quick References"],teams:["All Teams"],admin:["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria"]};if(stored?.menu)return stored;if(acct?.role==="guest")return{menu:["Home","Daily"],teams:acct?.team?[acct.team]:[],admin:[]};return{menu:["Home","Daily","To-Do List","Dashboard","People","Schedule","Reports","Call Reviews","Action List","Quick References"],teams:acct?.team?[acct.team]:[],admin:[]};};
@@ -887,8 +900,13 @@ function App(){
   const[accountsLoaded,setAccountsLoaded]=React.useState(false);
   React.useEffect(()=>{
     if(sbStatus!=="ok"||!sbUrl||!sbKey)return;
-    // Load accounts from Supabase on mount
-    sbLoad("bc_store","accounts").then(saved=>{
+    // Load accounts from config_rows (new) with bc_store fallback
+    (async()=>{
+      let saved=null;
+      try{const sysConf2=await dbLoadConfig("sys");if(sysConf2?.accounts)saved=sysConf2.accounts;}catch{}
+      if(!saved||!Array.isArray(saved)||saved.length===0){
+        try{saved=await sbLoad("bc_store","accounts");}catch{}
+      }
       if(!saved||!Array.isArray(saved)||saved.length===0){setAccountsLoaded(true);}
       if(saved&&Array.isArray(saved)&&saved.length>0){
         // Merge: add any ACCOUNTS entries missing from saved
@@ -900,14 +918,14 @@ function App(){
         // If we added new accounts, push back to Supabase
         if(merged.length>saved.length)saveAccountsToSupabase(merged);
       }
-    });
+    })();
   },[sbStatus]);
   // Targeted refresh on tab change (direct fetches below handle specific data)
   useEffect(()=>{if(tab==="accounts")setOnlineUsers({...onlineUsersRef.current});},[tab]);
   // Direct daily reports fetch - bypasses all loading guards
   useEffect(()=>{if(tab!=="daily"&&tab!=="home")return;const fetchDaily=async()=>{const prev=saveEnabled.current;saveEnabled.current=false;const rows=await dbLoadAll("daily_reports");if(rows.length>0)setDailyReports(rows);setTimeout(()=>{saveEnabled.current=prev;},300);};fetchDaily();if(tab==="daily"){const iv=setInterval(fetchDaily,30000);return()=>clearInterval(iv);}},[tab]);
   // Direct fetch for todos, actions, notifications on relevant tabs
-  useEffect(()=>{const url=sbUrlRef.current||sbUrl;const key=sbKeyRef.current||sbKey;if(!url||!key)return;const headers={"apikey":key,"Authorization":"Bearer "+key};const directFetch=async(sbKey2,setter)=>{try{const resp=await fetch(url+"/rest/v1/bc_store?key=eq."+sbKey2+"&select=value",{headers});if(!resp.ok)return;const d=await resp.json();if(d&&d[0]&&d[0].value){const parsed=JSON.parse(d[0].value);const prev=saveEnabled.current;saveEnabled.current=false;if(Array.isArray(parsed))setter(parsed);else if(typeof parsed==="object")setter(parsed);setTimeout(()=>{saveEnabled.current=prev;},300);}}catch(e){console.error("Refresh "+sbKey2+" failed:",e);}};const directFetchRows=async(table,setter)=>{const prev=saveEnabled.current;saveEnabled.current=false;const rows=await dbLoadAll(table);if(rows.length>0)setter(rows);setTimeout(()=>{saveEnabled.current=prev;},300);};if(tab==="to-do list"||tab==="home"){directFetchRows("todos",setTodos);directFetchRows("notif_entries",setNotifications);directFetchRows("alert_entries",setAdminAlerts);}if(tab==="action list"||tab==="home"){directFetchRows("action_items",setActionItems);}if(tab==="dashboard"||tab==="people"){directFetch("app_data",(d)=>{if(d){const{_r,_tc,...rest}=d;const prev=saveEnabled.current;saveEnabled.current=false;if(_r)setRoster(migrateRoster(fixRosterNames(_r)));if(_tc)setTc(_tc);setData(rest);setTimeout(()=>{saveEnabled.current=prev;},300);}});directFetch("ic_data",setIcData);directFetch("sched_data",setSchedData);}},[tab]);
+  useEffect(()=>{const url=sbUrlRef.current||sbUrl;const key=sbKeyRef.current||sbKey;if(!url||!key)return;const headers={"apikey":key,"Authorization":"Bearer "+key};const directFetch=async(sbKey2,setter)=>{try{const resp=await fetch(url+"/rest/v1/bc_store?key=eq."+sbKey2+"&select=value",{headers});if(!resp.ok)return;const d=await resp.json();if(d&&d[0]&&d[0].value){const parsed=JSON.parse(d[0].value);const prev=saveEnabled.current;saveEnabled.current=false;if(Array.isArray(parsed))setter(parsed);else if(typeof parsed==="object")setter(parsed);setTimeout(()=>{saveEnabled.current=prev;},300);}}catch(e){console.error("Refresh "+sbKey2+" failed:",e);}};const directFetchRows=async(table,setter)=>{const prev=saveEnabled.current;saveEnabled.current=false;const rows=await dbLoadAll(table);if(rows.length>0)setter(rows);setTimeout(()=>{saveEnabled.current=prev;},300);};if(tab==="to-do list"||tab==="home"){directFetchRows("todos",setTodos);directFetchRows("notif_entries",setNotifications);directFetchRows("alert_entries",setAdminAlerts);}if(tab==="action list"||tab==="home"){directFetchRows("action_items",setActionItems);}if(tab==="dashboard"||tab==="people"){directFetch("app_data",(d)=>{if(d){const{_r,_tc,...rest}=d;const prev=saveEnabled.current;saveEnabled.current=false;if(_r)setRoster(migrateRoster(fixRosterNames(_r)));if(_tc)setTc(_tc);setData(rest);setTimeout(()=>{saveEnabled.current=prev;},300);}});const directFetchConfig=async(prefix,setter)=>{const prev2=saveEnabled.current;saveEnabled.current=false;const obj=await dbLoadConfig(prefix);if(obj)setter(obj);setTimeout(()=>{saveEnabled.current=prev2;},300);};directFetchConfig("ic",setIcData);directFetchConfig("sched",setSchedData);}},[tab]);
     useEffect(()=>{if(sbUrl&&sbKey)loadFromSupabase();},[]);
   // ── ROW-LEVEL SYNC EFFECTS ──────────────────────────────────────────
   // Detect changes to migrated arrays and sync only the differences to row tables.
@@ -952,25 +970,25 @@ function App(){
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(permissions).forEach(([k,v])=>dbSaveConfigKey("perms",k,v));},[permissions]);
   useEffect(()=>{if(!saveEnabled.current||!dailyConfig)return;Object.entries(dailyConfig).forEach(([k,v])=>dbSaveConfigKey("dailycfg",k,v));},[dailyConfig]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(quickNotes).forEach(([k,v])=>dbSaveConfigKey("notes",k,v));},[quickNotes]);
-  useEffect(()=>{if(!saveEnabled.current)return;saveKey("quick_refs",quickRefs);},[quickRefs]);
-  useEffect(()=>{if(!saveEnabled.current)return;saveKey("update_notes",updateNotes);},[updateNotes]);
+  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigKey("sys","quick_refs",quickRefs);},[quickRefs]);
+  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigKey("sys","update_notes",updateNotes);},[updateNotes]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(reviewCriteriaConfig).forEach(([k,v])=>dbSaveConfigKey("revcrit",k,v));},[reviewCriteriaConfig]);
 
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(onboarding).forEach(([k,v])=>dbSaveConfigKey("onboard",k,v));},[onboarding]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(alertSnooze).forEach(([k,v])=>dbSaveConfigKey("snooze",k,v));},[alertSnooze]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(schedData).forEach(([k,v])=>dbSaveConfigKey("sched",k,v));},[schedData]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(allWeights).forEach(([k,v])=>dbSaveConfigKey("weights",k,v));},[allWeights]);
-  useEffect(()=>{if(!saveEnabled.current)return;saveKey("call_review_teams",callReviewTeams);},[callReviewTeams]);
+  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigKey("sys","call_review_teams",callReviewTeams);},[callReviewTeams]);
   const _appDataLoaded=useRef(false);
   useEffect(()=>{if(data&&Object.keys(data).length>0&&roster&&Object.keys(roster).length>0)_appDataLoaded.current=true;},[data,roster]);
-  useEffect(()=>{if(!saveEnabled.current)return;if(!_appDataLoaded.current){console.warn("Blocked saving default app_data");return;}saveKey("app_data",{...data,_r:roster,_tc:tc});},[data,roster,tc]);
+  useEffect(()=>{if(!saveEnabled.current)return;if(!_appDataLoaded.current){console.warn("Blocked saving default app_data");return;}dbSaveConfigKey("sys","app_data",{...data,_r:roster,_tc:tc});},[data,roster,tc]);
 
 
   // All saves handled by syncToSupabase (3-second debounce after any state change)
-  useEffect(()=>{if(!saveEnabled.current)return;directSave("weights",allWeights);},[allWeights]);
-  useEffect(()=>{if(!saveEnabled.current)return;directSave("ic_data",icData);},[icData]);
-  useEffect(()=>{if(!saveEnabled.current)return;directSave("ic_ppt",icPPT);},[icPPT]);
-  useEffect(()=>{if(!saveEnabled.current)return;directSave("sched_data",schedData);},[schedData]);
+  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("weights",allWeights);},[allWeights]);
+  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("ic",icData);},[icData]);
+  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("icppt",icPPT);},[icPPT]);
+  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("sched",schedData);},[schedData]);
   // app_data save handled by syncToSupabase
 
   // ── Auto-fill call review KPIs into dashboard ────────────────────────────
@@ -1139,15 +1157,15 @@ function App(){
   const loginAs=(user)=>{try{sessionStorage.setItem("bc_user",JSON.stringify(user));sessionStorage.setItem("bc_session_start",new Date().toISOString());}catch{}setCurrentUser(user);};
   const logout=()=>{try{sessionStorage.removeItem("bc_user");sessionStorage.removeItem("bc_session_start");}catch{}setCurrentUser(null);};
   const sessionStart=useRef(sessionStorage.getItem("bc_session_start")||new Date().toISOString());
-  const forceSignOut=async(username)=>{if(!sbUrl||!sbKey)return;try{const kills=await sbLoad("bc_store","session_kills")||{};kills[username]=new Date().toISOString();await sbSave("bc_store","session_kills",kills);if(username===currentUser?.username){sessionStart.current=new Date().toISOString();try{sessionStorage.setItem("bc_session_start",sessionStart.current);}catch{}}addAudit("Force Sign Out",username+" signed out by "+currentUser?.displayName);toast2(username+(username===currentUser?.username?" — other sessions killed. This session stays active.":" signed out from all sessions."));}catch(e){toast2("Failed: "+e.message);}};
-  const forceSignOutAll=async()=>{if(!sbUrl||!sbKey||!window.confirm("Sign out ALL users (including yourself) from all other sessions? Your current session will stay active."))return;try{const kills={};const now=new Date().toISOString();liveAccounts.forEach(a=>{kills[a.username]=now;});await sbSave("bc_store","session_kills",kills);sessionStart.current=new Date().toISOString();try{sessionStorage.setItem("bc_session_start",sessionStart.current);}catch{}addAudit("Force Sign Out All","All users signed out by "+currentUser?.displayName);toast2("All sessions killed. Your current session is still active.");}catch(e){toast2("Failed: "+e.message);}};
+  const forceSignOut=async(username)=>{if(!sbUrl||!sbKey)return;try{await dbSaveConfigKey("sys","kill_"+username,new Date().toISOString());if(username===currentUser?.username){sessionStart.current=new Date().toISOString();try{sessionStorage.setItem("bc_session_start",sessionStart.current);}catch{}}addAudit("Force Sign Out",username+" signed out by "+currentUser?.displayName);toast2(username+(username===currentUser?.username?" — other sessions killed. This session stays active.":" signed out from all sessions."));}catch(e){toast2("Failed: "+e.message);}};
+  const forceSignOutAll=async()=>{if(!sbUrl||!sbKey||!window.confirm("Sign out ALL users (including yourself) from all other sessions? Your current session will stay active."))return;try{const now=new Date().toISOString();for(const a of liveAccounts){await dbSaveConfigKey("sys","kill_"+a.username,now);}sessionStart.current=new Date().toISOString();try{sessionStorage.setItem("bc_session_start",sessionStart.current);}catch{}addAudit("Force Sign Out All","All users signed out by "+currentUser?.displayName);toast2("All sessions killed. Your current session is still active.");}catch(e){toast2("Failed: "+e.message);}};
   // Check if current user has been force signed out
   const onlineUsersRef=useRef({});const[onlineUsers,setOnlineUsers]=useState({});
   const[versionOutdated,setVersionOutdated]=useState(false);
   const[remoteVersion,setRemoteVersion]=useState(()=>{try{return localStorage.getItem("bc_remote_ver")||null;}catch{return null;}});
   const setRV=(v)=>{setRemoteVersion(v);try{localStorage.setItem("bc_remote_ver",v);}catch{}};
   useEffect(()=>{setVersionOutdated(!!(remoteVersion&&remoteVersion!==APP_VERSION&&remoteVersion>APP_VERSION&&currentUser?.role!=="admin"));},[remoteVersion]);
-  useEffect(()=>{if(!currentUser||!sbUrl||!sbKey)return;const checkKill=async()=>{try{const kills=await sbLoad("bc_store","session_kills");if(kills&&kills[currentUser.username]&&kills[currentUser.username]>sessionStart.current){toast2("You've been signed out by an admin.");logout();}}catch{}};const heartbeat=async()=>{try{const presence=await sbLoad("bc_store","presence")||{};presence[currentUser.username]={displayName:currentUser.displayName,role:currentUser.role,team:currentUser.team,lastSeen:new Date().toISOString(),version:remoteVersion||APP_VERSION};await sbSave("bc_store","presence",presence);onlineUsersRef.current=presence;}catch{}};const checkVersion=async()=>{try{const rv=await sbLoad("bc_store","app_version");if(rv){setRV(rv);}}catch{}};const publishVersion=async()=>{if(currentUser?.username==="Teina"&&remoteVersion){try{await sbSave("bc_store","app_version",remoteVersion);}catch{}}};checkKill();heartbeat();checkVersion();publishVersion();const iv=setInterval(()=>{checkKill();heartbeat();checkVersion();},30000);return()=>clearInterval(iv);},[currentUser?.username,remoteVersion]);
+  useEffect(()=>{if(!currentUser||!sbUrl||!sbKey)return;const checkKill=async()=>{try{const killData=await dbLoadConfig("sys");const killVal=killData?.["kill_"+currentUser.username];if(killVal&&killVal>sessionStart.current){toast2("You've been signed out by an admin.");logout();}}catch{}};const heartbeat=async()=>{try{await dbSaveConfigKey("presence",currentUser.username,{displayName:currentUser.displayName,role:currentUser.role,team:currentUser.team,lastSeen:new Date().toISOString(),version:remoteVersion||APP_VERSION});const presence=await dbLoadConfig("presence")||{};onlineUsersRef.current=presence;}catch{}};const checkVersion=async()=>{try{const sysConf=await dbLoadConfig("sys");const rv=sysConf?.app_version;if(rv){setRV(rv);}}catch{}};const publishVersion=async()=>{if(currentUser?.username==="Teina"&&remoteVersion){try{await dbSaveConfigKey("sys","app_version",remoteVersion);}catch{}}};checkKill();heartbeat();checkVersion();publishVersion();const iv=setInterval(()=>{checkKill();heartbeat();checkVersion();},30000);return()=>clearInterval(iv);},[currentUser?.username,remoteVersion]);
   const toast2=(m)=>{setToast(m);setTimeout(()=>setToast(""),3000);};
 
   const pk=pt==="month"?`m__${mo}`:`w__${wk}`;
@@ -3579,7 +3597,7 @@ function App(){
     const ALL_TEAMS=["All Teams",...tNames];
     const getDefPerms=(acct)=>{if(acct.role==="admin")return{menu:[...MENU_TABS],teams:["All Teams"],admin:[...ADMIN_TABS]};if(acct.role==="guest")return{menu:["Home","Daily"],teams:acct.team?[acct.team]:[],admin:[]};return{menu:[...MENU_TABS],teams:acct.team?[acct.team]:[],admin:[]};};
     const getPerms=(username)=>{const acct=localAccounts.find(a=>a.username===username);const stored=permissions[username];if(!stored?.menu)return getDefPerms(acct||{role:"guest"});return stored;};
-    const togglePerm=(username,category,item)=>{const cur=getPerms(username);const arr=[...(cur[category]||[])];const idx=arr.indexOf(item);if(idx>=0)arr.splice(idx,1);else arr.push(item);if(category==="teams"&&item==="All Teams"&&idx<0){arr.length=0;arr.push("All Teams");}else if(category==="teams"&&item!=="All Teams"){const ati=arr.indexOf("All Teams");if(ati>=0)arr.splice(ati,1);}const updated={...cur,[category]:arr};if(category==="admin"){updated.Weights=arr.includes("Weights");updated["KPI Targets"]=arr.includes("KPI Targets");updated.Capabilities=arr.includes("Capabilities");}setPermissions(prev=>{const n={...prev,[username]:updated};saveKey("permissions",n);return n;});addAudit("Permission Updated",item+" "+(idx>=0?"removed":"granted")+" for "+username);};
+    const togglePerm=(username,category,item)=>{const cur=getPerms(username);const arr=[...(cur[category]||[])];const idx=arr.indexOf(item);if(idx>=0)arr.splice(idx,1);else arr.push(item);if(category==="teams"&&item==="All Teams"&&idx<0){arr.length=0;arr.push("All Teams");}else if(category==="teams"&&item!=="All Teams"){const ati=arr.indexOf("All Teams");if(ati>=0)arr.splice(ati,1);}const updated={...cur,[category]:arr};if(category==="admin"){updated.Weights=arr.includes("Weights");updated["KPI Targets"]=arr.includes("KPI Targets");updated.Capabilities=arr.includes("Capabilities");}setPermissions(prev=>{const n={...prev,[username]:updated};dbSaveConfigKey("perms",username,updated);return n;});addAudit("Permission Updated",item+" "+(idx>=0?"removed":"granted")+" for "+username);};
 
     const doReset=(username)=>{
       if(!newPw||newPw.length<8){toast2("Password must be at least 8 characters.");return;}
@@ -4761,7 +4779,9 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 {/* To-Dos Today */}
                 {!isGuest&&<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
                   <div style={{padding:"12px 16px",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"center"}}><span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>My To-Dos Today</span><button onClick={()=>setTab("to-do list")} style={{fontSize:10,color:"#0d9488",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>View all</button></div>
-                  <div style={{padding:"8px 12px",maxHeight:200,overflowY:"auto"}}>{todayTodos2.length?todayTodos2.slice(0,6).map(td=><div key={td.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 4px",borderBottom:"1px solid #f9fafb"}}><div onClick={()=>{if(td.assignedBy){if(!window.confirm("Are you sure this is finished? This will alert "+td.assignedBy+" that the task has been completed."))return;addNotif(liveAccounts.find(a=>a.displayName===td.assignedBy)?.username||"",td.title+" — completed by "+(currentUser?.displayName||"User"));addAudit("Admin Task Completed",td.title+" (assigned by "+td.assignedBy+")");}const tdUpdated={...td,status:"done",completedAt:new Date().toISOString()};setTodos(prev=>prev.map(x=>x.id===td.id?tdUpdated:x));dbUpsert("todos",tdUpdated);}} style={{width:18,height:18,borderRadius:5,border:"2px solid #d1d5db",cursor:"pointer",flexShrink:0}}/><span style={{fontSize:11,color:"#111827"}}>{td.title}</span></div>):<div style={{color:"#9ca3af",fontSize:11,textAlign:"center",padding:12}}>Nothing due today</div>}</div>
+                  <div style={{padding:"8px 12px",maxHeight:200,overflowY:"auto"}}>{todayTodos2.length?todayTodos2.slice(0,6).map(td=><div key={td.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 4px",borderBottom:"1px solid #f9fafb"}}><div onClick={()=>{if(td.assignedBy){if(!window.confirm("Are you sure this is finished? This will alert "+td.assignedBy+" that the task has been completed."))return;addNotif(liveAccounts.find(a=>a.displayName===td.assignedBy)?.username||"",td.title+" — completed by "+(currentUser?.displayName||"User"));addAudit("Admin Task Completed",td.title+" (assigned by "+td.assignedBy+")");}const tdUpdated={...td,status:"done",completedAt:new Date().toISOString()};setTodos(prev=>prev.map(x=>x.id===td.id?tdUpdated:x));dbUpsert("todos",tdUpdated);
+              // If recurring, create next occurrence
+              if(td.recurring){const nextDue=new Date(td.due||new Date());if(td.recurring==="daily")nextDue.setDate(nextDue.getDate()+1);else if(td.recurring==="weekdays"){nextDue.setDate(nextDue.getDate()+1);while(nextDue.getDay()===0||nextDue.getDay()===6)nextDue.setDate(nextDue.getDate()+1);}else if(td.recurring==="weekly")nextDue.setDate(nextDue.getDate()+7);else if(td.recurring==="fortnightly")nextDue.setDate(nextDue.getDate()+14);else if(td.recurring==="monthly")nextDue.setMonth(nextDue.getMonth()+1);const nds=nextDue.toISOString().slice(0,10);const nextTd2={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),owner:td.owner,title:td.title,note:td.note||"",due:nds,priority:"today",status:"open",createdAt:new Date().toISOString(),assignedBy:td.assignedBy||null,recurring:td.recurring};setTodos(prev=>[nextTd2,...prev]);dbUpsert("todos",nextTd2);}}} style={{width:18,height:18,borderRadius:5,border:"2px solid #d1d5db",cursor:"pointer",flexShrink:0}}/><span style={{fontSize:11,color:"#111827"}}>{td.title}</span></div>):<div style={{color:"#9ca3af",fontSize:11,textAlign:"center",padding:12}}>Nothing due today</div>}</div>
                 </div>}
 
                 {/* Actions / Alerts */}
@@ -5172,18 +5192,31 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const weekItems=myTodos.filter(isWeek).sort((a,b)=>(a.due||"z").localeCompare(b.due||"z"));
             const laterItems=myTodos.filter(isLater).sort((a,b)=>(a.due||"z").localeCompare(b.due||"z"));
             const doneItems=myTodos.filter(td=>td.status==="done").sort((a,b)=>new Date(b.completedAt||0)-new Date(a.completedAt||0)).slice(0,15);
-            const toggle=(id)=>{const td=todos.find(t=>t.id===id);if(td&&td.status!=="done"&&td.assignedBy){const adminName=td.assignedBy;if(!window.confirm("Are you sure this is finished? This will alert "+adminName+" that the task has been completed."))return;addNotif(liveAccounts.find(a=>a.displayName===adminName)?.username||"",td.title+" — completed by "+(currentUser?.displayName||"User"));addAudit("Admin Task Completed",td.title+" (assigned by "+adminName+")");}const updated={...td,status:td.status==="done"?"open":"done",completedAt:td.status!=="done"?new Date().toISOString():null};setTodos(prev=>prev.map(t=>t.id===id?updated:t));dbUpsert("todos",updated);};
+            const toggle=(id)=>{const td=todos.find(t=>t.id===id);if(!td)return;if(td&&td.status!=="done"&&td.assignedBy){const adminName=td.assignedBy;if(!window.confirm("Are you sure this is finished? This will alert "+adminName+" that the task has been completed."))return;addNotif(liveAccounts.find(a=>a.displayName===adminName)?.username||"",td.title+" — completed by "+(currentUser?.displayName||"User"));addAudit("Admin Task Completed",td.title+" (assigned by "+adminName+")");}const updated={...td,status:td.status==="done"?"open":"done",completedAt:td.status!=="done"?new Date().toISOString():null};setTodos(prev=>prev.map(t=>t.id===id?updated:t));dbUpsert("todos",updated);
+              // If completing a recurring task, create the next one
+              if(td.status!=="done"&&td.recurring){
+                const nextDue=new Date(td.due||new Date());
+                if(td.recurring==="daily")nextDue.setDate(nextDue.getDate()+1);
+                else if(td.recurring==="weekdays"){nextDue.setDate(nextDue.getDate()+1);while(nextDue.getDay()===0||nextDue.getDay()===6)nextDue.setDate(nextDue.getDate()+1);}
+                else if(td.recurring==="weekly")nextDue.setDate(nextDue.getDate()+7);
+                else if(td.recurring==="fortnightly")nextDue.setDate(nextDue.getDate()+14);
+                else if(td.recurring==="monthly")nextDue.setMonth(nextDue.getMonth()+1);
+                const nextDueStr=nextDue.toISOString().slice(0,10);
+                const nextTd={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),owner:td.owner,title:td.title,note:td.note||"",due:nextDueStr,priority:nextDueStr<=todayStr?"today":nextDueStr<=weekEndStr?"this_week":"later",status:"open",createdAt:new Date().toISOString(),assignedBy:td.assignedBy||null,recurring:td.recurring};
+                setTodos(prev=>[nextTd,...prev]);dbUpsert("todos",nextTd);
+              }};
             const del=(id)=>{setTodos(prev=>prev.filter(td=>td.id!==id));dbDeleteRow("todos",id);};
             const saveTodos=(newTodos)=>{setTodos(newTodos);};
-            const addTodo=()=>{var titleEl=document.getElementById("todo_title");var title=titleEl?.value?.trim();if(!title)return toast2("Enter a task.");var noteEl=document.getElementById("todo_note");var dateEl=document.getElementById("todo_due2");var prioEl=document.getElementById("todo_prio2");var assignEl=document.getElementById("todo_assign");var prio=prioEl?.value||"today";var due=null;if(prio==="set_date"){due=dateEl?.value||null;prio=due&&due<=todayStr?"today":due&&due<=weekEndStr?"this_week":"later";}else{due=todayStr;prio="today";}var assignTo=assignEl?.value||"";var owner=assignTo||currentUser?.username;var newTd={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),owner:owner,title:title,note:noteEl?.value?.trim()||"",due:due,priority:prio,status:"open",createdAt:new Date().toISOString(),assignedBy:assignTo?currentUser?.displayName:null};setTodos(prev=>[newTd,...prev]);dbUpsert("todos",newTd);titleEl.value="";if(noteEl)noteEl.value="";if(dateEl)dateEl.value="";if(assignEl)assignEl.value="";if(assignTo){addNotif(assignTo,"Task assigned: "+title+" by "+(currentUser?.displayName||"Admin"));if(currentUser?.role==="admin")addAdminAlert(assignTo,"todo","New Task Assigned",title,currentUser?.displayName||"Admin");}toast2(assignTo?"Assigned to "+(liveAccounts.find(a=>a.username===assignTo)?.displayName||assignTo):"Added.");};
+            const addTodo=()=>{var titleEl=document.getElementById("todo_title");var title=titleEl?.value?.trim();if(!title)return toast2("Enter a task.");var noteEl=document.getElementById("todo_note");var dateEl=document.getElementById("todo_due2");var prioEl=document.getElementById("todo_prio2");var assignEl=document.getElementById("todo_assign");var recurEl=document.getElementById("todo_recur");var prio=prioEl?.value||"today";var due=null;if(prio==="set_date"){due=dateEl?.value||null;prio=due&&due<=todayStr?"today":due&&due<=weekEndStr?"this_week":"later";}else{due=todayStr;prio="today";}var assignTo=assignEl?.value||"";var owner=assignTo||currentUser?.username;var recur=recurEl?.value||"";var newTd={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),owner:owner,title:title,note:noteEl?.value?.trim()||"",due:due,priority:prio,status:"open",createdAt:new Date().toISOString(),assignedBy:assignTo?currentUser?.displayName:null};if(recur)newTd.recurring=recur;setTodos(prev=>[newTd,...prev]);dbUpsert("todos",newTd);titleEl.value="";if(noteEl)noteEl.value="";if(dateEl)dateEl.value="";if(assignEl)assignEl.value="";if(recurEl)recurEl.value="";if(assignTo){addNotif(assignTo,"Task assigned: "+title+" by "+(currentUser?.displayName||"Admin"));if(currentUser?.role==="admin")addAdminAlert(assignTo,"todo","New Task Assigned",title,currentUser?.displayName||"Admin");}toast2(assignTo?"Assigned to "+(liveAccounts.find(a=>a.username===assignTo)?.displayName||assignTo):"Added.");};
             const renderItem=(td)=>{const od=td.due&&td.due<todayStr&&td.status!=="done";return<div key={td.id} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 10px",background:td.status==="done"?"#f9fafb":"#fff",borderRadius:8,border:"1px solid "+(od?"#fecaca":td.status==="done"?"#e5e7eb":"#e5e7eb"),marginBottom:4}}>
               <div onClick={()=>toggle(td.id)} style={{width:20,height:20,borderRadius:5,border:"2px solid "+(td.status==="done"?"#059669":"#d1d5db"),background:td.status==="done"?"#059669":"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,marginTop:2,color:"#fff",fontSize:10,fontWeight:700}}>{td.status==="done"?"\u2713":""}</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12,fontWeight:500,color:td.status==="done"?"#9ca3af":"#111827",textDecoration:td.status==="done"?"line-through":"none"}}>{td.title}</div>
                 {td.note&&<div style={{fontSize:10,color:"#9ca3af",marginTop:1}}>{td.note}</div>}
                 {td.assignedBy&&<div style={{fontSize:9,color:"#7c3aed",marginTop:1,fontWeight:600}}>{"Assigned by "+td.assignedBy}</div>}
-                <div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}}>
+                <div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap",alignItems:"center"}}>
                   {td.due&&td.status!=="done"&&<span style={{fontSize:9,color:od?"#dc2626":"#6b7280"}}>{od?"Overdue: ":"Due: "}{fmtNZDate(td.due)}</span>}
+                  {td.recurring&&<span style={{fontSize:8,color:"#0d9488",background:"#f0fdfa",border:"1px solid #ccfbf1",borderRadius:4,padding:"1px 5px",fontWeight:600}}>{"🔄 "+({daily:"Daily",weekdays:"Weekdays",weekly:"Weekly",fortnightly:"Fortnightly",monthly:"Monthly"}[td.recurring]||td.recurring)}</span>}
                 </div>
               </div>
               {(isAdmin||(isViewingSelf&&td.status!=="done"))&&<button onClick={()=>del(td.id)} style={{fontSize:9,color:"#dc2626",background:"none",border:"none",cursor:"pointer",padding:2,flexShrink:0}}>{"\u2715"}</button>}
@@ -5252,6 +5285,14 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   <div id="todo_date_wrap" style={{display:"none",gap:6,alignItems:"center"}}>
                     <input id="todo_due2" type="date" style={{fontSize:12,padding:"10px",border:"1px solid #d1d5db",borderRadius:8}}/>
                   </div>
+                  <select id="todo_recur" style={{fontSize:12,padding:"10px",border:"1px solid #d1d5db",borderRadius:8,color:"#6b7280"}}>
+                    <option value="">One-time</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekdays">Weekdays</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="fortnightly">Fortnightly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
                   {isAdmin&&<select id="todo_assign" style={{fontSize:12,padding:"10px",border:"1px solid #d1d5db",borderRadius:8}}>
                     <option value="">For myself</option>
                     {liveAccounts.filter(a=>a.role==="leader").map(a=><option key={a.username} value={a.username}>{"Assign to "+a.displayName}</option>)}
@@ -5626,11 +5667,11 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const cfg=dailyConfig||DEFAULT_DAILY_CONFIG;
             const teams=Object.keys(cfg).filter(tn=>tNames.includes(tn));
             const getSyncPairs=(tn)=>(cfg[tn]?.syncPairs||{});
-            const setSyncPair=(tn,morningKey,eveningKey)=>{setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn],syncPairs:{...(c[tn].syncPairs||{})}};if(eveningKey){c[tn].syncPairs[morningKey]=eveningKey;}else{delete c[tn].syncPairs[morningKey];}const n2=c;saveKey("daily_config",n2);return n2;});toast2("Sync updated.");};
-            const addField=(tn,shift)=>{var label=window.prompt("Field label:");if(!label)return;var key=label.toLowerCase().replace(/[^a-z0-9]/g,"_").slice(0,30);var typeChoice=window.prompt("Field type?\n\n1 = Number\n2 = Member selection\n3 = Yes / No\n\nEnter 1, 2, or 3:","1");var fType="number";if(typeChoice==="2")fType="members";else if(typeChoice==="3")fType="yesno";var otherShift=shift==="morning"?"evening":"morning";var addBoth=window.confirm("Add this field to "+(otherShift==="morning"?"Morning":"Evening")+" as well?");setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};c[tn][shift]=[...c[tn][shift],{k:key,l:label,t:fType}];if(addBoth){c[tn][otherShift]=[...c[tn][otherShift],{k:key,l:label,t:fType}];}return c;});toast2("Field added"+(addBoth?" to both shifts":"")+".");setTimeout(()=>{if(dailyConfig)saveKey("daily_config",dailyConfig);},500); };
-            const removeField=(tn,shift,key)=>{if(!window.confirm("Remove this field?"))return;var otherShift=shift==="morning"?"evening":"morning";var rmBoth=cfg[tn]?.[otherShift]?.some(f=>f.k===key)&&window.confirm("Also remove from "+(otherShift==="morning"?"Morning":"Evening")+"?");setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};c[tn][shift]=c[tn][shift].filter(f=>f.k!==key);if(rmBoth)c[tn][otherShift]=c[tn][otherShift].filter(f=>f.k!==key);if(c[tn].syncPairs){const sp={...c[tn].syncPairs};Object.entries(sp).forEach(([mk,ek])=>{if(mk===key||ek===key)delete sp[mk];});c[tn].syncPairs=sp;}saveKey("daily_config",c);return c;});};
+            const setSyncPair=(tn,morningKey,eveningKey)=>{setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn],syncPairs:{...(c[tn].syncPairs||{})}};if(eveningKey){c[tn].syncPairs[morningKey]=eveningKey;}else{delete c[tn].syncPairs[morningKey];}const n2=c;dbSaveConfigAll("dailycfg",n2);return n2;});toast2("Sync updated.");};
+            const addField=(tn,shift)=>{var label=window.prompt("Field label:");if(!label)return;var key=label.toLowerCase().replace(/[^a-z0-9]/g,"_").slice(0,30);var typeChoice=window.prompt("Field type?\n\n1 = Number\n2 = Member selection\n3 = Yes / No\n\nEnter 1, 2, or 3:","1");var fType="number";if(typeChoice==="2")fType="members";else if(typeChoice==="3")fType="yesno";var otherShift=shift==="morning"?"evening":"morning";var addBoth=window.confirm("Add this field to "+(otherShift==="morning"?"Morning":"Evening")+" as well?");setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};c[tn][shift]=[...c[tn][shift],{k:key,l:label,t:fType}];if(addBoth){c[tn][otherShift]=[...c[tn][otherShift],{k:key,l:label,t:fType}];}return c;});toast2("Field added"+(addBoth?" to both shifts":"")+".");setTimeout(()=>{if(dailyConfig)dbSaveConfigAll("dailycfg",dailyConfig);},500); };
+            const removeField=(tn,shift,key)=>{if(!window.confirm("Remove this field?"))return;var otherShift=shift==="morning"?"evening":"morning";var rmBoth=cfg[tn]?.[otherShift]?.some(f=>f.k===key)&&window.confirm("Also remove from "+(otherShift==="morning"?"Morning":"Evening")+"?");setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};c[tn][shift]=c[tn][shift].filter(f=>f.k!==key);if(rmBoth)c[tn][otherShift]=c[tn][otherShift].filter(f=>f.k!==key);if(c[tn].syncPairs){const sp={...c[tn].syncPairs};Object.entries(sp).forEach(([mk,ek])=>{if(mk===key||ek===key)delete sp[mk];});c[tn].syncPairs=sp;}dbSaveConfigAll("dailycfg",c);return c;});};
             const getPartner=(tn,shift,key)=>{const sp=getSyncPairs(tn);if(shift==="morning")return sp[key]||null;return Object.entries(sp).find(([,v])=>v===key)?.[0]||null;};
-            const moveField=(tn,shift,key,dir)=>{setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};const arr=[...c[tn][shift]];const idx=arr.findIndex(f=>f.k===key);const nIdx=idx+dir;if(nIdx<0||nIdx>=arr.length)return c;[arr[idx],arr[nIdx]]=[arr[nIdx],arr[idx]];c[tn][shift]=arr;var otherShift=shift==="morning"?"evening":"morning";const oArr=[...c[tn][otherShift]];const sp=getSyncPairs(tn);var partnerKey=null;if(shift==="morning")partnerKey=sp[key];else partnerKey=Object.entries(sp).find(([,v])=>v===key)?.[0]||null;if(!partnerKey)partnerKey=key;var oIdx=oArr.findIndex(f=>f.k===partnerKey);if(oIdx<0&&idx<oArr.length)oIdx=idx;if(oIdx>=0){const oNIdx=oIdx+dir;if(oNIdx>=0&&oNIdx<oArr.length){[oArr[oIdx],oArr[oNIdx]]=[oArr[oNIdx],oArr[oIdx]];c[tn][otherShift]=oArr;}}saveKey("daily_config",c);return c;});};
+            const moveField=(tn,shift,key,dir)=>{setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};const arr=[...c[tn][shift]];const idx=arr.findIndex(f=>f.k===key);const nIdx=idx+dir;if(nIdx<0||nIdx>=arr.length)return c;[arr[idx],arr[nIdx]]=[arr[nIdx],arr[idx]];c[tn][shift]=arr;var otherShift=shift==="morning"?"evening":"morning";const oArr=[...c[tn][otherShift]];const sp=getSyncPairs(tn);var partnerKey=null;if(shift==="morning")partnerKey=sp[key];else partnerKey=Object.entries(sp).find(([,v])=>v===key)?.[0]||null;if(!partnerKey)partnerKey=key;var oIdx=oArr.findIndex(f=>f.k===partnerKey);if(oIdx<0&&idx<oArr.length)oIdx=idx;if(oIdx>=0){const oNIdx=oIdx+dir;if(oNIdx>=0&&oNIdx<oArr.length){[oArr[oIdx],oArr[oNIdx]]=[oArr[oNIdx],oArr[oIdx]];c[tn][otherShift]=oArr;}}dbSaveConfigAll("dailycfg",c);return c;});};
             const startEdit=(tn,shift,f)=>{setDcEditField({team:tn,shift,key:f.k});setDcEditLabel(f.l);setDcEditType(f.t);};
             const saveEdit=()=>{if(!dcEditField||!dcEditLabel.trim())return;setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[dcEditField.team]={...c[dcEditField.team]};c[dcEditField.team][dcEditField.shift]=c[dcEditField.team][dcEditField.shift].map(f=>f.k===dcEditField.key?{...f,l:dcEditLabel.trim(),t:dcEditType}:f);return c;});addAudit("Daily Config Edited",dcEditField.shift+" field: "+dcEditLabel.trim());setDcEditField(null);toast2("Field updated.");};
             const isEditing=(tn,shift,key)=>dcEditField&&dcEditField.team===tn&&dcEditField.shift===shift&&dcEditField.key===key;
@@ -5901,7 +5942,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
           <div style={{marginBottom:24}}><div style={{fontSize:18,fontWeight:700,color:"#111827",marginBottom:4}}>Capability Management</div><div style={{fontSize:13,color:"#9ca3af"}}>Manage skills, criteria, learning resources, and assessment timer</div></div>
           <div style={{display:"flex",gap:8,marginBottom:16}}>
             <button onClick={()=>{const exportTeams=isAdmin?Object.keys(TEAM_SKILLS):allowedTeams.filter(t=>TEAM_SKILLS[t]);const rows=[["Team","Section","Skill","Level 1 Criteria","Level 2 Criteria","Level 3 Criteria","Resources"]];exportTeams.forEach(tn=>{const skills=[...(TEAM_SKILLS[tn]||[]),...((capCriteria[tn]||{}).__custom_skills||[])];skills.forEach(sk=>{const c=(capCriteria[tn]||{})[sk.name]||{};rows.push([tn,sk.section,sk.name,(c.l1||[]).join("\n"),(c.l2||[]).join("\n"),(c.l3||[]).join("\n"),(c.resources||[]).join("\n")]);});});const ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=[{wch:20},{wch:20},{wch:30},{wch:40},{wch:40},{wch:40},{wch:30}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Capabilities");XLSX.writeFile(wb,"Bachcare_Capabilities.xlsx");toast2("Exported!");}} style={S.out}>Export to Excel</button>
-            <label style={{...S.out,display:"inline-flex",alignItems:"center",cursor:"pointer"}}><span>Import from Excel</span><input type="file" accept=".xlsx,.xls,.csv" onChange={e=>{const f=e.target.files[0];if(!f)return;const importTeams=isAdmin?null:new Set(allowedTeams);const reader=new FileReader();reader.onload=ev=>{try{const wb=XLSX.read(ev.target.result,{type:"array"});const ws=wb.Sheets[wb.SheetNames[0]];const rows=XLSX.utils.sheet_to_json(ws,{header:1});if(rows.length<2)return toast2("No data found.");const updated={...capCriteria};let count=0;rows.slice(1).forEach(r=>{const[team,section,skill,l1,l2,l3,res]=r;if(!team||!skill)return;if(importTeams&&!importTeams.has(team))return;if(!updated[team])updated[team]={};const entry={};if(l1)entry.l1=String(l1).split("\n").filter(x=>x.trim());if(l2)entry.l2=String(l2).split("\n").filter(x=>x.trim());if(l3)entry.l3=String(l3).split("\n").filter(x=>x.trim());if(res)entry.resources=String(res).split("\n").filter(x=>x.trim());if(Object.keys(entry).length>0){updated[team][skill]=entry;count++;}if(section&&skill){const existing=TEAM_SKILLS[team]||[];const customs=updated[team].__custom_skills||[];if(!existing.some(s=>s.name===skill)&&!customs.some(s=>s.name===skill)){updated[team].__custom_skills=[...customs,{section:String(section),name:String(skill)}];}}});setCapCriteria(updated);saveKey("cap_criteria",updated);addAudit("Capabilities Imported",count+" skills updated");toast2(count+" skills imported!");}catch(err){toast2("Import failed: "+err.message);}};reader.readAsArrayBuffer(f);e.target.value="";}} style={{display:"none"}}/></label>
+            <label style={{...S.out,display:"inline-flex",alignItems:"center",cursor:"pointer"}}><span>Import from Excel</span><input type="file" accept=".xlsx,.xls,.csv" onChange={e=>{const f=e.target.files[0];if(!f)return;const importTeams=isAdmin?null:new Set(allowedTeams);const reader=new FileReader();reader.onload=ev=>{try{const wb=XLSX.read(ev.target.result,{type:"array"});const ws=wb.Sheets[wb.SheetNames[0]];const rows=XLSX.utils.sheet_to_json(ws,{header:1});if(rows.length<2)return toast2("No data found.");const updated={...capCriteria};let count=0;rows.slice(1).forEach(r=>{const[team,section,skill,l1,l2,l3,res]=r;if(!team||!skill)return;if(importTeams&&!importTeams.has(team))return;if(!updated[team])updated[team]={};const entry={};if(l1)entry.l1=String(l1).split("\n").filter(x=>x.trim());if(l2)entry.l2=String(l2).split("\n").filter(x=>x.trim());if(l3)entry.l3=String(l3).split("\n").filter(x=>x.trim());if(res)entry.resources=String(res).split("\n").filter(x=>x.trim());if(Object.keys(entry).length>0){updated[team][skill]=entry;count++;}if(section&&skill){const existing=TEAM_SKILLS[team]||[];const customs=updated[team].__custom_skills||[];if(!existing.some(s=>s.name===skill)&&!customs.some(s=>s.name===skill)){updated[team].__custom_skills=[...customs,{section:String(section),name:String(skill)}];}}});setCapCriteria(updated);dbSaveConfigAll("capcrit",updated);addAudit("Capabilities Imported",count+" skills updated");toast2(count+" skills imported!");}catch(err){toast2("Import failed: "+err.message);}};reader.readAsArrayBuffer(f);e.target.value="";}} style={{display:"none"}}/></label>
           </div>
           {(()=>{
               const editTeam=isLeader?(allowedTeams.includes(capEditTeam)?capEditTeam:allowedTeams[0]||currentUser?.team):(capEditTeam||tNames[0]||"");
@@ -5911,7 +5952,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               const secs=[...new Set(allSkills2.map(s=>s.section))];
               const tc3=capCriteria[editTeam]||{};
               const openEdit=(sk)=>{const c=tc3[sk.name]||{};setCL1((c.l1||[]).join("\n"));setCL2((c.l2||[]).join("\n"));setCL3((c.l3||[]).join("\n"));setCRes((c.resources||[]).join("\n"));setCapEditSkill(sk.name);};
-              const saveCrit=(skName)=>{setCapCriteria(prev=>{const n={...prev,[editTeam]:{...(prev[editTeam]||{}),[skName]:{l1:cL1.split("\n").filter(x=>x.trim()),l2:cL2.split("\n").filter(x=>x.trim()),l3:cL3.split("\n").filter(x=>x.trim()),resources:cRes.split("\n").filter(x=>x.trim())}}};saveKey("cap_criteria",n);return n;});setCapEditSkill(null);addAudit("Criteria Updated",editTeam+" \u2014 "+skName);toast2("Criteria saved.");};
+              const saveCrit=(skName)=>{setCapCriteria(prev=>{const n={...prev,[editTeam]:{...(prev[editTeam]||{}),[skName]:{l1:cL1.split("\n").filter(x=>x.trim()),l2:cL2.split("\n").filter(x=>x.trim()),l3:cL3.split("\n").filter(x=>x.trim()),resources:cRes.split("\n").filter(x=>x.trim())}}};dbSaveConfigAll("capcrit",n);return n;});setCapEditSkill(null);addAudit("Criteria Updated",editTeam+" \u2014 "+skName);toast2("Criteria saved.");};
               const addSkill=()=>{if(!capAddName.trim()||!capAddSec.trim())return;setCapCriteria(prev=>{const t={...(prev[editTeam]||{})};t.__custom_skills=[...(t.__custom_skills||[]),{section:capAddSec.trim(),name:capAddName.trim()}];return{...prev,[editTeam]:t};});setCapAddName("");toast2("Skill added.");};
               const removeSkill=(skName)=>{if(!window.confirm("Remove "+skName+"?"))return;setCapCriteria(prev=>{const t={...(prev[editTeam]||{})};t.__custom_skills=(t.__custom_skills||[]).filter(s=>s.name!==skName);return{...prev,[editTeam]:t};});toast2("Removed.");};
               const secColors2={"General Training":{c:"#374151",bg:"#f3f4f6"},"Guest Support":{c:"#1d4ed8",bg:"#dbeafe"},"Owner Support":{c:"#6d28d9",bg:"#ede9fe"},"Claims Process":{c:"#b91c1c",bg:"#fee2e2"},"Review Process":{c:"#0e7490",bg:"#cffafe"},"Feedback Process":{c:"#b45309",bg:"#fef3c7"},"Custom":{c:"#4f46e5",bg:"#e0e7ff"}};
@@ -6069,7 +6110,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         footer={<><button onClick={()=>setVersionEditOpen(false)} style={S.out}>Cancel</button><button onClick={async()=>{
           if(!versionEditVal.trim())return toast2("Enter a version number.");
           try{
-            await sbSave("bc_store","app_version",versionEditVal.trim());
+            await dbSaveConfigKey("sys","app_version",versionEditVal.trim());
             addAudit("Version Published","v"+versionEditVal.trim()+" pushed to all users");
             toast2("Version v"+versionEditVal.trim()+" published! All other users will be forced to update.");
             setVersionEditOpen(false);

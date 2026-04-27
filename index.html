@@ -1377,26 +1377,34 @@ function App(){
   const iPK=(p2,m2,w2)=>p2==="month"?`m__${m2}`:`w__${w2}`;
   const getID=(id,p2,m2,w2)=>{const k2=iPK(p2,m2,w2);return data[`_i_${id}`]?.[k2]||{};};
   const saveID=(id,p2,m2,w2,vals)=>{const k2=iPK(p2,m2,w2);setData(prev=>{const key=`_i_${id}`;return{...prev,[key]:{...(prev[key]||{}),[k2]:mg(prev[key]?.[k2]||{},{...vals,_at:nowNZ()})}};});};
+  const[prodMethod,setProdMethod]=useState("simple"); // "simple" or "weighted"
   const avgProd=(tn,p2,m2,w2,includeLeader)=>{
     const r2=roster[tn];if(!r2)return null;
     const allM=includeLeader
       ?[...(r2.members||[]),{id:`lead_${tn.replace(/\s/g,"_")}`,name:r2.lead}].filter(m=>m.name)
       :[...(r2.members||[])].filter(m=>m.name);
-    // Use same formula as dashboard: total team pts / total team hours (weighted avg)
-    let totalPts=0,totalHrs=0;
+    const tw=getW(tn);
+    if(prodMethod==="weighted"){
+      let totalPts=0,totalHrs=0;
+      allM.forEach(m=>{
+        const s=getIcStats(m.name,p2,w2,m2);
+        const h=getSchedHours(m.name,p2,w2,m2);
+        if(s&&h&&h>0){const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0);totalPts+=pts;totalHrs+=h;}
+      });
+      if(totalHrs>0)return Math.round(totalPts/totalHrs*100)/100;
+    }
+    // Simple average: average of individual productivities
+    const vs=[];
     allM.forEach(m=>{
       const s=getIcStats(m.name,p2,w2,m2);
       const h=getSchedHours(m.name,p2,w2,m2);
-      if(s&&h&&h>0){
-        const tw=getW(tn);const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0);
-        totalPts+=pts;totalHrs+=h;
-      }
+      if(s&&h&&h>0){const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0);vs.push(Math.round(pts/h*100)/100);}
     });
-    if(totalHrs>0)return Math.round(totalPts/totalHrs*100)/100;
-    // Fallback: average of stored individual productivities
-    const vs=[];
-    allM.forEach(m=>{const d=getID(m.id,p2,m2,w2);if(d.productivity&&!isNaN(+d.productivity))vs.push(+d.productivity);});
-    return vs.length?Math.round(vs.reduce((s,v)=>s+v,0)/vs.length*100)/100:null;
+    if(vs.length)return Math.round(vs.reduce((s,v)=>s+v,0)/vs.length*100)/100;
+    // Fallback: stored values
+    const vs2=[];
+    allM.forEach(m=>{const d=getID(m.id,p2,m2,w2);if(d.productivity&&!isNaN(+d.productivity))vs2.push(+d.productivity);});
+    return vs2.length?Math.round(vs2.reduce((s,v)=>s+v,0)/vs2.length*100)/100:null;
   };
 
   const[pendingNote,setPendingNote]=useState("");
@@ -4684,7 +4692,12 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             <div style={{width:8,height:8,borderRadius:3,background:tDef.color}}/><span style={{fontWeight:700,fontSize:15,color:"#111827"}}>{team}</span>
             <span style={{color:"#e5e7eb"}}>·</span><span style={{fontSize:13,color:"#6b7280",fontWeight:500}}>{pt==="month"?mo:`FY25 Week ${wk}`}</span>
             <span style={{color:"#e5e7eb"}}>·</span><span style={{fontSize:12,color:"#9ca3af"}}>Lead: {tR.lead||"—"}</span>
-            {(()=>{const sk=TEAM_SKILLS[team]||[];const mems2=(roster[team]?.members||[]).map(m2=>m2.name);const capPct=sk.length&&mems2.length?Math.round(mems2.reduce((s,mn)=>{const cd=capabilities[mn]||{};return s+sk.filter(s2=>(cd[s2.name]?.level||0)===3).length;},0)/(sk.length*mems2.length)*100):0;const kpiPct=kpis.length?Math.round(passN/kpis.length*100):0;const tRevs=callReviews.filter(r=>r.month===mo&&mems2.includes(r.agentName));const crPct=tRevs.length?Math.round(tRevs.filter(r=>r.passed).length/tRevs.length*100):50;const oActs=actionItems.filter(a=>a.teamName===team&&a.status!=="resolved").length;const actScore=Math.max(0,100-oActs*10);const health=Math.round((kpiPct*0.3+capPct*0.3+crPct*0.2+actScore*0.2));const hc=health>=70?"#059669":health>=40?"#d97706":"#dc2626";return<span style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:10,color:"#9ca3af",fontWeight:600}}>Health</span><span style={{fontSize:14,fontWeight:800,color:hc,background:health>=70?"#ecfdf5":health>=40?"#fffbeb":"#fef2f2",padding:"2px 10px",borderRadius:8}}>{health}</span></span>;})()}
+            {(()=>{const sk=TEAM_SKILLS[team]||[];const mems2=(roster[team]?.members||[]).map(m2=>m2.name);const capPct=sk.length&&mems2.length?Math.round(mems2.reduce((s,mn)=>{const cd=capabilities[mn]||{};return s+sk.filter(s2=>(cd[s2.name]?.level||0)===3).length;},0)/(sk.length*mems2.length)*100):0;const kpiPct=kpis.length?Math.round(passN/kpis.length*100):0;const tRevs=callReviews.filter(r=>r.month===mo&&mems2.includes(r.agentName));const crPct=tRevs.length?Math.round(tRevs.filter(r=>r.passed).length/tRevs.length*100):50;const oActs=actionItems.filter(a=>a.teamName===team&&a.status!=="resolved").length;const actScore=Math.max(0,100-oActs*10);const health=Math.round((kpiPct*0.3+capPct*0.3+crPct*0.2+actScore*0.2));const hc=health>=70?"#059669":health>=40?"#d97706":"#dc2626";return<span style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{display:"flex",alignItems:"center",gap:4,background:"#f3f4f6",borderRadius:6,padding:2}}>
+                <button onClick={()=>setProdMethod("simple")} style={{fontSize:9,padding:"3px 8px",borderRadius:4,border:"none",background:prodMethod==="simple"?"#fff":"transparent",color:prodMethod==="simple"?"#111827":"#9ca3af",cursor:"pointer",fontWeight:600,boxShadow:prodMethod==="simple"?"0 1px 2px rgba(0,0,0,.06)":"none"}}>Simple Avg</button>
+                <button onClick={()=>setProdMethod("weighted")} style={{fontSize:9,padding:"3px 8px",borderRadius:4,border:"none",background:prodMethod==="weighted"?"#fff":"transparent",color:prodMethod==="weighted"?"#111827":"#9ca3af",cursor:"pointer",fontWeight:600,boxShadow:prodMethod==="weighted"?"0 1px 2px rgba(0,0,0,.06)":"none"}}>Weighted</button>
+              </span>
+              <span style={{fontSize:10,color:"#9ca3af",fontWeight:600}}>Health</span><span style={{fontSize:14,fontWeight:800,color:hc,background:health>=70?"#ecfdf5":health>=40?"#fffbeb":"#fef2f2",padding:"2px 10px",borderRadius:8}}>{health}</span></span>;})()}
           </div>
           {(()=>{const lastUpload=auditLog.filter(a=>a.action&&(a.action.includes("CSV Imported")||a.action.includes("Uploaded"))).sort((a,b)=>new Date(b.timestamp||b.date||0)-new Date(a.timestamp||a.date||0))[0];if(!lastUpload)return<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 14px",marginBottom:12,fontSize:11,color:"#92400e",display:"flex",alignItems:"center",gap:6}}><span>{"\u26a0\ufe0f"}</span>No data uploaded yet. Import a CSV to get started.</div>;const uploadDate=new Date(lastUpload.timestamp||lastUpload.date);const daysAgo=Math.floor((new Date()-uploadDate)/(86400000));if(daysAgo<=2)return null;return<div style={{background:daysAgo>5?"#fef2f2":"#fffbeb",border:"1px solid "+(daysAgo>5?"#fecaca":"#fde68a"),borderRadius:8,padding:"8px 14px",marginBottom:12,fontSize:11,color:daysAgo>5?"#dc2626":"#92400e",display:"flex",alignItems:"center",gap:6}}><span>{"\u26a0\ufe0f"}</span>{"Data is "+daysAgo+" days old. Last upload: "+uploadDate.toLocaleDateString("en-NZ",{day:"2-digit",month:"short"})}</div>;})()}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:16}}>

@@ -250,7 +250,7 @@ const WEEKS=[
 const FY25_START=new Date(2025,9,4);// Oct 4 2025
 const getCurrentFY25Week=()=>{const now=new Date();const diff=Math.floor((now-FY25_START)/(7*24*60*60*1000));const wk=Math.max(1,Math.min(53,diff+1));return wk;};
 const AUTO_WEEK=getCurrentFY25Week();
-const isPass=(v,k)=>{if(v===null||v===undefined||v==="")return null;if(k.dir==="bool")return["yes","Yes","1",1,true].includes(v);const n=parseFloat(v);if(isNaN(n))return null;return k.dir==="lt"?n<k.thresh:n>k.thresh;};
+const isPass=(v,k)=>{if(v===null||v===undefined||v==="")return null;if(k.dir==="bool")return["yes","Yes","1",1,true].includes(v);const n=parseFloat(v);if(isNaN(n))return null;return k.dir==="lt"?n<=k.thresh:n>=k.thresh;};
 const dv=(v,k)=>{if(v===undefined||v===null||v==="")return"—";if(k.dir==="bool")return["yes","Yes","1",1,true].includes(v)?"Yes":"No";return`${v}${k.unit}`;};
 const mg=(a,b)=>{const r={...a};Object.entries(b).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=="")r[k]=v;});return r;};
 const ini=(n)=>(n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
@@ -1212,7 +1212,7 @@ function App(){
         });
       });
     });
-  },[callReviews.length,callReviewTeams.join(",")]); // only re-run when review count changes
+  },[callReviews.length,callReviews.filter(r=>r.passed).length,callReviewTeams.join(",")]); // re-run when count or pass count changes
 
   // ── Auto-aggregate icData weeks into months ────────────────────────────────
   const aggregateIcMonths=(icDataIn)=>{

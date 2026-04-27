@@ -1605,11 +1605,23 @@ function App(){
   const MANAGERS=["Luke Anderson","Teina Smith"];
   const TEAM_LEADER_ORDER=["Drew Paogofie","Shanya Kumar","Ashleigh Jones","Janendra Kishan"];
   const getPersonTeam=(name)=>{
-    if(MANAGERS.includes(name))return "Managers";
-    if(TEAM_LEADER_ORDER.includes(name))return "Team Leaders";
-    for(const[t,members] of Object.entries(TEAM_MEMBERS)){if(members.includes(name))return t;}
-    for(const[t,lead] of Object.entries(TEAM_LEADS)){if(lead===name)return t;}
+    if(!name)return null;
+    const n=name.toLowerCase().replace(/\s*-\s*/g,"-").trim();
+    if(MANAGERS.some(m=>m.toLowerCase()===n))return "Managers";
+    if(TEAM_LEADER_ORDER.some(m=>m.toLowerCase()===n))return "Team Leaders";
+    for(const[t,members] of Object.entries(TEAM_MEMBERS)){if(members.some(m=>m.toLowerCase().replace(/\s*-\s*/g,"-").trim()===n))return t;}
+    for(const[t,lead] of Object.entries(TEAM_LEADS)){if(lead.toLowerCase().replace(/\s*-\s*/g,"-").trim()===n)return t;}
     return null;
+  };
+  // Get the canonical roster name for any CSV name variant
+  const getRosterName=(csvName)=>{
+    if(!csvName)return csvName;
+    const n=csvName.toLowerCase().replace(/\s*-\s*/g,"-").trim();
+    for(const[,tdata] of Object.entries(roster)){
+      if(tdata.lead&&tdata.lead.toLowerCase().replace(/\s*-\s*/g,"-").trim()===n)return tdata.lead;
+      for(const m of(tdata.members||[])){if(m.name.toLowerCase().replace(/\s*-\s*/g,"-").trim()===n)return m.name;}
+    }
+    return csvName; // Return original if no match
   };
 
   // Parse Intercom day-format CSV (closed/replies by agent by day)
@@ -1761,9 +1773,10 @@ function App(){
             if(agent==="Fin"||agent==="Summary")return;
             const anyNonZero=Object.values(counts).some(v=>v>0);
             if(!anyNonZero)return;
-            const teamName=getPersonTeam(agent);
-            if(!newIc[agent])newIc[agent]={team:teamName||"",weeks:{},months:{}};
-            newIc[agent].team=teamName||newIc[agent].team;
+            const rName=getRosterName(agent);
+            const teamName=getPersonTeam(rName);
+            if(!newIc[rName])newIc[rName]={team:teamName||"",weeks:{},months:{}};
+            newIc[rName].team=teamName||newIc[rName].team;
 
             // Aggregate per FY25 week
             allWks.forEach(wkN=>{
@@ -1771,12 +1784,13 @@ function App(){
                 .filter(([day])=>dayToWk[day]===wkN)
                 .reduce((s,[,v])=>s+v,0);
               if(total>0){
-                newIc[agent].weeks[wkN]={...(newIc[agent].weeks[wkN]||{}),closed:(newIc[agent].weeks[wkN]?.closed||0)+total};
+                newIc[rName].weeks[wkN]={...(newIc[rName].weeks[wkN]||{}),closed:(newIc[rName].weeks[wkN]?.closed||0)+total};
                 if(teamName){
                   if(!teamTotals[wkN])teamTotals[wkN]={};
                   if(!teamTotals[wkN][teamName])teamTotals[wkN][teamName]={total:0,leadClosed:0};
                   teamTotals[wkN][teamName].total+=total;
-                  if(TEAM_LEADS[teamName]===agent)teamTotals[wkN][teamName].leadClosed+=total;
+                  const leadName=Object.values(TEAM_LEADS).find(l=>l.toLowerCase()===rName.toLowerCase());
+                  if(leadName)teamTotals[wkN][teamName].leadClosed+=total;
                 }
               }
             });
@@ -1852,9 +1866,10 @@ function App(){
           const newIc={};
           parsed.rows.forEach(({agent,counts})=>{
             if(agent==="Summary")return;
+            const rName=getRosterName(agent);
             const total=Object.values(counts).reduce((s,v)=>s+v,0);
-            if(!newIc[agent])newIc[agent]={team:getPersonTeam(agent)||"",weeks:{},months:{}};
-            newIc[agent].weeks[wk]={...(newIc[agent].weeks[wk]||{}),replies:total};
+            if(!newIc[rName])newIc[rName]={team:getPersonTeam(rName)||"",weeks:{},months:{}};
+            newIc[rName].weeks[wk]={...(newIc[rName].weeks[wk]||{}),replies:total};
           });
           setIcDataWithMonths(prev=>{
             const merged={...prev};
@@ -2028,7 +2043,7 @@ function App(){
             const tasks=iTasks>=0?parseFloat(row[iTasks])||0:0;
             const total=parseFloat(row[iTotal])||0;
             const personKey=agent;
-            if(!bucket[personKey])bucket[personKey]={team:getPersonTeam(agent)||"",weeks:{}};
+            const rAgent=getRosterName(agent);if(!bucket[rAgent])bucket[rAgent]={team:getPersonTeam(rAgent)||"",weeks:{}};
             if(wk){
               if(!bucket[personKey].weeks[wk])bucket[personKey].weeks[wk]={caseActions:0,emails:0,wfs:0,tasks:0,total:0};
               bucket[personKey].weeks[wk].caseActions+=caseActions;
@@ -2124,7 +2139,7 @@ function App(){
             const row=parseRow3(rows[i]);
             const agent=(row[0]||"").trim();
             if(!agent)continue;
-            const teamName=getPersonTeam(agent)||"";
+            const rAgent2=getRosterName(agent);const teamName=getPersonTeam(rAgent2)||"";
             if(!newIc[agent])newIc[agent]={team:teamName,weeks:{},months:{}};
             dateCols.forEach((dc,j)=>{
               const wkN=dateToWk(dc);

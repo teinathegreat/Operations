@@ -3499,12 +3499,12 @@ function App(){
         const data=await file.arrayBuffer();
         const wb=XLSX.read(data,{type:"array",cellDates:true});
         const ws=wb.Sheets[wb.SheetNames[0]];
-        const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,dateNF:"yyyy-mm-dd"});
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
 
         // Find header row
         let hIdx=-1;
-        for(let i=0;i<Math.min(10,rows.length);i++){if(rows[i]&&rows[i][0]&&String(rows[i][0]).includes("Booking PBN")){hIdx=i;break;}}
-        if(hIdx<0){toast2("Could not find header row.");setAnalyzing(false);return;}
+        for(let i=0;i<Math.min(15,rows.length);i++){if(rows[i]&&String(rows[i][0]||"").includes("Booking PBN")){hIdx=i;break;}}
+        if(hIdx<0){toast2("⚠ Could not find header row (looking for 'Booking PBN').");setAnalyzing(false);return;}
         const headers=rows[hIdx].map(h=>String(h||"").trim());
         const col=(name)=>headers.indexOf(name);
 
@@ -3517,24 +3517,41 @@ function App(){
         const iRent=col("Rent");
         const iPBN=col("Booking PBN");
 
-        if(iSource<0||iCancelDate<0||iStartDate<0){toast2("Missing required columns.");setAnalyzing(false);return;}
+        if(iSource<0||iCancelDate<0||iStartDate<0){toast2("⚠ Missing required columns (Source/CancelDate/StartDate).");setAnalyzing(false);return;}
+
+        // Date parser that handles Date objects, Excel serials, and strings
+        const parseDate=(v)=>{
+          if(!v)return null;
+          if(v instanceof Date&&!isNaN(v))return v;
+          if(typeof v==="number"){
+            // Excel serial date
+            const d=new Date((v-25569)*86400000);
+            return isNaN(d)?null:d;
+          }
+          const s=String(v).trim();
+          // Try ISO format first
+          let d=new Date(s);
+          if(!isNaN(d))return d;
+          // Try dd/mm/yyyy
+          const parts=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+          if(parts){d=new Date(parseInt(parts[3]),parseInt(parts[2])-1,parseInt(parts[1]));if(!isNaN(d))return d;}
+          return null;
+        };
 
         const bookings=[];
         for(let i=hIdx+1;i<rows.length;i++){
           const r=rows[i];if(!r||!r[iSource])continue;
           const source=String(r[iSource]||"").trim();
-          const cancelDateStr=String(r[iCancelDate]||"");
-          const startDateStr=String(r[iStartDate]||"");
+          if(!source)continue;
+          const cancelDate=parseDate(r[iCancelDate]);
+          const startDate=parseDate(r[iStartDate]);
           const cancelledBy=String(r[iCancelledBy]||"").trim();
           const reason=String(r[iReason]||"").trim();
           const cost=parseFloat(r[iCost])||0;
           const rent=parseFloat(r[iRent])||0;
           const pbn=String(r[iPBN]||"").trim();
 
-          // Parse dates
-          let cancelDate,startDate;
-          try{cancelDate=new Date(cancelDateStr);startDate=new Date(startDateStr);}catch{continue;}
-          if(isNaN(cancelDate)||isNaN(startDate))continue;
+          if(!cancelDate||!startDate)continue;
 
           const platform=getPlatformGroup(source);
           const bauDays=getBAUDays(source);
@@ -3593,20 +3610,16 @@ function App(){
     ];
 
     return(
-      <Modal title={title} onClose={onClose} wide={isCancellation&&vals.analyzed}
+      <Modal title="" onClose={onClose} wide={isCancellation&&vals.analyzed}
         footer={<>
           <button onClick={onClose} style={S.out}>{viewOnly?"Close":"Cancel"}</button>
           {!viewOnly&&<button onClick={()=>onSave(vals)} style={S.p1}>Submit</button>}
         </>}>
+        {/* Custom title with secret double-click */}
+        <div onDoubleClick={()=>{if(!viewOnly&&!vals.analyzed)setShowUpload(!showUpload);}} style={{fontSize:15,fontWeight:700,color:"#111827",marginBottom:16,cursor:"default",userSelect:"none"}}>{title}</div>
 
         {isCancellation?<div>
-          {/* Double-click upload section */}
-          {!viewOnly&&!vals.analyzed&&<div style={{textAlign:"center",marginBottom:16}}>
-            <div onDoubleClick={()=>setShowUpload(!showUpload)} style={{fontSize:15,fontWeight:700,color:"#111827",cursor:"pointer",padding:"8px 0",userSelect:"none"}}>{title}</div>
-            <div style={{fontSize:10,color:"#9ca3af"}}>Double-click the title above to upload a cancellation report</div>
-          </div>}
-
-          {/* Upload zone */}
+          {/* Upload zone - hidden by default, double-click modal title to reveal */}
           {showUpload&&!vals.analyzed&&<div style={{border:"2px dashed #d1d5db",borderRadius:12,padding:24,textAlign:"center",marginBottom:16,background:"#f9fafb"}}
             onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="#0d9488";e.currentTarget.style.background="#f0fdfa";}}
             onDragLeave={e=>{e.currentTarget.style.borderColor="#d1d5db";e.currentTarget.style.background="#f9fafb";}}
@@ -3620,7 +3633,7 @@ function App(){
           {/* Text-only mode (no Excel uploaded) */}
           {!vals.analyzed&&<div>
             <textarea value={vals.review_summary||""} onChange={e=>setVals(prev=>({...prev,review_summary:e.target.value}))} rows={12} readOnly={viewOnly}
-              placeholder={"Total Cancellations:\nCustomer Cancellations:\nOwner Cancellations:\nOffice Cancellations:\n\nSummary:\n\n(or double-click the title above to upload the Excel file for automatic analysis)"}
+              placeholder={"Total Cancellations:\nCustomer Cancellations:\nOwner Cancellations:\nOffice Cancellations:\n\nSummary:"}
               style={{width:"100%",fontSize:13,padding:"14px 16px",border:"1px solid #d1d5db",borderRadius:10,resize:"vertical",lineHeight:1.6,fontFamily:"inherit",boxSizing:"border-box",minHeight:200}}/>
           </div>}
 

@@ -680,7 +680,14 @@ function App(){
   const[saveStatus,setSaveStatus]=useState("saved"); // saved | saving | offline | error
   const[queueCount,setQueueCount]=useState(0);
   const activeSaves=useRef(0);
-  const updateSaveStatus=()=>{if(offlineQueue.current.length>0){setSaveStatus("offline");setQueueCount(offlineQueue.current.length);}else if(activeSaves.current>0)setSaveStatus("saving");else setSaveStatus("saved");};
+  const saveStatusRef=useRef("saved");
+  const updateSaveStatus=()=>{const next=offlineQueue.current.length>0?"offline":activeSaves.current>0?"saving":"saved";if(next!==saveStatusRef.current){saveStatusRef.current=next;setSaveStatus(next);setQueueCount(offlineQueue.current.length);}};
+  // Silent save for background heartbeat - doesn't trigger save indicator
+  const dbSaveConfigKeySilent=async(prefix,key,value)=>{
+    const url=sbUrlRef.current,k=sbKeyRef.current;if(!url||!k||!key)return;
+    const id=prefix+":"+key;const body={id,data:value,updated_at:new Date().toISOString()};
+    try{await fetch(url+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(body)});}catch{}
+  };
   const addToQueue=(op)=>{offlineQueue.current.push({...op,attempts:0,addedAt:new Date().toISOString()});updateSaveStatus();};
   // Retry queue every 15 seconds
   useEffect(()=>{const iv=setInterval(async()=>{if(!offlineQueue.current.length||!sbUrlRef.current)return;
@@ -1341,7 +1348,7 @@ function App(){
   const remoteVersionRef=useRef(remoteVersion);
   const setRV=(v)=>{remoteVersionRef.current=v;setRemoteVersion(v);try{localStorage.setItem("bc_remote_ver",v);}catch{}};
   useEffect(()=>{setVersionOutdated(!!(remoteVersion&&remoteVersion!==APP_VERSION&&remoteVersion>APP_VERSION&&currentUser?.role!=="admin"));},[remoteVersion]);
-  useEffect(()=>{if(!currentUser||!sbUrl||!sbKey)return;const checkKill=async()=>{try{const killData=await dbLoadConfig("sys");const killVal=killData?.["kill_"+currentUser.username];if(killVal&&killVal>sessionStart.current){toast2("You've been signed out by an admin.");logout();}}catch{}};const heartbeat=async()=>{try{await dbSaveConfigKey("presence",currentUser.username,{displayName:currentUser.displayName,role:currentUser.role,team:currentUser.team,lastSeen:new Date().toISOString(),version:remoteVersionRef.current||APP_VERSION});const presence=await dbLoadConfig("presence")||{};onlineUsersRef.current=presence;}catch{}};const checkVersion=async()=>{try{const sysConf=await dbLoadConfig("sys");const rv=sysConf?.app_version;if(rv&&rv!==remoteVersionRef.current){setRV(rv);}}catch{}};checkKill();heartbeat();checkVersion();const iv=setInterval(()=>{checkKill();heartbeat();checkVersion();},30000);return()=>clearInterval(iv);},[currentUser?.username]);
+  useEffect(()=>{if(!currentUser||!sbUrl||!sbKey)return;const checkKill=async()=>{try{const killData=await dbLoadConfig("sys");const killVal=killData?.["kill_"+currentUser.username];if(killVal&&killVal>sessionStart.current){toast2("You've been signed out by an admin.");logout();}}catch{}};const heartbeat=async()=>{try{await dbSaveConfigKeySilent("presence",currentUser.username,{displayName:currentUser.displayName,role:currentUser.role,team:currentUser.team,lastSeen:new Date().toISOString(),version:remoteVersionRef.current||APP_VERSION});const presence=await dbLoadConfig("presence")||{};onlineUsersRef.current=presence;}catch{}};const checkVersion=async()=>{try{const sysConf=await dbLoadConfig("sys");const rv=sysConf?.app_version;if(rv&&rv!==remoteVersionRef.current){setRV(rv);}}catch{}};checkKill();heartbeat();checkVersion();const iv=setInterval(()=>{checkKill();heartbeat();checkVersion();},30000);return()=>clearInterval(iv);},[currentUser?.username]);
   // toast2 defined in db section above
 
   const pk=pt==="month"?`m__${mo}`:`w__${wk}`;
@@ -3234,12 +3241,12 @@ function App(){
                     formData.append("file",aiAudioFile);
                     formData.append("model","whisper-1");
                     formData.append("language","en");
-                    formData.append("prompt","This is a recorded customer service phone call for Bachcare, a New Zealand holiday home management company. The call begins with the agent greeting the caller. Listen carefully for the opening greeting where the agent says their name and mentions Bachcare. Common greetings include: 'Good morning, Bachcare, this is [Name] speaking', 'Hi, you've reached Bachcare, my name is [Name]', 'Thank you for calling Bachcare, [Name] speaking'. The greeting may be quiet or slightly muffled but it is there. Transcribe all speech accurately including quiet parts.");
+                    formData.append("prompt","Customer service phone call for Bachcare, a New Zealand holiday home management company. The agent greets the caller by introducing themselves by name and mentioning Bachcare. Transcribe all speech accurately including quiet or muffled parts at the start of the call.");
                     formData.append("temperature","0");
                     formData.append("response_format","verbose_json");
                     formData.append("timestamp_granularities[]","segment");
                     const txResp=await fetch("https://api.openai.com/v1/audio/transcriptions",{method:"POST",headers:{"Authorization":"Bearer "+openaiKey},body:formData});
-                    if(!txResp.ok){const errTxt=await txResp.text().catch(()=>"unknown");console.error("Transcription error "+txResp.status+": "+errTxt);throw new Error("Could not process this recording. Please try again or use a different file.");}
+                    if(!txResp.ok){const errTxt=await txResp.text().catch(()=>"unknown");console.error("Whisper error "+txResp.status+":",errTxt);throw new Error("Transcription failed ("+txResp.status+"). Check your API key or try a smaller file.");}
                     const txData=await txResp.json();
                     const segments=txData.segments||[];
                     if(segments.length){segments.forEach(seg=>{const mins=Math.floor(seg.start/60);const secs=Math.floor(seg.start%60);localTranscript+="["+String(mins).padStart(2,"0")+":"+String(secs).padStart(2,"0")+"] "+seg.text.trim()+"\n";});}

@@ -3470,47 +3470,331 @@ function App(){
   function MonthlyReviewModal({config,onClose,onSave}){
     const isCancellation=config.key==="monthly_cancellation_review"||config.label?.toLowerCase().includes("cancellation");
     const[vals,setVals]=React.useState(config.existing||{});
-    const set=(k,v)=>setVals(prev=>({...prev,[k]:v}));
+    const[showUpload,setShowUpload]=React.useState(false);
+    const[analyzing,setAnalyzing]=React.useState(false);
     const viewOnly=config.viewOnly||false;
+    const editMode=!viewOnly&&!vals.analyzed;
 
-    const CANCEL_FIELDS=[
-      {key:"total_cancellations",label:"Total Cancellations",type:"number"},
-      {key:"customer_cancellations",label:"Customer Cancellations",type:"number"},
-      {key:"owner_cancellations",label:"Owner Cancellations",type:"number"},
-      {key:"office_cancellations",label:"Office Cancellations",type:"number"},
-      {key:"review_summary",label:"Review Summary of Cancellations",type:"textarea"},
-    ];
+    const title=config.label||(isCancellation?"Monthly Cancellation Review":"Monthly Service Withdrawal Review");
+
+    // BAU rules per platform
+    const getBAUDays=(source)=>{
+      const s=(source||"").toLowerCase();
+      if(s==="booking.com")return 7;
+      return 30; // All others: VRBO, Holiday Houses, Airbnb, Bachcare, PPC
+    };
+    const getPlatformGroup=(source)=>{
+      const s=(source||"").toLowerCase();
+      if(s==="booking.com")return "Booking.com";
+      if(s.includes("homeaway")||s.includes("vrbo"))return "VRBO";
+      if(s==="holiday houses")return "Holiday Houses";
+      if(s==="airbnb")return "Airbnb";
+      if(s.startsWith("bachcare")||s.startsWith("ppc"))return "Bachcare Direct";
+      return "Other";
+    };
+
+    const processExcel=async(file)=>{
+      setAnalyzing(true);
+      try{
+        const data=await file.arrayBuffer();
+        const wb=XLSX.read(data,{type:"array",cellDates:true});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,dateNF:"yyyy-mm-dd"});
+
+        // Find header row
+        let hIdx=-1;
+        for(let i=0;i<Math.min(10,rows.length);i++){if(rows[i]&&rows[i][0]&&String(rows[i][0]).includes("Booking PBN")){hIdx=i;break;}}
+        if(hIdx<0){toast2("Could not find header row.");setAnalyzing(false);return;}
+        const headers=rows[hIdx].map(h=>String(h||"").trim());
+        const col=(name)=>headers.indexOf(name);
+
+        const iSource=col("Booking Source");
+        const iCancelDate=col("Cancelled Date");
+        const iStartDate=col("Holiday Start Date");
+        const iCancelledBy=col("Cancelled By");
+        const iReason=col("Cancellation Reason");
+        const iCost=col("Total Holiday Cost");
+        const iRent=col("Rent");
+        const iPBN=col("Booking PBN");
+
+        if(iSource<0||iCancelDate<0||iStartDate<0){toast2("Missing required columns.");setAnalyzing(false);return;}
+
+        const bookings=[];
+        for(let i=hIdx+1;i<rows.length;i++){
+          const r=rows[i];if(!r||!r[iSource])continue;
+          const source=String(r[iSource]||"").trim();
+          const cancelDateStr=String(r[iCancelDate]||"");
+          const startDateStr=String(r[iStartDate]||"");
+          const cancelledBy=String(r[iCancelledBy]||"").trim();
+          const reason=String(r[iReason]||"").trim();
+          const cost=parseFloat(r[iCost])||0;
+          const rent=parseFloat(r[iRent])||0;
+          const pbn=String(r[iPBN]||"").trim();
+
+          // Parse dates
+          let cancelDate,startDate;
+          try{cancelDate=new Date(cancelDateStr);startDate=new Date(startDateStr);}catch{continue;}
+          if(isNaN(cancelDate)||isNaN(startDate))continue;
+
+          const platform=getPlatformGroup(source);
+          const bauDays=getBAUDays(source);
+          const daysBeforeStart=Math.floor((startDate-cancelDate)/(86400000));
+          const isBAU=daysBeforeStart>bauDays;
+          const isOutsideBAU=!isBAU;
+
+          bookings.push({pbn,source,platform,cancelDate,startDate,cancelledBy,reason,cost,rent,daysBeforeStart,bauDays,isBAU,isOutsideBAU});
+        }
+
+        // Build analysis
+        const total=bookings.length;
+        const byType={Customer:0,Owner:0,Office:0};
+        const byPlatform={};
+        const outsideBAU=bookings.filter(b=>b.isOutsideBAU);
+        const bauCount=bookings.filter(b=>b.isBAU).length;
+
+        bookings.forEach(b=>{
+          byType[b.cancelledBy]=(byType[b.cancelledBy]||0)+1;
+          if(!byPlatform[b.platform])byPlatform[b.platform]={total:0,bau:0,outside:0,byType:{Customer:0,Owner:0,Office:0},outsideList:[]};
+          byPlatform[b.platform].total++;
+          if(b.isBAU)byPlatform[b.platform].bau++;
+          else{byPlatform[b.platform].outside++;byPlatform[b.platform].outsideList.push(b);}
+          byPlatform[b.platform].byType[b.cancelledBy]=(byPlatform[b.platform].byType[b.cancelledBy]||0)+1;
+        });
+
+        // Reason analysis for outside BAU
+        const reasonCounts={};
+        outsideBAU.forEach(b=>{const r=b.reason||"No reason given";reasonCounts[r]=(reasonCounts[r]||0)+1;});
+        const topReasons=Object.entries(reasonCounts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+        const totalCost=bookings.reduce((s,b)=>s+b.cost,0);
+        const outsideCost=outsideBAU.reduce((s,b)=>s+b.cost,0);
+
+        const analysis={
+          analyzed:true,
+          total,byType,byPlatform,
+          bauCount,outsideBAUCount:outsideBAU.length,
+          totalCost:Math.round(totalCost*100)/100,
+          outsideBAUCost:Math.round(outsideCost*100)/100,
+          topReasons,
+          outsideBAUDetails:outsideBAU.map(b=>({pbn:b.pbn,platform:b.platform,source:b.source,cancelledBy:b.cancelledBy,reason:b.reason,daysBeforeStart:b.daysBeforeStart,cost:b.cost,bauRule:b.bauDays+"d"})).sort((a,b)=>a.daysBeforeStart-b.daysBeforeStart),
+          submittedAt:new Date().toISOString(),
+          submittedBy:currentUser?.displayName,
+        };
+
+        setVals(prev=>({...prev,...analysis}));
+        toast2("Analysis complete: "+total+" cancellations processed.");
+      }catch(e){console.error(e);toast2("⚠ Error reading file: "+e.message);}
+      setAnalyzing(false);
+    };
+
     const WITHDRAW_FIELDS=[
       {key:"total_withdrawals",label:"Total Service Withdrawals",type:"number"},
       {key:"review_summary",label:"Review Summary of Service Withdrawals",type:"textarea"},
     ];
-    const fields=isCancellation?CANCEL_FIELDS:WITHDRAW_FIELDS;
-    const title=config.label||(isCancellation?"Monthly Cancellation Review":"Monthly Service Withdrawal Review");
 
     return(
-      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,padding:16}}>
-        <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:520,boxShadow:"0 20px 60px rgba(0,0,0,.2)",display:"flex",flexDirection:"column",maxHeight:"90vh"}}>
-          <div style={{padding:"16px 20px",borderBottom:"1px solid #e5e7eb",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-            <div style={{fontWeight:700,fontSize:15,color:"#111827"}}>{title}</div>
-            <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#9ca3af",lineHeight:1}}>×</button>
-          </div>
-          <div style={{padding:20,overflowY:"auto",flex:1}}>
-            {fields.map(f=>(
-              <div key={f.key} style={{marginBottom:14}}>
-                <label style={S.lbl}>{f.label}</label>
-                {f.type==="textarea"
-                  ?<textarea value={vals[f.key]||""} onChange={e=>set(f.key,e.target.value)} rows={4} style={{...S.inp,resize:"vertical"}} readOnly={viewOnly}/>
-                  :<input type="number" min="0" value={vals[f.key]||""} onChange={e=>set(f.key,e.target.value)} style={S.inp} readOnly={viewOnly}/>
+      <Modal title={title} onClose={onClose} wide={isCancellation&&vals.analyzed}
+        footer={<>
+          <button onClick={onClose} style={S.out}>{viewOnly?"Close":"Cancel"}</button>
+          {!viewOnly&&<button onClick={()=>onSave(vals)} style={S.p1}>Submit</button>}
+        </>}>
+
+        {isCancellation?<div>
+          {/* Double-click upload section */}
+          {!viewOnly&&!vals.analyzed&&<div style={{textAlign:"center",marginBottom:16}}>
+            <div onDoubleClick={()=>setShowUpload(!showUpload)} style={{fontSize:15,fontWeight:700,color:"#111827",cursor:"pointer",padding:"8px 0",userSelect:"none"}}>{title}</div>
+            <div style={{fontSize:10,color:"#9ca3af"}}>Double-click the title above to upload a cancellation report</div>
+          </div>}
+
+          {/* Upload zone */}
+          {showUpload&&!vals.analyzed&&<div style={{border:"2px dashed #d1d5db",borderRadius:12,padding:24,textAlign:"center",marginBottom:16,background:"#f9fafb"}}
+            onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="#0d9488";e.currentTarget.style.background="#f0fdfa";}}
+            onDragLeave={e=>{e.currentTarget.style.borderColor="#d1d5db";e.currentTarget.style.background="#f9fafb";}}
+            onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#d1d5db";e.currentTarget.style.background="#f9fafb";const f=e.dataTransfer.files[0];if(f)processExcel(f);}}>
+            <div style={{fontSize:32,marginBottom:6,opacity:.4}}>📊</div>
+            <div style={{fontSize:13,fontWeight:600,color:"#374151"}}>Drop cancellation Excel here</div>
+            <div style={{fontSize:11,color:"#9ca3af",marginTop:4}}>or <label style={{color:"#0d9488",cursor:"pointer",textDecoration:"underline"}}><input type="file" accept=".xlsx,.xls" hidden onChange={e=>{if(e.target.files[0])processExcel(e.target.files[0]);}}/>click to browse</label></div>
+            {analyzing&&<div style={{marginTop:10,fontSize:12,color:"#0d9488",fontWeight:600}}>Analyzing cancellations...</div>}
+          </div>}
+
+          {/* Text-only mode (no Excel uploaded) */}
+          {!vals.analyzed&&<div>
+            <textarea value={vals.review_summary||""} onChange={e=>setVals(prev=>({...prev,review_summary:e.target.value}))} rows={12} readOnly={viewOnly}
+              placeholder={"Total Cancellations:\nCustomer Cancellations:\nOwner Cancellations:\nOffice Cancellations:\n\nSummary:\n\n(or double-click the title above to upload the Excel file for automatic analysis)"}
+              style={{width:"100%",fontSize:13,padding:"14px 16px",border:"1px solid #d1d5db",borderRadius:10,resize:"vertical",lineHeight:1.6,fontFamily:"inherit",boxSizing:"border-box",minHeight:200}}/>
+          </div>}
+
+          {/* Analysis results */}
+          {vals.analyzed&&<div>
+            {/* Copy for email button */}
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              <button onClick={()=>{
+                const v=vals;const byP=v.byPlatform||{};const oBAU=v.outsideBAUDetails||[];
+                let e="";
+                e+="MONTHLY CANCELLATION REVIEW\n";
+                e+="═".repeat(50)+"\n\n";
+                e+="SUMMARY\n";
+                e+="────────────────────────────\n";
+                e+="Total Cancellations:     "+v.total+"\n";
+                e+="  • Customer:            "+(v.byType?.Customer||0)+"\n";
+                e+="  • Owner:               "+(v.byType?.Owner||0)+"\n";
+                e+="  • Office:              "+(v.byType?.Office||0)+"\n\n";
+                e+="BAU (within policy):     "+v.bauCount+"\n";
+                e+="Outside BAU:             "+v.outsideBAUCount+"\n";
+                e+="Outside BAU Value:       $"+((v.outsideBAUCost||0).toLocaleString("en-NZ",{minimumFractionDigits:2,maximumFractionDigits:2}))+"\n\n";
+
+                e+="BREAKDOWN BY PLATFORM\n";
+                e+="────────────────────────────\n";
+                const platOrder=Object.entries(byP).sort((a,b)=>b[1].total-a[1].total);
+                platOrder.forEach(([plat,d])=>{
+                  e+=plat+"\n";
+                  e+="  Total: "+d.total+"  |  BAU: "+d.bau+"  |  Outside BAU: "+d.outside+"\n";
+                  e+="  Customer: "+(d.byType?.Customer||0)+"  |  Owner: "+(d.byType?.Owner||0)+"  |  Office: "+(d.byType?.Office||0)+"\n\n";
+                });
+
+                if(v.outsideBAUCount>0){
+                  e+="OUTSIDE BAU — REQUIRES ATTENTION\n";
+                  e+="────────────────────────────\n";
+
+                  // Group outside BAU by platform
+                  const oByPlat={};oBAU.forEach(b=>{if(!oByPlat[b.platform])oByPlat[b.platform]=[];oByPlat[b.platform].push(b);});
+                  Object.entries(oByPlat).sort((a,b)=>b[1].length-a[1].length).forEach(([plat,bookings])=>{
+                    e+="\n"+plat+" ("+bookings.length+" outside BAU)\n";
+                    e+="  BAU Rule: Cancellation within "+bookings[0].bauRule+" of arrival\n\n";
+                    bookings.forEach(b=>{
+                      e+="  "+b.pbn+"  |  "+b.cancelledBy+"  |  "+b.daysBeforeStart+" days before arrival  |  $"+Math.round(b.cost)+"\n";
+                      if(b.reason)e+="    Reason: "+b.reason+"\n";
+                    });
+                    e+="\n";
+                  });
+
+                  if((v.topReasons||[]).length>0){
+                    e+="TOP CANCELLATION REASONS (Outside BAU)\n";
+                    e+="────────────────────────────\n";
+                    v.topReasons.forEach(([reason,count])=>{
+                      e+=("  "+count+"x").padEnd(8)+reason+"\n";
+                    });
+                    e+="\n";
+                  }
                 }
+
+                if(v.review_summary){
+                  e+="NOTES & ACTION ITEMS\n";
+                  e+="────────────────────────────\n";
+                  e+=v.review_summary+"\n\n";
+                }
+
+                e+="────────────────────────────\n";
+                e+="Report generated "+(new Date().toLocaleDateString("en-NZ",{day:"numeric",month:"long",year:"numeric"}))+"\n";
+
+                try{navigator.clipboard.writeText(e);toast2("Copied to clipboard — paste into your email.");}catch{toast2("Copy failed");}
+              }} style={{fontSize:12,padding:"8px 20px",background:"#0d9488",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>📋 Copy for Email</button>
+              <button onClick={()=>{
+                const v=vals;const oBAU=v.outsideBAUDetails||[];
+                let e="OUTSIDE BAU ONLY — "+v.outsideBAUCount+" bookings ($"+((v.outsideBAUCost||0).toLocaleString("en-NZ",{minimumFractionDigits:2}))+")\n\n";
+                const oByPlat={};oBAU.forEach(b=>{if(!oByPlat[b.platform])oByPlat[b.platform]=[];oByPlat[b.platform].push(b);});
+                Object.entries(oByPlat).sort((a,b)=>b[1].length-a[1].length).forEach(([plat,bookings])=>{
+                  e+=plat+" ("+bookings.length+")\n";
+                  bookings.forEach(b=>{e+="  • "+b.pbn+" — "+b.cancelledBy+" — "+b.daysBeforeStart+"d before arrival — $"+Math.round(b.cost)+(b.reason?" — "+b.reason:"")+"\n";});
+                  e+="\n";
+                });
+                try{navigator.clipboard.writeText(e);toast2("Outside BAU summary copied.");}catch{toast2("Copy failed");}
+              }} style={{fontSize:12,padding:"8px 16px",background:"#dc2626",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600}}>⚠ Copy Outside BAU Only</button>
+            </div>
+            {/* Summary cards */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
+              {[{l:"Total",v:vals.total,c:"#111827",bg:"#f9fafb"},{l:"BAU",v:vals.bauCount,c:"#059669",bg:"#ecfdf5"},{l:"Outside BAU",v:vals.outsideBAUCount,c:"#dc2626",bg:"#fef2f2"},{l:"Outside BAU Cost",v:"$"+((vals.outsideBAUCost||0)/1000).toFixed(1)+"k",c:"#d97706",bg:"#fffbeb"}].map(c=>
+                <div key={c.l} style={{background:c.bg,borderRadius:10,padding:"12px 14px",textAlign:"center"}}><div style={{fontSize:22,fontWeight:800,color:c.c}}>{c.v}</div><div style={{fontSize:9,color:"#6b7280",fontWeight:600,textTransform:"uppercase",marginTop:2}}>{c.l}</div></div>
+              )}
+            </div>
+
+            {/* By Type */}
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#111827",marginBottom:6}}>By Cancellation Type</div>
+              <div style={{display:"flex",gap:8}}>{Object.entries(vals.byType||{}).map(([type,count])=>
+                <div key={type} style={{flex:1,background:"#f9fafb",borderRadius:8,padding:"8px 12px",textAlign:"center"}}><div style={{fontSize:18,fontWeight:700,color:"#111827"}}>{count}</div><div style={{fontSize:10,color:"#6b7280"}}>{type}</div></div>
+              )}</div>
+            </div>
+
+            {/* By Platform */}
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#111827",marginBottom:6}}>By Platform</div>
+              <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,overflow:"hidden"}}>
+                <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 1fr",padding:"8px 12px",background:"#f9fafb",fontSize:9,fontWeight:700,color:"#6b7280",textTransform:"uppercase"}}>
+                  <span>Platform</span><span style={{textAlign:"center"}}>Total</span><span style={{textAlign:"center"}}>BAU</span><span style={{textAlign:"center"}}>Outside</span><span style={{textAlign:"center"}}>Customer</span><span style={{textAlign:"center"}}>Owner</span><span style={{textAlign:"center"}}>Office</span>
+                </div>
+                {Object.entries(vals.byPlatform||{}).sort((a,b)=>b[1].total-a[1].total).map(([platform,d])=>
+                  <div key={platform} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 1fr 1fr",padding:"8px 12px",borderTop:"1px solid #f3f4f6",fontSize:12}}>
+                    <span style={{fontWeight:600,color:"#111827"}}>{platform}</span>
+                    <span style={{textAlign:"center"}}>{d.total}</span>
+                    <span style={{textAlign:"center",color:"#059669"}}>{d.bau}</span>
+                    <span style={{textAlign:"center",color:d.outside?"#dc2626":"#9ca3af",fontWeight:d.outside?700:400}}>{d.outside}</span>
+                    <span style={{textAlign:"center"}}>{d.byType?.Customer||0}</span>
+                    <span style={{textAlign:"center"}}>{d.byType?.Owner||0}</span>
+                    <span style={{textAlign:"center"}}>{d.byType?.Office||0}</span>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-          <div style={{padding:"14px 20px",borderTop:"1px solid #e5e7eb",display:"flex",gap:8,justifyContent:"flex-end",flexShrink:0}}>
-            <button onClick={onClose} style={S.out}>{viewOnly?"Close":"Cancel"}</button>
-            {!viewOnly&&<button onClick={()=>onSave(vals)} style={S.p1}>Submit</button>}
-          </div>
+            </div>
+
+            {/* Outside BAU - Top Reasons */}
+            {(vals.topReasons||[]).length>0&&<div style={{marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#dc2626",marginBottom:6}}>{"⚠ Outside BAU — Top Reasons ("+vals.outsideBAUCount+" bookings, $"+((vals.outsideBAUCost||0)/1000).toFixed(1)+"k)"}</div>
+              <div style={{background:"#fef2f2",borderRadius:10,padding:"10px 14px"}}>
+                {vals.topReasons.map(([reason,count],i)=>
+                  <div key={i} style={{display:"flex",gap:8,padding:"4px 0",borderBottom:i<vals.topReasons.length-1?"1px solid #fecaca":"none",fontSize:12}}>
+                    <span style={{fontWeight:700,color:"#dc2626",minWidth:24}}>{count}</span>
+                    <span style={{color:"#374151"}}>{reason}</span>
+                  </div>
+                )}
+              </div>
+            </div>}
+
+            {/* Outside BAU Detail Table */}
+            {(vals.outsideBAUDetails||[]).length>0&&<div style={{marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#111827",marginBottom:6}}>Outside BAU — Detail ({vals.outsideBAUDetails.length} bookings)</div>
+              <div style={{maxHeight:250,overflowY:"auto",background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,overflow:"hidden"}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 80px 80px 2fr 70px",padding:"6px 10px",background:"#f9fafb",fontSize:9,fontWeight:700,color:"#6b7280",textTransform:"uppercase",position:"sticky",top:0}}>
+                  <span>PBN</span><span>Platform</span><span>Type</span><span>Days Out</span><span>Reason</span><span style={{textAlign:"right"}}>Cost</span>
+                </div>
+                {vals.outsideBAUDetails.map((b,i)=>
+                  <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 80px 80px 2fr 70px",padding:"6px 10px",borderTop:"1px solid #f3f4f6",fontSize:11}}>
+                    <span style={{color:"#6b7280",fontFamily:"monospace",fontSize:10}}>{b.pbn}</span>
+                    <span>{b.platform}</span>
+                    <span style={{color:b.cancelledBy==="Customer"?"#2563eb":b.cancelledBy==="Owner"?"#7c3aed":"#d97706"}}>{b.cancelledBy}</span>
+                    <span style={{color:"#dc2626",fontWeight:600}}>{b.daysBeforeStart+"d ("+b.bauRule+")"}</span>
+                    <span style={{color:"#374151",fontSize:10}}>{b.reason||"—"}</span>
+                    <span style={{textAlign:"right",fontWeight:600}}>${Math.round(b.cost)}</span>
+                  </div>
+                )}
+              </div>
+            </div>}
+
+            {/* Editable notes */}
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:"#111827",marginBottom:4}}>Notes & Action Items</div>
+              <textarea value={vals.review_summary||""} onChange={e=>setVals(prev=>({...prev,review_summary:e.target.value}))} rows={4} readOnly={viewOnly}
+                placeholder="What can we do to minimise outside-BAU cancellations next month? Any patterns or actions to take?"
+                style={{width:"100%",fontSize:12,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8,resize:"vertical",lineHeight:1.6,fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+
+            {vals.submittedBy&&<div style={{fontSize:10,color:"#9ca3af",marginTop:8}}>{"Submitted by "+vals.submittedBy+" · "+(vals.submittedAt?new Date(vals.submittedAt).toLocaleDateString("en-NZ",{day:"numeric",month:"short",year:"numeric"}):"")}</div>}
+          </div>}
         </div>
-      </div>
+
+        :<div>
+          {/* Service Withdrawal - keep simple */}
+          {WITHDRAW_FIELDS.map(f=>(
+            <div key={f.key} style={{marginBottom:14}}>
+              <label style={S.lbl}>{f.label}</label>
+              {f.type==="textarea"
+                ?<textarea value={vals[f.key]||""} onChange={e=>setVals(prev=>({...prev,[f.key]:e.target.value}))} rows={4} style={{...S.inp,resize:"vertical"}} readOnly={viewOnly}/>
+                :<input type="number" min="0" value={vals[f.key]||""} onChange={e=>setVals(prev=>({...prev,[f.key]:e.target.value}))} style={S.inp} readOnly={viewOnly}/>
+              }
+            </div>
+          ))}
+        </div>}
+      </Modal>
     );
   }
 

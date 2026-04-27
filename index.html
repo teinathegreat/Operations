@@ -3470,13 +3470,14 @@ function App(){
   function MonthlyReviewModal({config,onClose,onSave}){
     const isCancellation=config.key==="monthly_cancellation_review"||config.label?.toLowerCase().includes("cancellation");
     const stateKey="_cancelReview_"+(config.key||"cr")+"_"+(config.pk||"");
-    const[vals,setVals]=React.useState(()=>window[stateKey]||config.existing||{});
+    const[vals,setVals2]=React.useState(()=>window[stateKey]||config.existing||{});
+    const setVals=(updater)=>{setVals2(prev=>{const next=typeof updater==="function"?updater(prev):updater;window[stateKey]=next;return next;});};
     const[showUpload,setShowUpload]=React.useState(false);
     const[analyzing,setAnalyzing]=React.useState(false);
     const viewOnly=config.viewOnly||false;
 
-    // Persist state to window so re-renders don't lose it
-    React.useEffect(()=>{window[stateKey]=vals;});
+    // Sync from window on every render in case of remount
+    React.useEffect(()=>{const saved=window[stateKey];if(saved&&saved.analyzed&&!vals.analyzed){setVals2(saved);}});
     const editMode=!viewOnly&&!vals.analyzed;
 
     const title=config.label||(isCancellation?"Monthly Cancellation Review":"Monthly Service Withdrawal Review");

@@ -1377,9 +1377,11 @@ function App(){
   const iPK=(p2,m2,w2)=>p2==="month"?`m__${m2}`:`w__${w2}`;
   const getID=(id,p2,m2,w2)=>{const k2=iPK(p2,m2,w2);return data[`_i_${id}`]?.[k2]||{};};
   const saveID=(id,p2,m2,w2,vals)=>{const k2=iPK(p2,m2,w2);setData(prev=>{const key=`_i_${id}`;return{...prev,[key]:{...(prev[key]||{}),[k2]:mg(prev[key]?.[k2]||{},{...vals,_at:nowNZ()})}};});};
-  const avgProd=(tn,p2,m2,w2)=>{
+  const avgProd=(tn,p2,m2,w2,includeLeader)=>{
     const r2=roster[tn];if(!r2)return null;
-    const allM=[...(r2.members||[]),{id:`lead_${tn.replace(/\s/g,"_")}`,name:r2.lead}].filter(m=>m.name);
+    const allM=includeLeader
+      ?[...(r2.members||[]),{id:`lead_${tn.replace(/\s/g,"_")}`,name:r2.lead}].filter(m=>m.name)
+      :[...(r2.members||[])].filter(m=>m.name);
     // Use same formula as dashboard: total team pts / total team hours (weighted avg)
     let totalPts=0,totalHrs=0;
     allM.forEach(m=>{
@@ -4705,6 +4707,14 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   const liveMemCount=(roster[team]?.members||[]).length;
                   if(k.key==="call_reviews_count"){v=liveMemCount?Math.round(liveRevs.length/liveMemCount*10)/10:0;}
                   if(k.key==="call_reviews_pass"){v=liveRevs.length?Math.round(liveRevs.filter(r=>!!r.passed).length/liveRevs.length*100):null;}
+                }
+                // Live computation for productivity (agents only, leader separate)
+                if(k.key==="productivity_team"){const liveTeamProd=avgProd(team,pt,mo,wk,false);if(liveTeamProd!==null)v=liveTeamProd;}
+                if(k.key==="productivity_lead"){
+                  const leadName=roster[team]?.lead;
+                  if(leadName){const ls=getIcStats(leadName,pt,wk,mo);const lh=getSchedHours(leadName,pt,wk,mo);const tw5=getW(team);
+                  if(ls&&lh&&lh>0){v=Math.round(((ls.closed||0)*tw5.tickets+(ls.emails||0)*tw5.emails+(ls.wfs||0)*tw5.wfs+(ls.calls||0)*tw5.calls+(ls.caseActions||0)*(tw5.case_actions||0))/lh*100)/100;}
+                  }
                 }
                 const p=isPass(v,k);return(
                 <tr key={k.key} style={{background:i%2?tDef.lightBg||"#f9fafb":"#fff",borderBottom:"1px solid "+(tDef.lightBg||"#f3f4f6")}}>

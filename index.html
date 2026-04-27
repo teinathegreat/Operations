@@ -4696,7 +4696,17 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
           <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:12}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,borderLeft:"4px solid "+(tDef.color||"#e5e7eb"),overflow:"visible"}}>
               <thead><tr style={{background:tDef.lightBg||"#f9fafb"}}>{["KPI","Target","Actual","Progress","Status"].map(h=><th key={h} style={{padding:"9px 13px",textAlign:h==="KPI"?"left":"center",fontWeight:600,color:tDef.color||"#4b5563",borderBottom:"1px solid "+(tDef.color||"#e5e7eb"),fontSize:12,width:h==="Progress"?"140px":undefined}}>{h}</th>)}</tr></thead>
-              <tbody>{kpis.map((k,i)=>{const v=pData[k.key];const p=isPass(v,k);return(
+              <tbody>{kpis.map((k,i)=>{
+                // Live computation for call review KPIs
+                let v=pData[k.key];
+                if(k.key==="call_reviews_count"||k.key==="call_reviews_pass"){
+                  const curMon4=pt==="month"?mo:(()=>{const wr4=FY25_WK_RANGES.find(([w])=>w===wk);if(!wr4)return mo;const s5=new Date(wr4[1]+"T00:00:00Z");const cnt4={};for(let i4=0;i4<7;i4++){const d6=new Date(s5);d6.setUTCDate(d6.getUTCDate()+i4);const mn4=d6.toLocaleString("en-NZ",{month:"long",year:"numeric",timeZone:"UTC"});cnt4[mn4]=(cnt4[mn4]||0)+1;}return Object.entries(cnt4).sort((a,b)=>b[1]-a[1])[0]?.[0]||mo;})();
+                  const liveRevs=callReviews.filter(r=>r.team===team&&r.month===curMon4);
+                  const liveMemCount=(roster[team]?.members||[]).length;
+                  if(k.key==="call_reviews_count"){v=liveMemCount?Math.round(liveRevs.length/liveMemCount*10)/10:0;}
+                  if(k.key==="call_reviews_pass"){v=liveRevs.length?Math.round(liveRevs.filter(r=>!!r.passed).length/liveRevs.length*100):null;}
+                }
+                const p=isPass(v,k);return(
                 <tr key={k.key} style={{background:i%2?tDef.lightBg||"#f9fafb":"#fff",borderBottom:"1px solid "+(tDef.lightBg||"#f3f4f6")}}>
                   <td style={{padding:"9px 13px",color:"#111827"}}>
                     {(k.dir==="bool"||k.key==="call_reviews_count"||k.key==="call_reviews_pass")?(()=>{

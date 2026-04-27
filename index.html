@@ -1181,7 +1181,6 @@ function App(){
   useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("weights",allWeights);},[allWeights]);
   useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("ic",icData);},[icData]);
   useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("icppt",icPPT);},[icPPT]);
-  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("sched",schedData);},[schedData]);
   // app_data save handled by syncToSupabase
 
   // ── Auto-fill call review KPIs into dashboard ────────────────────────────
@@ -1242,7 +1241,10 @@ function App(){
     // Uses wrapped setIcData which auto-saves
     setIcData(prev=>{
       const next=typeof updater==="function"?updater(prev):updater;
-      return aggregateIcMonths(next);
+      const agg=aggregateIcMonths(next);
+      // Direct save immediately
+      Object.entries(agg).forEach(([k,v])=>dbSaveConfigKey("ic",k,v));
+      return agg;
     });
   };
   // ── Auto-fill individual person stats from icData ───────────────────────────
@@ -1551,6 +1553,8 @@ function App(){
             Object.entries(nd.months).forEach(([m,h])=>{merged[name].months[m]=h;});
             Object.entries(nd.days).forEach(([d,dv])=>{merged[name].days[d]=dv;});
           });
+          // Direct save each person immediately
+          Object.entries(merged).forEach(([k,v])=>dbSaveConfigKey("sched",k,v));
           return merged;
         });
         toast2(`Schedule imported: ${Object.keys(newSched).length} people, ${imported} shifts.`);
@@ -3599,7 +3603,7 @@ function App(){
         const saveAssessSession=(results)=>{
           const sess={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),personName:name,teamName:teamName,date:todayNZ(),assessor:currentUser?.displayName||"Admin",results:results,skillCount:Object.keys(results).length};
           setAssessHistory(prev=>[sess,...prev]);dbUpsert("assess_history",sess);
-          setCapabilities(prev=>{const pd={...(prev[name]||{})};Object.entries(results).forEach(([sk,val])=>{const lv=typeof val==="object"?val.level:val;const reason=typeof val==="object"?val.reason:"";const existing=pd[sk]||{history:[]};pd[sk]={...existing,level:lv,reason:reason,updatedAt:new Date().toISOString(),updatedBy:currentUser?.displayName||"Admin"};});return{...prev,[name]:pd};});
+          setCapabilities(prev=>{const pd={...(prev[name]||{})};Object.entries(results).forEach(([sk,val])=>{const lv=typeof val==="object"?val.level:val;const reason=typeof val==="object"?val.reason:"";const existing=pd[sk]||{history:[]};pd[sk]={...existing,level:lv,reason:reason,updatedAt:new Date().toISOString(),updatedBy:currentUser?.displayName||"Admin"};});const n={...prev,[name]:pd};dbSaveConfigKey("caps",name,pd);return n;});
           addAudit("Assessment Completed",name+" \u2014 "+Object.keys(results).length+" skills assessed");
         };
         const FAIL_REASONS=["Doesn't Know","Not Confident To Answer","Attempted But Made A Mistake","Very Close But Incorrect"];
@@ -5078,7 +5082,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     <div style={{flex:1}}><div style={{fontSize:10,fontWeight:600,color:"#4b5563",marginBottom:3}}>Title (optional)</div><input id="un_title" placeholder="e.g. New features & fixes" style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6}}/></div>
                   </div>
                   <div style={{marginBottom:8}}><div style={{fontSize:10,fontWeight:600,color:"#4b5563",marginBottom:3}}>Changes</div><textarea id="un_body" placeholder="Write what's new in this update..." rows={4} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
-                  <button onClick={()=>{var ver=(document.getElementById("un_version")?.value||"").trim();var title=(document.getElementById("un_title")?.value||"").trim();var body=(document.getElementById("un_body")?.value||"").trim();if(!ver)return toast2("Enter a version number.");if(!body)return toast2("Enter the changes.");setUpdateNotes(prev=>[{id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),version:ver,title:title||null,body:body,createdAt:new Date().toISOString()},...prev]);document.getElementById("un_version").value="";document.getElementById("un_title").value="";document.getElementById("un_body").value="";document.getElementById("update_note_form").style.display="none";addAudit("Update Note Added","v"+ver);toast2("Update note published.");}} style={S.p1}>Publish Update</button>
+                  <button onClick={()=>{var ver=(document.getElementById("un_version")?.value||"").trim();var title=(document.getElementById("un_title")?.value||"").trim();var body=(document.getElementById("un_body")?.value||"").trim();if(!ver)return toast2("Enter a version number.");if(!body)return toast2("Enter the changes.");setUpdateNotes(prev=>{const n=[{id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),version:ver,title:title||null,body:body,createdAt:new Date().toISOString()},...prev];dbSaveConfigKey("sys","update_notes",n);return n;});document.getElementById("un_version").value="";document.getElementById("un_title").value="";document.getElementById("un_body").value="";document.getElementById("update_note_form").style.display="none";addAudit("Update Note Added","v"+ver);toast2("Update note published.");}} style={S.p1}>Publish Update</button>
                 </div>}
                 <div style={{maxHeight:400,overflowY:"auto"}}>
                   {updateNotes.length===0&&<div style={{padding:24,textAlign:"center"}}><div style={{fontSize:32,marginBottom:6,opacity:.3}}>📢</div><div style={{fontSize:12,color:"#d1d5db"}}>No updates posted yet</div></div>}
@@ -5087,7 +5091,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                       <span style={{fontSize:11,fontWeight:800,color:"#fff",background:"#0d9488",padding:"2px 8px",borderRadius:5}}>{"v"+n.version}</span>
                       {n.title&&<span style={{fontWeight:600,fontSize:13,color:"#111827"}}>{n.title}</span>}
                       <span style={{fontSize:10,color:"#9ca3af",marginLeft:"auto"}}>{new Date(n.createdAt).toLocaleDateString("en-NZ",{day:"2-digit",month:"short",year:"numeric"})}</span>
-                      {currentUser?.username==="Teina"&&<button onClick={()=>{if(window.confirm("Delete this update note?")){setUpdateNotes(prev=>prev.filter(x=>x.id!==n.id));toast2("Deleted.");}}} style={{fontSize:9,color:"#dc2626",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:4,padding:"1px 6px",cursor:"pointer"}}>✕</button>}
+                      {currentUser?.username==="Teina"&&<button onClick={()=>{if(window.confirm("Delete this update note?")){const nid=n.id;setUpdateNotes(prev=>{const next=prev.filter(x=>x.id!==nid);dbSaveConfigKey("sys","update_notes",next);return next;});toast2("Deleted.");}}} style={{fontSize:9,color:"#dc2626",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:4,padding:"1px 6px",cursor:"pointer"}}>✕</button>}
                     </div>
                     <div style={{fontSize:12,color:"#374151",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{n.body}</div>
                   </div>)}
@@ -6224,12 +6228,12 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const saveRef=()=>{
               if(!qrTitle.trim())return toast2("Enter a title.");
               const ref={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),type:qrType,title:qrTitle.trim(),note:qrNote.trim()||null,url:qrType==="link"?qrUrl.trim()||null:null,file:qrType==="file"?qrFile:null,fileName:qrType==="file"?qrFileName:null,createdAt:new Date().toISOString(),createdBy:currentUser?.displayName||"Admin"};
-              if(qrEdit){setQuickRefs(prev=>prev.map(r=>r.id===qrEdit?{...r,type:qrType,title:qrTitle.trim(),note:qrNote.trim()||null,url:qrType==="link"?qrUrl.trim()||null:r.url,file:qrType==="file"&&qrFile?qrFile:r.file,fileName:qrType==="file"&&qrFileName?qrFileName:r.fileName}:r));addAudit("Reference Updated",qrTitle.trim());toast2("Updated.");
-              }else{setQuickRefs(prev=>[...prev,ref]);addAudit("Reference Added",qrTitle.trim());toast2("Reference added.");}
+              if(qrEdit){setQuickRefs(prev=>{const n=prev.map(r=>r.id===qrEdit?{...r,type:qrType,title:qrTitle.trim(),note:qrNote.trim()||null,url:qrType==="link"?qrUrl.trim()||null:r.url,file:qrType==="file"&&qrFile?qrFile:r.file,fileName:qrType==="file"&&qrFileName?qrFileName:r.fileName}:r);dbSaveConfigKey("sys","quick_refs",n);return n;});addAudit("Reference Updated",qrTitle.trim());toast2("Updated.");
+              }else{setQuickRefs(prev=>{const n=[...prev,ref];dbSaveConfigKey("sys","quick_refs",n);return n;});addAudit("Reference Added",qrTitle.trim());toast2("Reference added.");}
               setQrForm2(false);setQrEdit2(null);setQrTitle2("");setQrNote2("");setQrUrl2("");setQrFile2(null);setQrFileName2("");setQrType2("note");
             };
             const startEdit=(r)=>{setQrEdit2(r.id);setQrType2(r.type);setQrTitle2(r.title);setQrNote2(r.note||"");setQrUrl2(r.url||"");setQrFile2(r.file||null);setQrFileName2(r.fileName||"");setQrForm2(true);};
-            const deleteRef=(id)=>{if(!window.confirm("Delete this reference?"))return;setQuickRefs(prev=>prev.filter(r=>r.id!==id));addAudit("Reference Deleted","ID: "+id);toast2("Deleted.");};
+            const deleteRef=(id)=>{if(!window.confirm("Delete this reference?"))return;setQuickRefs(prev=>{const n=prev.filter(r=>r.id!==id);dbSaveConfigKey("sys","quick_refs",n);return n;});addAudit("Reference Deleted","ID: "+id);toast2("Deleted.");};
             const moveRef=(id,dir)=>{setQuickRefs(prev=>{const arr=[...prev];const idx=arr.findIndex(r=>r.id===id);if(idx<0)return prev;const swapIdx=idx+dir;if(swapIdx<0||swapIdx>=arr.length)return prev;[arr[idx],arr[swapIdx]]=[arr[swapIdx],arr[idx]];return arr;});};
             const handleFileDrop=(e)=>{e.preventDefault();setQrDragging2(false);const f=e.dataTransfer?.files?.[0]||e.target?.files?.[0];if(!f)return;if(f.size>5*1024*1024)return toast2("File must be under 5MB.");setQrFileName2(f.name);const reader=new FileReader();reader.onload=(ev)=>{setQrFile2(ev.target.result);};reader.readAsDataURL(f);};
             const isImage=(fn)=>/\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(fn||"");
@@ -6306,7 +6310,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const isCustom=!!reviewCriteriaConfig[effectiveTeam];
 
             const saveCriteria=(newCriteria)=>{
-              setReviewCriteriaConfig(prev=>({...prev,[effectiveTeam]:newCriteria}));
+              setReviewCriteriaConfig(prev=>{const n={...prev,[effectiveTeam]:newCriteria};dbSaveConfigKey("revcrit",effectiveTeam,newCriteria);return n;});
               addAudit("Review Criteria Updated",effectiveTeam+" ("+newCriteria.length+" criteria)");
               toast2("Criteria saved for "+effectiveTeam+".");
             };
@@ -6314,7 +6318,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const removeCriterion=(id)=>{if(currentCriteria.length<=1)return toast2("Must have at least 1 criterion.");saveCriteria(currentCriteria.filter(c=>c.id!==id));};
             const updateCriterion=(id,field,val)=>{saveCriteria(currentCriteria.map(c=>c.id===id?{...c,[field]:val}:c));};
             const moveCriterion=(id,dir)=>{const arr=[...currentCriteria];const idx=arr.findIndex(c=>c.id===id);if(idx<0)return;const swapIdx=idx+dir;if(swapIdx<0||swapIdx>=arr.length)return;[arr[idx],arr[swapIdx]]=[arr[swapIdx],arr[idx]];saveCriteria(arr);};
-            const resetToDefault=()=>{if(!window.confirm("Reset "+effectiveTeam+" to the default 10 criteria? This removes any custom criteria."))return;setReviewCriteriaConfig(prev=>{const n={...prev};delete n[effectiveTeam];return n;});addAudit("Review Criteria Reset",effectiveTeam);toast2("Reset to default.");};
+            const resetToDefault=()=>{if(!window.confirm("Reset "+effectiveTeam+" to the default 10 criteria? This removes any custom criteria."))return;setReviewCriteriaConfig(prev=>{const n={...prev};delete n[effectiveTeam];dbSaveConfigKey("revcrit",effectiveTeam,null);return n;});addAudit("Review Criteria Reset",effectiveTeam);toast2("Reset to default.");};
 
             return<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
               <div style={{padding:"14px 20px",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -6369,7 +6373,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     }} style={{fontSize:11,color:"#0d9488",background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:6,padding:"4px 12px",cursor:"pointer",fontWeight:600}}>📋 Copy</button>
                   </div>
                   <div style={{fontSize:11,color:"#9ca3af",marginBottom:8}}>Custom text that gets copied when you click "Criteria for Employee" in Call Reviews. Leave empty to auto-generate from criteria above.</div>
-                  <textarea value={reviewCriteriaConfig["__guide_"+effectiveTeam]||""} onChange={e=>{setReviewCriteriaConfig(prev=>({...prev,["__guide_"+effectiveTeam]:e.target.value}));}} placeholder={"Write a custom guide for "+effectiveTeam+" employees here, or leave empty to auto-generate from the criteria above..."} rows={8} style={{width:"100%",fontSize:12,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8,resize:"vertical",lineHeight:1.6,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  <textarea value={reviewCriteriaConfig["__guide_"+effectiveTeam]||""} onChange={e=>{const val=e.target.value;setReviewCriteriaConfig(prev=>{const n={...prev,["__guide_"+effectiveTeam]:val};dbSaveConfigKey("revcrit","__guide_"+effectiveTeam,val);return n;});}} placeholder={"Write a custom guide for "+effectiveTeam+" employees here, or leave empty to auto-generate from the criteria above..."} rows={8} style={{width:"100%",fontSize:12,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8,resize:"vertical",lineHeight:1.6,fontFamily:"inherit",boxSizing:"border-box"}}/>
                 </div>
               </div>
             </div>;

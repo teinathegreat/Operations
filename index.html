@@ -2045,12 +2045,12 @@ function App(){
             const personKey=agent;
             const rAgent=getRosterName(agent);if(!bucket[rAgent])bucket[rAgent]={team:getPersonTeam(rAgent)||"",weeks:{}};
             if(wk){
-              if(!bucket[personKey].weeks[wk])bucket[personKey].weeks[wk]={caseActions:0,emails:0,wfs:0,tasks:0,total:0};
-              bucket[personKey].weeks[wk].caseActions+=caseActions;
-              bucket[personKey].weeks[wk].emails+=emails;
-              bucket[personKey].weeks[wk].wfs+=wfs;
-              bucket[personKey].weeks[wk].tasks+=tasks;
-              bucket[personKey].weeks[wk].total+=total;
+              if(!bucket[rAgent].weeks[wk])bucket[rAgent].weeks[wk]={caseActions:0,emails:0,wfs:0,tasks:0,total:0};
+              bucket[rAgent].weeks[wk].caseActions+=caseActions;
+              bucket[rAgent].weeks[wk].emails+=emails;
+              bucket[rAgent].weeks[wk].wfs+=wfs;
+              bucket[rAgent].weeks[wk].tasks+=tasks;
+              bucket[rAgent].weeks[wk].total+=total;
             }
             rowCount++;
           }
@@ -2140,13 +2140,13 @@ function App(){
             const agent=(row[0]||"").trim();
             if(!agent)continue;
             const rAgent2=getRosterName(agent);const teamName=getPersonTeam(rAgent2)||"";
-            if(!newIc[agent])newIc[agent]={team:teamName,weeks:{},months:{}};
+            if(!newIc[rAgent2])newIc[rAgent2]={team:teamName,weeks:{},months:{}};
             dateCols.forEach((dc,j)=>{
               const wkN=dateToWk(dc);
               if(!wkN)return;
               const calls=parseFloat(row[j+1])||0;
-              if(!newIc[agent].weeks[wkN])newIc[agent].weeks[wkN]={calls:0};
-              newIc[agent].weeks[wkN].calls=(newIc[agent].weeks[wkN].calls||0)+calls;
+              if(!newIc[rAgent2].weeks[wkN])newIc[rAgent2].weeks[wkN]={calls:0};
+              newIc[rAgent2].weeks[wkN].calls=(newIc[rAgent2].weeks[wkN].calls||0)+calls;
             });
             agentCount++;
           }

@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.2.1";
+const APP_VERSION="1.2.2";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -726,8 +726,7 @@ function App(){
   const lastSavedConfigRef=useRef(new Map());
   const[useEdgeProxy,setUseEdgeProxy]=useState(()=>{try{return localStorage.getItem("bc_use_edge_proxy")==="1";}catch{return false;}});
   useEffect(()=>{try{localStorage.setItem("bc_use_edge_proxy",useEdgeProxy?"1":"0");}catch{}},[useEdgeProxy]);
-  const[useRealtime,setUseRealtime]=useState(()=>{try{return localStorage.getItem("bc_use_realtime")==="1";}catch{return false;}});
-  useEffect(()=>{try{localStorage.setItem("bc_use_realtime",useRealtime?"1":"0");}catch{}},[useRealtime]);
+  // Realtime is always on — no toggle needed. Simplifies onboarding for non-admin users.
   const sbSaveNow=(table,key,val)=>{if(sbUrlRef.current&&sbKeyRef.current)return sbSave(table,key,val);return Promise.resolve();};
   // directSave removed — all saves now go to config_rows or row tables
   const[sbStatus,setSbStatus]=useState("ok");// idle | testing | ok | error
@@ -1472,13 +1471,13 @@ function App(){
   useEffect(()=>syncRows("planner_cards",plannerCards,"pc"),[plannerCards]);
 
   // ── Pro Features: Realtime subscriptions ──────────────────────────────────
-  // When useRealtime toggle is on AND Supabase is configured AND data is loaded,
-  // subscribe to changes on all row-level tables EXCEPT audit_entries.
+  // Subscribes to all row-level tables EXCEPT audit_entries when Supabase is configured
+  // and data has loaded. Always on — no user toggle.
   // Audit is excluded because it's sliced to the most recent 200 in syncRows,
   // which conflicts with the _prev.current update strategy used here.
   // Echo suppression: skip events where data._origin === our clientId
   useEffect(()=>{
-    if(!useRealtime||!sbUrl||!sbKey||!saveEnabled)return;
+    if(!sbUrl||!sbKey||!saveEnabled)return;
     if(!window.supabase||!window.supabase.createClient){console.warn("[Realtime] supabase-js not loaded");return;}
     let sbClient;try{sbClient=window.supabase.createClient(sbUrl,sbKey);}catch(e){console.error("[Realtime] client create failed",e);return;}
     const myId=clientIdRef.current;
@@ -1564,7 +1563,7 @@ function App(){
       })
       .subscribe((status)=>{if(status==="SUBSCRIBED")console.log("[Realtime] connected");else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")console.warn("[Realtime] status",status);});
     return()=>{try{sbClient.removeChannel(channel);}catch(e){}};
-  },[useRealtime,sbUrl,sbKey,saveEnabled]);
+  },[sbUrl,sbKey,saveEnabled]);
   useEffect(()=>{if(!selBoard&&plannerBoards.length>0)setSelBoard(plannerBoards[0].id);},[plannerBoards]);
 
   // Auto-save config keys (these stay in bc_store — single writer, low conflict risk)
@@ -7255,14 +7254,14 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   </div>
                   <span style={{fontSize:10,padding:"2px 8px",borderRadius:6,background:useEdgeProxy?"#ecfdf5":"#f3f4f6",color:useEdgeProxy?"#059669":"#6b7280",fontWeight:700}}>{useEdgeProxy?"ON":"OFF"}</span>
                 </label>
-                <label style={{display:"flex",alignItems:"flex-start",gap:12,padding:"12px 0",borderBottom:"1px solid #f3f4f6",cursor:"pointer"}}>
-                  <input type="checkbox" checked={useRealtime} onChange={e=>setUseRealtime(e.target.checked)} style={{marginTop:3,width:16,height:16,accentColor:"#0d9488",cursor:"pointer"}}/>
+                <div style={{display:"flex",alignItems:"flex-start",gap:12,padding:"12px 0",borderBottom:"1px solid #f3f4f6"}}>
+                  <span style={{marginTop:3,fontSize:14}}>🔄</span>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:600,color:"#111827"}}>🔄 Realtime sync (daily reports & planner)</div>
-                    <div style={{fontSize:11,color:"#6b7280",marginTop:2,lineHeight:1.5}}>When another user submits a report or moves a planner card, your screen updates without refreshing. Setup: run <code style={{background:"#f3f4f6",padding:"1px 4px",borderRadius:3,fontSize:10}}>ALTER PUBLICATION supabase_realtime ADD TABLE …</code> for the 3 tables. Refresh the page after enabling.</div>
+                    <div style={{fontSize:13,fontWeight:600,color:"#111827"}}>Realtime sync (always on)</div>
+                    <div style={{fontSize:11,color:"#6b7280",marginTop:2,lineHeight:1.5}}>Daily reports, planner, todos, action items, call reviews, weights, capabilities, daily config — and most other things — sync live across users. Setup required once: tables must be added to <code style={{background:"#f3f4f6",padding:"1px 4px",borderRadius:3,fontSize:10}}>supabase_realtime</code> publication via SQL. See SUPABASE_PRO_SETUP.md.</div>
                   </div>
-                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:6,background:useRealtime?"#ecfdf5":"#f3f4f6",color:useRealtime?"#059669":"#6b7280",fontWeight:700}}>{useRealtime?"ON":"OFF"}</span>
-                </label>
+                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:6,background:"#ecfdf5",color:"#059669",fontWeight:700}}>ON</span>
+                </div>
                 <div style={{display:"flex",alignItems:"flex-start",gap:12,padding:"12px 0"}}>
                   <span style={{marginTop:3,fontSize:14}}>📎</span>
                   <div style={{flex:1}}>

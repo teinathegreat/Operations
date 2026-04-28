@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.2.2";
+const APP_VERSION="1.2.3";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -1548,9 +1548,15 @@ function App(){
           else if(prefix==="sys"){
             if(key==="app_data"&&value&&typeof value==="object"){
               const{_r,_tc,...rest}=value;
-              if(_r)setRoster(migrateRoster(fixRosterNames(_r)));
+              // migrateRoster + fixRosterNames TRANSFORM the roster, so the auto-save useEffect
+              // will serialize the TRANSFORMED roster, not the raw one we received.
+              // Override the dedup hash so it matches what useEffect will produce — otherwise
+              // every receive triggers a write-back and we get a cross-client feedback loop.
+              let storedR=_r;
+              if(_r){storedR=migrateRoster(fixRosterNames(_r));setRoster(storedR);}
               if(_tc)setTc(_tc);
               setData(rest);
+              try{lastSavedConfigRef.current.set(row.id,JSON.stringify({...rest,_r:storedR,_tc:_tc}));}catch{}
             }
             else if(key==="quick_refs"&&Array.isArray(value))setQuickRefs(value);
             else if(key==="update_notes"&&Array.isArray(value))setUpdateNotes(value);

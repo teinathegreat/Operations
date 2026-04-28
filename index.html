@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.1.9";
+const APP_VERSION="1.2.1";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -719,6 +719,11 @@ function App(){
   useEffect(()=>{sbUrlRef.current=sbUrl;sbKeyRef.current=sbKey;},[sbUrl,sbKey]);
   // Pro Features: client identity for realtime echo suppression, and feature toggles
   const clientIdRef=useRef(Math.random().toString(36).slice(2,12)+"_"+Date.now().toString(36));
+  // Tracks the last known hash per config_rows id (saved or received via Realtime).
+  // Used to skip redundant writes — both echoes from Realtime AND stale re-saves
+  // from useEffects that iterate every key in a config object.
+  // Key: "prefix:key" → JSON.stringify(value)
+  const lastSavedConfigRef=useRef(new Map());
   const[useEdgeProxy,setUseEdgeProxy]=useState(()=>{try{return localStorage.getItem("bc_use_edge_proxy")==="1";}catch{return false;}});
   useEffect(()=>{try{localStorage.setItem("bc_use_edge_proxy",useEdgeProxy?"1":"0");}catch{}},[useEdgeProxy]);
   const[useRealtime,setUseRealtime]=useState(()=>{try{return localStorage.getItem("bc_use_realtime")==="1";}catch{return false;}});
@@ -961,7 +966,8 @@ function App(){
   // Silent save for background heartbeat - doesn't trigger save indicator
   const dbSaveConfigKeySilent=async(prefix,key,value)=>{
     const url=sbUrlRef.current,k=sbKeyRef.current;if(!url||!k||!key)return;
-    const id=prefix+":"+key;const body={id,data:value,updated_at:new Date().toISOString()};
+    const wrapped={_v:value,_origin:clientIdRef.current,_editedBy:currentUserRef.current?.username||currentUserRef.current?.displayName||"",_editedAt:new Date().toISOString()};
+    const id=prefix+":"+key;const body={id,data:wrapped,updated_at:new Date().toISOString()};
     try{await fetch(url+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(body)});}catch{}
   };
   const addToQueue=(op)=>{offlineQueue.current.push({...op,attempts:0,addedAt:new Date().toISOString()});updateSaveStatus();};
@@ -1060,12 +1066,24 @@ function App(){
     const url=sbUrlRef.current,key=sbKeyRef.current;if(!url||!key)return null;
     try{const resp=await fetch(url+"/rest/v1/config_rows?id=like."+encodeURIComponent(prefix+":*").replace("*","%25")+"&select=id,data",{headers:{"apikey":key,"Authorization":"Bearer "+key}});
     if(!resp.ok)return null;const rows=await resp.json();if(!rows.length)return null;
-    const obj={};rows.forEach(r=>{const k=r.id.slice(prefix.length+1);obj[k]=r.data;});return obj;}catch(e){console.error("dbLoadConfig "+prefix+" error:",e);return null;}
+    const obj={};rows.forEach(r=>{const k=r.id.slice(prefix.length+1);const d=r.data;obj[k]=(d&&typeof d==="object"&&"_v" in d&&"_origin" in d)?d._v:d;});return obj;}catch(e){console.error("dbLoadConfig "+prefix+" error:",e);return null;}
   };
   const dbSaveConfigKey=async(prefix,key,value)=>{
     const url=sbUrlRef.current,k=sbKeyRef.current;if(!url||!k||!key)return;
+    const id=prefix+":"+key;
+    // Skip if this exact value is already what we last saw the DB hold for this key.
+    // Prevents both Realtime echo loops AND redundant saves from auto-save useEffects
+    // that iterate every key in a config object even when only one key changed.
+    let hash;try{hash=JSON.stringify(value);}catch{hash=null;}
+    if(hash!==null){
+      const last=lastSavedConfigRef.current.get(id);
+      if(last===hash)return;
+      lastSavedConfigRef.current.set(id,hash);
+    }
     activeSaves.current++;updateSaveStatus();
-    const id=prefix+":"+key;const body={id,data:value,updated_at:new Date().toISOString()};
+    // Wrap with origin metadata for Realtime echo suppression. Loader unwraps the _v key.
+    const wrapped={_v:value,_origin:clientIdRef.current,_editedBy:currentUserRef.current?.username||currentUserRef.current?.displayName||"",_editedAt:new Date().toISOString()};
+    const body={id,data:wrapped,updated_at:new Date().toISOString()};
     try{const resp=await fetch(url+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(body)});
     if(!resp.ok)addToQueue({type:"config",body});}catch(e){addToQueue({type:"config",body});}
     finally{activeSaves.current--;updateSaveStatus();}
@@ -1077,7 +1095,7 @@ function App(){
   const dbSaveConfigAll=async(prefix,obj)=>{
     if(!obj||typeof obj!=="object")return;
     const entries=Object.entries(obj);
-    const rows=entries.map(([k,v])=>({id:prefix+":"+k,data:v,updated_at:new Date().toISOString()}));
+    const rows=entries.map(([k,v])=>{const wrapped={_v:v,_origin:clientIdRef.current,_editedBy:currentUserRef.current?.username||currentUserRef.current?.displayName||"",_editedAt:new Date().toISOString()};return{id:prefix+":"+k,data:wrapped,updated_at:new Date().toISOString()};});
     if(!rows.length)return;
     const url=sbUrlRef.current,k=sbKeyRef.current;if(!url||!k)return;
     for(let i=0;i<rows.length;i+=100){
@@ -1455,7 +1473,9 @@ function App(){
 
   // ── Pro Features: Realtime subscriptions ──────────────────────────────────
   // When useRealtime toggle is on AND Supabase is configured AND data is loaded,
-  // subscribe to changes on daily_reports, planner_boards, planner_cards.
+  // subscribe to changes on all row-level tables EXCEPT audit_entries.
+  // Audit is excluded because it's sliced to the most recent 200 in syncRows,
+  // which conflicts with the _prev.current update strategy used here.
   // Echo suppression: skip events where data._origin === our clientId
   useEffect(()=>{
     if(!useRealtime||!sbUrl||!sbKey||!saveEnabled)return;
@@ -1484,9 +1504,64 @@ function App(){
       }catch(err){console.error("[Realtime] handler error",err);}
     };
     const channel=sbClient.channel("bc-pro-"+myId)
+      .on("postgres_changes",{event:"*",schema:"public",table:"call_reviews"},handle(setCallReviews,"cr"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"action_items"},handle(setActionItems,"ai"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"todos"},handle(setTodos,"td"))
       .on("postgres_changes",{event:"*",schema:"public",table:"daily_reports"},handle(setDailyReports,"dr"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"meeting_notes"},handle(setMeetingNotes,"mn"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"assess_history"},handle(setAssessHistory,"ah"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"goals"},handle(setGoals,"gl"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"notif_entries"},handle(setNotifications,"nf"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"alert_entries"},handle(setAdminAlerts,"aa"))
       .on("postgres_changes",{event:"*",schema:"public",table:"planner_boards"},handle(setPlannerBoards,"pb"))
       .on("postgres_changes",{event:"*",schema:"public",table:"planner_cards"},handle(setPlannerCards,"pc"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"config_rows"},(payload)=>{
+        try{
+          const ev=payload.eventType||payload.event;
+          const row=ev==="DELETE"?payload.old:payload.new;if(!row||!row.id)return;
+          const colonIdx=row.id.indexOf(":");if(colonIdx<0)return;
+          const prefix=row.id.slice(0,colonIdx);const key=row.id.slice(colonIdx+1);
+          // Skip presence/heartbeat and force-signout housekeeping
+          if(prefix==="presence")return;
+          if(prefix==="sys"&&key.startsWith("kill_"))return;
+          // Skip own writes (echo)
+          const wrapped=row.data;
+          if(wrapped&&typeof wrapped==="object"&&wrapped._origin===myId)return;
+          const value=(wrapped&&typeof wrapped==="object"&&"_v" in wrapped&&"_origin" in wrapped)?wrapped._v:wrapped;
+          // Mark this incoming value as the latest known DB state.
+          // The auto-save useEffect will see hash match and skip the redundant save.
+          try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}
+          // Route to the right state setter based on prefix
+          const objMerge=(setter)=>{if(ev==="DELETE")setter(prev=>{const n={...prev};delete n[key];return n;});else setter(prev=>({...prev,[key]:value}));};
+          if(prefix==="caps")objMerge(setCapabilities);
+          else if(prefix==="capcrit")objMerge(setCapCriteria);
+          else if(prefix==="perms")objMerge(setPermissions);
+          else if(prefix==="dailycfg")objMerge(setDailyConfig);
+          else if(prefix==="notes")objMerge(setQuickNotes);
+          else if(prefix==="onboard")objMerge(setOnboarding);
+          else if(prefix==="snooze")objMerge(setAlertSnooze);
+          else if(prefix==="sched")objMerge(setSchedData);
+          else if(prefix==="ic")objMerge(setIcData);
+          else if(prefix==="icppt")objMerge(setIcPPT);
+          else if(prefix==="weights")objMerge(setAllWeights);
+          else if(prefix==="revcrit")objMerge(setReviewCriteriaConfig);
+          else if(prefix==="tgt")objMerge(setTgtOwners);
+          else if(prefix==="sys"){
+            if(key==="app_data"&&value&&typeof value==="object"){
+              const{_r,_tc,...rest}=value;
+              if(_r)setRoster(migrateRoster(fixRosterNames(_r)));
+              if(_tc)setTc(_tc);
+              setData(rest);
+            }
+            else if(key==="quick_refs"&&Array.isArray(value))setQuickRefs(value);
+            else if(key==="update_notes"&&Array.isArray(value))setUpdateNotes(value);
+            else if(key==="call_review_teams"&&Array.isArray(value))setCallReviewTeams(value);
+            else if(key==="accounts"&&Array.isArray(value))setLiveAccounts(value);
+            else if(key==="pending_edits"&&Array.isArray(value))setPendingEdits(value);
+            else if(key==="api_keys"&&value&&typeof value==="object"){if(value.openai)setOpenaiKey(value.openai);if(value.claude)setClaudeKey(value.claude);}
+          }
+        }catch(err){console.error("[Realtime config_rows] handler error",err,payload);}
+      })
       .subscribe((status)=>{if(status==="SUBSCRIBED")console.log("[Realtime] connected");else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")console.warn("[Realtime] status",status);});
     return()=>{try{sbClient.removeChannel(channel);}catch(e){}};
   },[useRealtime,sbUrl,sbKey,saveEnabled]);

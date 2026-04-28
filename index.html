@@ -133,6 +133,7 @@ html{scroll-behavior:smooth;}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 window.onerror=function(msg,url,line,col,err){
   document.getElementById("root").innerHTML='<div style="padding:40px;font-family:monospace;max-width:800px;margin:0 auto;"><h2 style="color:red">Error Loading App</h2><p><b>Message:</b> '+msg+'</p><p><b>Line:</b> '+line+' Col: '+col+'</p><p><b>Details:</b> '+(err?err.stack||err:'none')+'</p><p style="margin-top:20px;color:#666">Copy this error and send it back.</p></div>';
@@ -144,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.1.7";
+const APP_VERSION="1.1.9";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -357,7 +358,7 @@ class ErrorBoundary extends React.Component{
     return this.props.children;
   }
 }
-function WeeklySummaryModalBuilder({sm,onClose,roster,callReviews,setCallReviews,currentUser,claudeKey,toast2,getIcStats,getSchedHours,getW,avgProd,addAudit,dbUpsert}){
+function WeeklySummaryModalBuilder({sm,onClose,roster,callReviews,setCallReviews,currentUser,claudeKey,toast2,getIcStats,getSchedHours,getW,avgProd,addAudit,dbUpsert,callClaudeAPI}){
   const sName=sm.name;const sTn=sm.teamName;const sLb=sm.lb;
   const[checks,setChecks]=React.useState({productivity:true,tickets:true,emails:true,caseActions:true,wfs:true,calls:true,hours:true,responseTimes:true,ranking:true,kpis:true,managerNote:true});
   const[selReviews,setSelReviews]=React.useState([]);
@@ -537,12 +538,11 @@ function WeeklySummaryModalBuilder({sm,onClose,roster,callReviews,setCallReviews
   };
 
   const generateInsight=async()=>{
-    if(!claudeKey){toast2("Set up your API key in Settings first.");return;}
     setAiLoading(true);
     try{
       const ctx=buildPreview();
-      const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":claudeKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:`You are a supportive team leader providing a weekly performance summary to an employee named ${sName} at Bachcare (holiday home management, NZ).\n\nHere are their stats for ${sLb}:\n${ctx}\n\nWrite 3-4 short paragraphs:\n1. Start with genuine recognition of what they did well this period. Be specific about their numbers.\n2. If there are areas below target or team average, frame them constructively — not as criticism but as opportunities. Be encouraging.\n3. If call reviews are included, mention specific strengths and one area to focus on.\n4. End with a motivating closing thought for next period.\n\nKeep the tone warm, professional, and genuine. Use their first name. Don't be generic — reference their actual stats. Keep it under 200 words.`}]})});
-      const data2=await resp.json();
+      const prompt=`You are a supportive team leader providing a weekly performance summary to an employee named ${sName} at Bachcare (holiday home management, NZ).\n\nHere are their stats for ${sLb}:\n${ctx}\n\nWrite 3-4 short paragraphs:\n1. Start with genuine recognition of what they did well this period. Be specific about their numbers.\n2. If there are areas below target or team average, frame them constructively — not as criticism but as opportunities. Be encouraging.\n3. If call reviews are included, mention specific strengths and one area to focus on.\n4. End with a motivating closing thought for next period.\n\nKeep the tone warm, professional, and genuine. Use their first name. Don't be generic — reference their actual stats. Keep it under 200 words.`;
+      const data2=await callClaudeAPI({maxTokens:800,prompt,purpose:"weekly-summary"});
       const insight=data2.content?.[0]?.text||"";
       setAiInsight(insight);
     }catch(e){toast2("⚠ "+e.message);}
@@ -617,6 +617,7 @@ function WeeklySummaryModalBuilder({sm,onClose,roster,callReviews,setCallReviews
 function App(){
   const init={data:{},roster:migrateRoster({...DEFAULT_ROSTER}),tc:migrateTeamColors({...DEFAULT_TEAMS})};
   const[currentUser,setCurrentUser]=useState(()=>{try{const u=sessionStorage.getItem("bc_user");return u?JSON.parse(u):null;}catch{return null;}});
+  const currentUserRef=useRef(currentUser);useEffect(()=>{currentUserRef.current=currentUser;},[currentUser]);
   const auth=!!currentUser;
   // View As removed
   const effectiveUser=currentUser;
@@ -716,6 +717,12 @@ function App(){
   const[sbKey,setSbKey]=useState(()=>localStorage.getItem("bc_sb_key")||"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1kcnZ1Z2R6bG9jb2dtamJtem93Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNzA1NTksImV4cCI6MjA5MDY0NjU1OX0.3F0mi13f4YE1eo318xu-gzwo_uhgKLaDtELB5TS0eb4");
   const sbUrlRef=useRef(sbUrl);const sbKeyRef=useRef(sbKey);
   useEffect(()=>{sbUrlRef.current=sbUrl;sbKeyRef.current=sbKey;},[sbUrl,sbKey]);
+  // Pro Features: client identity for realtime echo suppression, and feature toggles
+  const clientIdRef=useRef(Math.random().toString(36).slice(2,12)+"_"+Date.now().toString(36));
+  const[useEdgeProxy,setUseEdgeProxy]=useState(()=>{try{return localStorage.getItem("bc_use_edge_proxy")==="1";}catch{return false;}});
+  useEffect(()=>{try{localStorage.setItem("bc_use_edge_proxy",useEdgeProxy?"1":"0");}catch{}},[useEdgeProxy]);
+  const[useRealtime,setUseRealtime]=useState(()=>{try{return localStorage.getItem("bc_use_realtime")==="1";}catch{return false;}});
+  useEffect(()=>{try{localStorage.setItem("bc_use_realtime",useRealtime?"1":"0");}catch{}},[useRealtime]);
   const sbSaveNow=(table,key,val)=>{if(sbUrlRef.current&&sbKeyRef.current)return sbSave(table,key,val);return Promise.resolve();};
   // directSave removed — all saves now go to config_rows or row tables
   const[sbStatus,setSbStatus]=useState("ok");// idle | testing | ok | error
@@ -985,7 +992,9 @@ function App(){
   const dbUpsert=async(table,item)=>{
     const url=sbUrlRef.current,key=sbKeyRef.current;if(!url||!key||!item?.id)return;
     activeSaves.current++;updateSaveStatus();
-    const body={id:item.id,data:item,updated_at:new Date().toISOString()};
+    // Tag with origin so Realtime echo can be filtered out on receivers
+    const tagged={...item,_origin:clientIdRef.current,_editedBy:currentUserRef.current?.username||currentUserRef.current?.displayName||"",_editedAt:new Date().toISOString()};
+    const body={id:tagged.id,data:tagged,updated_at:new Date().toISOString()};
     try{const resp=await fetch(url+"/rest/v1/"+table,{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(body)});
     if(!resp.ok){addToQueue({type:"upsert",table,body});toast3("⚠ Save queued — will retry","warning");}}catch(e){addToQueue({type:"upsert",table,body});toast3("⚠ Offline — save queued","warning");}
     finally{activeSaves.current--;updateSaveStatus();}
@@ -1007,6 +1016,42 @@ function App(){
       try{await fetch(url+"/rest/v1/"+table,{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(batch)});}catch(e){console.error("dbBulkInsert "+table+" batch error:",e);}
     }
   };
+  // ── Pro Features: Claude API call (proxy or direct) ───────────────────────
+  const callClaudeAPI=async({maxTokens=1024,prompt,model="claude-sonnet-4-20250514",purpose="general"})=>{
+    const reqBody={model,max_tokens:maxTokens,messages:[{role:"user",content:prompt}]};
+    if(useEdgeProxy){
+      const url=sbUrlRef.current;const key=sbKeyRef.current;
+      if(!url||!key)throw new Error("Supabase not configured");
+      const resp=await fetch(url+"/functions/v1/claude-proxy",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key,"apikey":key,"x-bc-user":currentUserRef.current?.username||"anon","x-bc-purpose":purpose},body:JSON.stringify(reqBody)});
+      if(!resp.ok){const txt=await resp.text();throw new Error("Proxy error "+resp.status+": "+txt);}
+      return await resp.json();
+    }
+    if(!claudeKey)throw new Error("No API key — add one in Settings or enable Edge Function proxy");
+    const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":claudeKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify(reqBody)});
+    if(!resp.ok){const txt=await resp.text();throw new Error("Anthropic API error "+resp.status+": "+txt);}
+    return await resp.json();
+  };
+
+  // ── Pro Features: Attachments (Supabase Storage) ──────────────────────────
+  const ATTACHMENT_BUCKET="planner-attachments";
+  const uploadAttachment=async(cardId,file)=>{
+    const url=sbUrlRef.current;const key=sbKeyRef.current;
+    if(!url||!key)throw new Error("Supabase not configured");
+    if(!file)throw new Error("No file");
+    if(file.size>25*1024*1024)throw new Error("File exceeds 25 MB limit");
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+    const path=cardId+"/"+Date.now()+"_"+safeName;
+    const resp=await fetch(url+"/storage/v1/object/"+ATTACHMENT_BUCKET+"/"+path,{method:"POST",headers:{"Authorization":"Bearer "+key,"apikey":key,"Content-Type":file.type||"application/octet-stream","x-upsert":"true"},body:file});
+    if(!resp.ok){const txt=await resp.text();throw new Error("Upload failed "+resp.status+": "+txt);}
+    return{id:Math.random().toString(36).slice(2,10),name:file.name,size:file.size,type:file.type,path,uploadedBy:currentUserRef.current?.displayName||"",uploadedAt:new Date().toISOString()};
+  };
+  const getAttachmentUrl=(path)=>{const url=sbUrlRef.current;if(!url||!path)return"";return url+"/storage/v1/object/public/"+ATTACHMENT_BUCKET+"/"+path;};
+  const deleteAttachment=async(path)=>{
+    const url=sbUrlRef.current;const key=sbKeyRef.current;
+    if(!url||!key||!path)return;
+    try{await fetch(url+"/storage/v1/object/"+ATTACHMENT_BUCKET+"/"+path,{method:"DELETE",headers:{"Authorization":"Bearer "+key,"apikey":key}});}catch(e){console.error("deleteAttachment error",e);}
+  };
+
   // Migration: move data from bc_store JSON blobs to row-level tables (one-time)
   const DB_TABLES={call_reviews:"call_reviews",action_items:"action_items",todos:"todos",daily_reports:"daily_reports",meeting_notes:"meeting_notes",assess_history:"assess_history",goals:"goals",audit_log:"audit_entries",notifications:"notif_entries",admin_alerts:"alert_entries"};
   // Config object helpers: each key in an object becomes its own row in config_rows
@@ -1407,6 +1452,44 @@ function App(){
   useEffect(()=>syncRows("alert_entries",adminAlerts,"aa"),[adminAlerts]);
   useEffect(()=>syncRows("planner_boards",plannerBoards,"pb"),[plannerBoards]);
   useEffect(()=>syncRows("planner_cards",plannerCards,"pc"),[plannerCards]);
+
+  // ── Pro Features: Realtime subscriptions ──────────────────────────────────
+  // When useRealtime toggle is on AND Supabase is configured AND data is loaded,
+  // subscribe to changes on daily_reports, planner_boards, planner_cards.
+  // Echo suppression: skip events where data._origin === our clientId
+  useEffect(()=>{
+    if(!useRealtime||!sbUrl||!sbKey||!saveEnabled)return;
+    if(!window.supabase||!window.supabase.createClient){console.warn("[Realtime] supabase-js not loaded");return;}
+    let sbClient;try{sbClient=window.supabase.createClient(sbUrl,sbKey);}catch(e){console.error("[Realtime] client create failed",e);return;}
+    const myId=clientIdRef.current;
+    const handle=(setter,prevKey)=>(payload)=>{
+      try{
+        const ev=payload.eventType||payload.event;
+        if(ev==="DELETE"){
+          const oldId=payload.old?.id;if(!oldId)return;
+          setter(prev=>prev.filter(r=>r.id!==oldId));
+          // Also drop from _prev so syncRows doesn't try to re-delete
+          if(_prev.current[prevKey])_prev.current[prevKey]=_prev.current[prevKey].filter(r=>r.id!==oldId);
+          return;
+        }
+        const row=payload.new;if(!row||!row.data)return;
+        if(row.data._origin===myId)return; // echo of our own write
+        // Apply to state AND to _prev — so syncRows's diff sees no change and won't write back
+        const incoming=row.data;
+        setter(prev=>{const idx=prev.findIndex(r=>r.id===row.id);if(idx>=0){const next=[...prev];next[idx]=incoming;return next;}return[incoming,...prev];});
+        if(_prev.current[prevKey]){
+          const arr=_prev.current[prevKey];const idx=arr.findIndex(r=>r.id===row.id);
+          if(idx>=0){arr[idx]=incoming;}else{arr.unshift(incoming);}
+        }
+      }catch(err){console.error("[Realtime] handler error",err);}
+    };
+    const channel=sbClient.channel("bc-pro-"+myId)
+      .on("postgres_changes",{event:"*",schema:"public",table:"daily_reports"},handle(setDailyReports,"dr"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"planner_boards"},handle(setPlannerBoards,"pb"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"planner_cards"},handle(setPlannerCards,"pc"))
+      .subscribe((status)=>{if(status==="SUBSCRIBED")console.log("[Realtime] connected");else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")console.warn("[Realtime] status",status);});
+    return()=>{try{sbClient.removeChannel(channel);}catch(e){}};
+  },[useRealtime,sbUrl,sbKey,saveEnabled]);
   useEffect(()=>{if(!selBoard&&plannerBoards.length>0)setSelBoard(plannerBoards[0].id);},[plannerBoards]);
 
   // Auto-save config keys (these stay in bc_store — single writer, low conflict risk)
@@ -3373,7 +3456,7 @@ function App(){
         setAiStatus("grading");setAiProgress("Grading call...");
         const prompt="You are an experienced call centre quality coach for Bachcare, a New Zealand holiday home management company. You're reviewing a phone call to help the agent improve."+intensityPrompt+"\n\nCRITICAL OUTPUT RULES:\n- NEVER mention transcription, transcript, recording, audio quality, or speech-to-text in your feedback, summary, advisories, or reasoning. Write as if you listened to the call directly.\n- If there are repeated words or phrases (like repeated thank you), ignore them — treat them as a single occurrence.\n- If the call starts abruptly without a greeting, in Standard intensity assume the greeting happened. In Firm/Strict, only fail if there is clear evidence the agent skipped it.\n- Write all feedback as coaching from someone who listened to the call, not someone who read a transcript.\n\nESCALATION RULES:\n- The ONLY valid reason for an agent to escalate a call to a manager is if the customer explicitly demands to speak to a manager and is pushing for it.\n- Agents should NEVER say things like 'Let me ask my team leader' or 'I need to check with my manager' on the call. Instead they should say 'Let me look into this for you' and then contact their manager privately.\n- If the agent used phrases that revealed they need manager approval, that's a fail on confidence/autonomy even if the call wasn't formally escalated.\n- If the call was transferred or escalated, determine whether the customer demanded it or the agent offered it unnecessarily.\n\nGrade the agent against each criterion, and also provide:\n- A brief call summary (2-3 sentences describing what the call was about)\n- Constructive feedback written in a warm, coaching tone. Highlight what the agent did well first, then areas to improve. Be specific with examples from the call. Don't sound robotic.\n- Advisories: ALWAYS include something here. If there are genuine concerns (compliance issues, incorrect info, escalation problems), flag them clearly. If the call was good, note what was done well and any minor suggestions. Never leave this empty.\n- Call type: determine if this was an 'Inbound' or 'Outbound' call based on the greeting and context.\n- Escalation: determine if the call was escalated or if the agent unnecessarily deferred to management.\n\nRespond ONLY in this exact JSON format, no other text:\n{\"results\":[{\"id\":\"CRITERION_ID\",\"pass\":true/false,\"reason\":\"brief reason\"}],\"summary\":\"what the call was about\",\"feedback\":\"constructive coaching feedback\",\"advisories\":\"always provide something here\",\"callType\":\"Inbound or Outbound\",\"escalated\":true/false,\"escalationJustified\":true/false/null,\"escalationNotes\":\"brief note on escalation or empty string\"}\n\nThe agent's first name is: "+agentName.split(" ")[0]+". Only use their first name in feedback, summary, and advisories. Never use their last name.\n\nCriteria:\n"+teamCriteria.map(cr=>cr.id+": "+cr.label+(cr.guide?" - "+cr.guide:"")).join("\n")+"\n\nCall Transcript:\n"+aiTranscript;
 
-        const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":claudeKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:prompt}]})});
+const data3=await callClaudeAPI({maxTokens:2000,prompt,purpose:"cancellation-or-grading"});const resp={ok:true,json:async()=>data3};
         if(!resp.ok){const errTxt=await resp.text().catch(()=>"unknown");throw new Error("API error "+resp.status+": "+errTxt);}
         const data=await resp.json();
         console.log("Claude response:",data);
@@ -3586,7 +3669,7 @@ function App(){
                     setAiProgress("Processing complete. Grading...");
                     setAiStatus("grading");
                     const prompt="You are an experienced call centre quality coach for Bachcare, a New Zealand holiday home management company. You're reviewing a phone call to help the agent improve."+intensityPrompt+"\n\nCRITICAL OUTPUT RULES:\n- NEVER mention transcription, transcript, recording, audio quality, or speech-to-text in your feedback, summary, advisories, or reasoning. Write as if you listened to the call directly.\n- If there are repeated words or phrases (like repeated thank you), ignore them — treat them as a single occurrence.\n- If the call starts abruptly without a greeting, in Standard intensity assume the greeting happened. In Firm/Strict, only fail if there is clear evidence the agent skipped it.\n- Write all feedback as coaching from someone who listened to the call, not someone who read a transcript.\n\nESCALATION RULES:\n- The ONLY valid reason for an agent to escalate a call to a manager is if the customer explicitly demands to speak to a manager and is pushing for it.\n- Agents should NEVER say things like 'Let me ask my team leader' or 'I need to check with my manager' on the call. Instead they should say 'Let me look into this for you' and then contact their manager privately.\n- If the agent used phrases that revealed they need manager approval, that's a fail on confidence/autonomy even if the call wasn't formally escalated.\n- If the call was transferred or escalated, determine whether the customer demanded it or the agent offered it unnecessarily.\n\nGrade the agent against each criterion, and also provide:\n- A brief call summary (2-3 sentences describing what the call was about)\n- Constructive feedback written in a warm, coaching tone. Highlight what the agent did well first, then areas to improve. Be specific with examples from the call. Don't sound robotic.\n- Advisories: ALWAYS include something here. If there are genuine concerns (compliance issues, incorrect info, escalation problems), flag them clearly. If the call was good, note what was done well and any minor suggestions. Never leave this empty.\n- Call type: determine if this was an 'Inbound' or 'Outbound' call based on the greeting and context.\n- Escalation: determine if the call was escalated or if the agent unnecessarily deferred to management.\n\nRespond ONLY in this exact JSON format, no other text:\n{\"results\":[{\"id\":\"CRITERION_ID\",\"pass\":true/false,\"reason\":\"brief reason\"}],\"summary\":\"what the call was about\",\"feedback\":\"constructive coaching feedback\",\"advisories\":\"always provide something here\",\"callType\":\"Inbound or Outbound\",\"escalated\":true/false,\"escalationJustified\":true/false/null,\"escalationNotes\":\"brief note on escalation or empty string\"}\n\nThe agent's first name is: "+agentName.split(" ")[0]+". Only use their first name in feedback, summary, and advisories. Never use their last name.\n\nCriteria:\n"+teamCriteria.map(cr=>cr.id+": "+cr.label+(cr.guide?" - "+cr.guide:"")).join("\n")+"\n\nCall Transcript:\n"+localTranscript;
-                    const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":claudeKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2000,messages:[{role:"user",content:prompt}]})});
+            const data3=await callClaudeAPI({maxTokens:2000,prompt,purpose:"cancellation-or-grading"});const resp={ok:true,json:async()=>data3};
                     if(!resp.ok){const errTxt=await resp.text().catch(()=>"unknown");console.error("Grade API error "+resp.status+": "+errTxt);throw new Error("Could not grade this call. Please try again.");}
                     const data=await resp.json();
                     console.log("Claude response:",data);
@@ -5737,7 +5820,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     {morningR&&(()=>{const dateKey2=tn+":"+todayNZ();const owners2=tgtOwners[dateKey2]||{};const metricFields2=cfg.morning.filter(f=>f.t!=="members"&&f.k!=="agents");const tgtFields2=metricFields2.filter(f=>morningR.fields?.["_tgt_"+f.k]);const teamMems2=(roster[tn]?.members||[]).map(m=>m.name);if(!tgtFields2.length)return null;
                     const setOwner2=(mk,name)=>{const curr=Array.isArray(owners2[mk])?owners2[mk]:owners2[mk]?[owners2[mk]]:[];const next=curr.includes(name)?curr.filter(n=>n!==name):[...curr,name];const updated2={...owners2,[mk]:next};const newTgt2={...tgtOwners,[dateKey2]:updated2};setTgtOwners(newTgt2);dbSaveConfigKey("tgt",dateKey2,updated2);};
                     const getOL2=(mk)=>{const v=owners2[mk];if(!v)return[];if(Array.isArray(v))return v;return v?[v]:[];};
-                    const progressIcon2=(mV,eV,tV)=>{const m=parseFloat(mV)||0;const e=parseFloat(eV);const t=parseFloat(tV);if(isNaN(e)||isNaN(t))return{icon:"—",label:"No data",color:"#9ca3af"};if(e>=t)return{icon:"✅",label:"HIT",color:"#059669"};const pr=t>0?(e/t)*100:0;if(e>m&&pr>=80)return{icon:"🔶",label:"CLOSE ("+Math.round(pr)+"%)",color:"#d97706"};if(e>m)return{icon:"📈",label:"PROGRESS ("+Math.round(pr)+"%)",color:"#2563eb"};return{icon:"❌",label:"NO CHANGE",color:"#dc2626"};};
+                    const progressIcon2=(mV,eV,tV)=>{const m=parseFloat(mV);const e=parseFloat(eV);const t=parseFloat(tV);if(isNaN(e)||isNaN(t))return{icon:"—",label:"No data",color:"#9ca3af"};if(e<=t)return{icon:"✅",label:"HIT",color:"#059669"};if(!isNaN(m)){if(e>m)return{icon:"🔺",label:"INCREASED",color:"#dc2626"};if(e===m)return{icon:"❌",label:"NO CHANGE",color:"#dc2626"};const gap=m-t;const closed=m-e;const pct=gap>0?Math.round((closed/gap)*100):0;if(pct>=80)return{icon:"🔶",label:"CLOSE ("+pct+"%)",color:"#d97706"};return{icon:"📈",label:"PROGRESS ("+pct+"%)",color:"#2563eb"};}return{icon:"❌",label:"MISS",color:"#dc2626"};};
                     const copyMB2=()=>{let msg="☀️ "+tn+" — Morning Brief ("+todayNZ()+")\n"+"═".repeat(40)+"\n\n📊 TODAY'S TARGETS & OWNERSHIP\n\n";
                       // Group by person
                       const byPerson={};tgtFields2.forEach(f=>{const tv=morningR.fields?.["_tgt_"+f.k]||"—";const cv=morningR.fields?.[f.k]||"0";const ol=getOL2(f.k);ol.forEach(name=>{if(!byPerson[name])byPerson[name]=[];byPerson[name].push({label:f.l,current:cv,target:tv});});if(!ol.length){if(!byPerson["_unassigned"])byPerson["_unassigned"]=[];byPerson["_unassigned"].push({label:f.l,current:cv,target:tv});}});
@@ -5746,8 +5829,8 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                       msg+="📌 REMINDERS\n• If you feel you won't hit your target, let your team leader know a few hours before end of shift so we can re-prioritise the workload.\n• Check in at the halfway point — don't wait until the end.\n\nLet's have a great day! 💪";try{navigator.clipboard.writeText(msg);toast2("Copied!");}catch{toast2("Copy failed");}};
                     const copyEW2=()=>{let msg="🌙 "+tn+" — Evening Wrap-Up ("+todayNZ()+")\n"+"═".repeat(40)+"\n\n📊 RESULTS vs TARGETS\n\n";let hc=0;
                       const byPerson={};tgtFields2.forEach(f=>{const tv=morningR.fields?.["_tgt_"+f.k]||"—";const mv=morningR.fields?.[f.k]||"0";const ev=eveningR?.fields?.[f.k]||mv;const ol=getOL2(f.k);const p=progressIcon2(mv,ev,tv);if(p.icon==="✅")hc++;const entry={label:f.l,evening:ev,target:tv,icon:p.icon,status:p.label};ol.forEach(name=>{if(!byPerson[name])byPerson[name]=[];byPerson[name].push(entry);});if(!ol.length){if(!byPerson["_unassigned"])byPerson["_unassigned"]=[];byPerson["_unassigned"].push(entry);}});
-                      Object.entries(byPerson).forEach(([name,targets])=>{if(name==="_unassigned")return;msg+="👤 "+name+"\n";targets.forEach(t=>{msg+="  "+t.icon+" "+t.label+": "+t.evening+" / "+t.target+" "+t.status+"\n";});msg+="\n";});
-                      if(byPerson["_unassigned"]){msg+="⚠ Unassigned\n";byPerson["_unassigned"].forEach(t=>{msg+="  "+t.icon+" "+t.label+": "+t.evening+" / "+t.target+" "+t.status+"\n";});msg+="\n";}
+                      Object.entries(byPerson).forEach(([name,targets])=>{if(name==="_unassigned")return;msg+="👤 "+name+"\n";targets.forEach(t=>{msg+="  "+t.icon+" "+t.label+": Target "+t.target+" → PM "+t.evening+" "+t.status+"\n";});msg+="\n";});
+                      if(byPerson["_unassigned"]){msg+="⚠ Unassigned\n";byPerson["_unassigned"].forEach(t=>{msg+="  "+t.icon+" "+t.label+": Target "+t.target+" → PM "+t.evening+" "+t.status+"\n";});msg+="\n";}
                       msg+="📈 "+hc+"/"+tgtFields2.length+" targets hit\n\nGreat work today team! 🙌";try{navigator.clipboard.writeText(msg);toast2("Copied!");}catch{toast2("Copy failed");}};
                     return<div style={{padding:"10px 18px",background:"#fefce8",borderBottom:"1px solid #fde68a"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
@@ -5989,7 +6072,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   const setOwner=(metricKey,name)=>{const curr=Array.isArray(owners[metricKey])?owners[metricKey]:owners[metricKey]?[owners[metricKey]]:[];const next=curr.includes(name)?curr.filter(n=>n!==name):[...curr,name];const updated={...owners,[metricKey]:next};const newTgt={...tgtOwners,[dateKey]:updated};setTgtOwners(newTgt);dbSaveConfigKey("tgt",dateKey,updated);};
                   const getOwnerList=(metricKey)=>{const v=owners[metricKey];if(!v)return[];if(Array.isArray(v))return v;return v?[v]:[];};
                   // Progress icons: ✅ hit, 🔶 good progress (>=80%), ❌ no change or worse
-                  const progressIcon=(morningVal,eveningVal,targetVal)=>{const m=parseFloat(morningVal)||0;const e=parseFloat(eveningVal);const t=parseFloat(targetVal);if(isNaN(e)||isNaN(t))return{icon:"—",label:"No data",color:"#9ca3af"};if(e>=t)return{icon:"✅",label:"HIT",color:"#059669"};const progress=t>0?(e/t)*100:0;if(e>m&&progress>=80)return{icon:"🔶",label:"CLOSE ("+Math.round(progress)+"%)",color:"#d97706"};if(e>m)return{icon:"📈",label:"PROGRESS ("+Math.round(progress)+"%)",color:"#2563eb"};if(e<=m)return{icon:"❌",label:"NO CHANGE",color:"#dc2626"};return{icon:"—",label:"",color:"#9ca3af"};};
+                  const progressIcon=(morningVal,eveningVal,targetVal)=>{const m=parseFloat(morningVal);const e=parseFloat(eveningVal);const t=parseFloat(targetVal);if(isNaN(e)||isNaN(t))return{icon:"—",label:"No data",color:"#9ca3af"};if(e<=t)return{icon:"✅",label:"HIT",color:"#059669"};if(!isNaN(m)){if(e>m)return{icon:"🔺",label:"INCREASED",color:"#dc2626"};if(e===m)return{icon:"❌",label:"NO CHANGE",color:"#dc2626"};const gap=m-t;const closed=m-e;const pct=gap>0?Math.round((closed/gap)*100):0;if(pct>=80)return{icon:"🔶",label:"CLOSE ("+pct+"%)",color:"#d97706"};return{icon:"📈",label:"PROGRESS ("+pct+"%)",color:"#2563eb"};}return{icon:"❌",label:"MISS",color:"#dc2626"};};
                   const copyMorningBrief=()=>{let msg="☀️ "+myTeam+" — Morning Brief ("+todayNZ()+")\n"+"═".repeat(40)+"\n\n📊 TODAY'S TARGETS & OWNERSHIP\n\n";
                     const byPerson={};tgtFields.forEach(f=>{const tgtVal=morningData.fields?.["_tgt_"+f.k]||"—";const currentVal=morningData.fields?.[f.k]||"0";const ol=getOwnerList(f.k);ol.forEach(name=>{if(!byPerson[name])byPerson[name]=[];byPerson[name].push({label:f.l,current:currentVal,target:tgtVal});});if(!ol.length){if(!byPerson["_unassigned"])byPerson["_unassigned"]=[];byPerson["_unassigned"].push({label:f.l,current:currentVal,target:tgtVal});}});
                     Object.entries(byPerson).forEach(([name,targets])=>{if(name==="_unassigned")return;msg+="👤 "+name+"\n";targets.forEach(t=>{msg+="  • "+t.label+": "+t.current+" → Target: "+t.target+"\n";});msg+="\n";});
@@ -5999,8 +6082,8 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   const copyEveningWrap=()=>{let msg="🌙 "+myTeam+" — Evening Wrap-Up ("+todayNZ()+")\n"+"═".repeat(40)+"\n\n📊 RESULTS vs TARGETS\n\n";
                     let hitCount=0;
                     const byPerson={};tgtFields.forEach(f=>{const tgtVal=morningData.fields?.["_tgt_"+f.k]||"—";const mVal=morningData.fields?.[f.k]||"0";const evVal=eveningData?.fields?.[f.k]||mVal;const ol=getOwnerList(f.k);const p=progressIcon(mVal,evVal,tgtVal);if(p.icon==="✅")hitCount++;const entry={label:f.l,evening:evVal,target:tgtVal,icon:p.icon,status:p.label};ol.forEach(name=>{if(!byPerson[name])byPerson[name]=[];byPerson[name].push(entry);});if(!ol.length){if(!byPerson["_unassigned"])byPerson["_unassigned"]=[];byPerson["_unassigned"].push(entry);}});
-                    Object.entries(byPerson).forEach(([name,targets])=>{if(name==="_unassigned")return;msg+="👤 "+name+"\n";targets.forEach(t=>{msg+="  "+t.icon+" "+t.label+": "+t.evening+" / "+t.target+" "+t.status+"\n";});msg+="\n";});
-                    if(byPerson["_unassigned"]){msg+="⚠ Unassigned\n";byPerson["_unassigned"].forEach(t=>{msg+="  "+t.icon+" "+t.label+": "+t.evening+" / "+t.target+" "+t.status+"\n";});msg+="\n";}
+                    Object.entries(byPerson).forEach(([name,targets])=>{if(name==="_unassigned")return;msg+="👤 "+name+"\n";targets.forEach(t=>{msg+="  "+t.icon+" "+t.label+": Target "+t.target+" → PM "+t.evening+" "+t.status+"\n";});msg+="\n";});
+                    if(byPerson["_unassigned"]){msg+="⚠ Unassigned\n";byPerson["_unassigned"].forEach(t=>{msg+="  "+t.icon+" "+t.label+": Target "+t.target+" → PM "+t.evening+" "+t.status+"\n";});msg+="\n";}
                     msg+="📈 "+hitCount+"/"+tgtFields.length+" targets hit\n\nGreat work today team! 🙌";
                     try{navigator.clipboard.writeText(msg);toast2("Evening wrap-up copied!");}catch{toast2("Copy failed");}};
                     return<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"16px 20px",marginBottom:12}}>
@@ -6778,6 +6861,23 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   {/* Links */}
                   {(viewCard.links||[]).length>0&&<div style={{marginBottom:14}}><div style={{fontSize:13,fontWeight:700,color:"#111827",marginBottom:6}}>Links</div>
                   {viewCard.links.map(link=><a key={link.id} href={link.url.startsWith("http")?link.url:"https://"+link.url} target="_blank" rel="noopener" style={{display:"block",fontSize:12,color:"#2563eb",marginBottom:4,textDecoration:"underline"}}>{"🔗 "+(link.label||link.url)}</a>)}</div>}
+                  {/* Attachments */}
+                  <div style={{marginBottom:14}}><div style={{fontSize:13,fontWeight:700,color:"#111827",marginBottom:6,display:"flex",alignItems:"center",gap:8}}><span>{"Attachments"+((viewCard.attachments||[]).length?" ("+viewCard.attachments.length+")":"")}</span>
+                    <label style={{fontSize:11,color:teamColor,cursor:"pointer",fontWeight:600,padding:"2px 8px",border:"1px dashed "+teamColor,borderRadius:6}}>+ Upload
+                      <input type="file" style={{display:"none"}} onChange={async(e)=>{const f=e.target.files?.[0];e.target.value="";if(!f)return;try{toast2("Uploading "+f.name+"…");const att=await uploadAttachment(viewCard.id,f);const updated={...viewCard,attachments:[...(viewCard.attachments||[]),att],activity:[...(viewCard.activity||[]),{id:uid(),action:"attached "+f.name,by:currentUser?.displayName,at:new Date().toISOString()}]};saveCard(updated);setViewCard(updated);toast2("Uploaded ✓");}catch(err){toast2("⚠ "+err.message);}}}/>
+                    </label>
+                  </div>
+                  {(viewCard.attachments||[]).length===0&&<div style={{fontSize:11,color:"#d1d5db",fontStyle:"italic"}}>No files attached. Bucket needs to be created — see SUPABASE_PRO_SETUP.md.</div>}
+                  {(viewCard.attachments||[]).map(att=>{const isImg=(att.type||"").startsWith("image/");const sizeKB=Math.round((att.size||0)/1024);const url=getAttachmentUrl(att.path);return<div key={att.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"#f9fafb",borderRadius:8,marginBottom:6}}>
+                    <span style={{fontSize:18}}>{isImg?"🖼️":(att.type||"").includes("pdf")?"📄":(att.type||"").includes("sheet")||att.name?.match(/\.(xlsx|xls|csv)$/i)?"📊":"📎"}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <a href={url} target="_blank" rel="noopener" style={{fontSize:12,fontWeight:600,color:"#111827",textDecoration:"none",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{att.name}</a>
+                      <div style={{fontSize:10,color:"#9ca3af"}}>{sizeKB+" KB · uploaded by "+(att.uploadedBy||"unknown")+" · "+new Date(att.uploadedAt).toLocaleDateString("en-NZ",{day:"numeric",month:"short"})}</div>
+                    </div>
+                    {isImg&&<a href={url} target="_blank" rel="noopener"><img src={url} alt="" style={{width:40,height:40,objectFit:"cover",borderRadius:4,border:"1px solid #e5e7eb"}}/></a>}
+                    <button onClick={async()=>{if(!window.confirm("Remove "+att.name+"?"))return;await deleteAttachment(att.path);const updated={...viewCard,attachments:(viewCard.attachments||[]).filter(a=>a.id!==att.id),activity:[...(viewCard.activity||[]),{id:uid(),action:"removed attachment "+att.name,by:currentUser?.displayName,at:new Date().toISOString()}]};saveCard(updated);setViewCard(updated);toast2("Removed.");}} style={{fontSize:10,color:"#dc2626",background:"transparent",border:"1px solid #fecaca",borderRadius:4,padding:"3px 8px",cursor:"pointer"}}>✕</button>
+                  </div>;})}
+                  </div>
                   <div style={{fontSize:10,color:"#9ca3af",marginBottom:14}}>{"Created by "+viewCard.createdBy+" · "+fmtNZDate(viewCard.createdAt?.slice(0,10))}</div>
                   {/* Comments */}
                   <div style={{borderTop:"1px solid #f0f0f0",paddingTop:14}}>
@@ -7062,6 +7162,43 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               </div>
             </div>
 
+            {/* Pro Features (Supabase Pro Plan) */}
+            {sbStatus==="ok"&&<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden",gridColumn:"1 / -1"}}>
+              <div style={{padding:"14px 20px",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:16}}>⚡</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:14,color:"#111827"}}>Pro Features</div>
+                  <div style={{fontSize:12,color:"#9ca3af",marginTop:1}}>Optional capabilities. Each requires a one-time setup step — see SUPABASE_PRO_SETUP.md.</div>
+                </div>
+              </div>
+              <div style={{padding:"6px 20px 16px"}}>
+                <label style={{display:"flex",alignItems:"flex-start",gap:12,padding:"12px 0",borderBottom:"1px solid #f3f4f6",cursor:"pointer"}}>
+                  <input type="checkbox" checked={useEdgeProxy} onChange={e=>setUseEdgeProxy(e.target.checked)} style={{marginTop:3,width:16,height:16,accentColor:"#0d9488",cursor:"pointer"}}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:600,color:"#111827"}}>🔒 Use Edge Function proxy for Claude API</div>
+                    <div style={{fontSize:11,color:"#6b7280",marginTop:2,lineHeight:1.5}}>Hides your Anthropic API key on the server. Setup: deploy <code style={{background:"#f3f4f6",padding:"1px 4px",borderRadius:3,fontSize:10}}>supabase/functions/claude-proxy</code> and set <code style={{background:"#f3f4f6",padding:"1px 4px",borderRadius:3,fontSize:10}}>ANTHROPIC_API_KEY</code> as a Supabase secret. Rotate your key after enabling.</div>
+                  </div>
+                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:6,background:useEdgeProxy?"#ecfdf5":"#f3f4f6",color:useEdgeProxy?"#059669":"#6b7280",fontWeight:700}}>{useEdgeProxy?"ON":"OFF"}</span>
+                </label>
+                <label style={{display:"flex",alignItems:"flex-start",gap:12,padding:"12px 0",borderBottom:"1px solid #f3f4f6",cursor:"pointer"}}>
+                  <input type="checkbox" checked={useRealtime} onChange={e=>setUseRealtime(e.target.checked)} style={{marginTop:3,width:16,height:16,accentColor:"#0d9488",cursor:"pointer"}}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:600,color:"#111827"}}>🔄 Realtime sync (daily reports & planner)</div>
+                    <div style={{fontSize:11,color:"#6b7280",marginTop:2,lineHeight:1.5}}>When another user submits a report or moves a planner card, your screen updates without refreshing. Setup: run <code style={{background:"#f3f4f6",padding:"1px 4px",borderRadius:3,fontSize:10}}>ALTER PUBLICATION supabase_realtime ADD TABLE …</code> for the 3 tables. Refresh the page after enabling.</div>
+                  </div>
+                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:6,background:useRealtime?"#ecfdf5":"#f3f4f6",color:useRealtime?"#059669":"#6b7280",fontWeight:700}}>{useRealtime?"ON":"OFF"}</span>
+                </label>
+                <div style={{display:"flex",alignItems:"flex-start",gap:12,padding:"12px 0"}}>
+                  <span style={{marginTop:3,fontSize:14}}>📎</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:600,color:"#111827"}}>Storage attachments (planner cards)</div>
+                    <div style={{fontSize:11,color:"#6b7280",marginTop:2,lineHeight:1.5}}>File upload UI is always visible on planner cards. Setup: create the <code style={{background:"#f3f4f6",padding:"1px 4px",borderRadius:3,fontSize:10}}>planner-attachments</code> bucket via the SQL in SUPABASE_PRO_SETUP.md. Until then, upload attempts will error.</div>
+                  </div>
+                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:6,background:"#fffbeb",color:"#92400e",fontWeight:700,border:"1px solid #fde68a"}}>SETUP</span>
+                </div>
+              </div>
+            </div>}
+
             {/* Storage Usage */}
             {sbStatus==="ok"&&<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden",gridColumn:"1 / -1"}}>
               <div style={{padding:"14px 20px",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"center",gap:10}}>
@@ -7339,7 +7476,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         }}/>}
       {showProfile&&<ProfileTab/>}
       {/* Summary Builder Modal */}
-      {summaryModal&&<WeeklySummaryModalBuilder sm={summaryModal} onClose={()=>setSummaryModal(null)} roster={roster} callReviews={callReviews} setCallReviews={setCallReviews} currentUser={currentUser} claudeKey={claudeKey} toast2={toast2} getIcStats={getIcStats} getSchedHours={getSchedHours} getW={getW} avgProd={avgProd} addAudit={addAudit} dbUpsert={dbUpsert}/>}
+      {summaryModal&&<WeeklySummaryModalBuilder sm={summaryModal} onClose={()=>setSummaryModal(null)} roster={roster} callReviews={callReviews} setCallReviews={setCallReviews} currentUser={currentUser} claudeKey={claudeKey} toast2={toast2} getIcStats={getIcStats} getSchedHours={getSchedHours} getW={getW} avgProd={avgProd} addAudit={addAudit} dbUpsert={dbUpsert} callClaudeAPI={callClaudeAPI}/>}
       {reportTeamModal&&<Modal title={(reportTeamModal.evening?"End of Day Report":"Morning Report")+" — "+reportTeamModal.teamName} onClose={()=>setReportTeamModal(null)}
         footer={<><button onClick={()=>setReportTeamModal(null)} style={S.out}>Cancel</button><button onClick={()=>{
           const m=reportTeamModal;const mr=m.morning;const er=m.evening;const cfg=m.cfg;

@@ -357,6 +357,139 @@ class ErrorBoundary extends React.Component{
     return this.props.children;
   }
 }
+function WeeklySummaryModalBuilder({sm,onClose,roster,callReviews,currentUser,claudeKey,toast2,getIcStats,getSchedHours,getW,avgProd}){
+        const sName=sm.name;const sTn=sm.teamName;const sLb=sm.lb;
+        const[checks,setChecks]=React.useState({productivity:true,tickets:true,emails:true,caseActions:true,wfs:true,calls:true,hours:true,responseTimes:true,ranking:true,kpis:true,managerNote:true});
+        const[selReviews,setSelReviews]=React.useState([]);
+        const[aiInsight,setAiInsight]=React.useState("");
+        const[aiLoading,setAiLoading]=React.useState(false);
+
+        const toggle=(k)=>setChecks(prev=>({...prev,[k]:!prev[k]}));
+        const icStats=getIcStats(sName,sm.iPt,sm.iWk,sm.iMo);
+        const hrs=getSchedHours(sName,sm.iPt,sm.iWk,sm.iMo);
+        const tw=getW(sTn);
+        const autoScore=icStats&&hrs?Math.round(((icStats.closed||0)*tw.tickets+(icStats.emails||0)*tw.emails+(icStats.wfs||0)*tw.wfs+(icStats.calls||0)*tw.calls+(icStats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10:null;
+        const ap=avgProd(sTn,sm.iPt,sm.iMo,sm.iWk,false);
+
+        // Team ranking
+        const teamMems2=(roster[sTn]?.members||[]).map(m=>m.name);
+        const rankings=teamMems2.map(n=>{const s=getIcStats(n,sm.iPt,sm.iWk,sm.iMo);const h=getSchedHours(n,sm.iPt,sm.iWk,sm.iMo);const p=s&&h&&h>0?Math.round(((s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0))/h*10)/10:0;return{name:n,prod:p};}).sort((a,b)=>b.prod-a.prod);
+        const myRank=rankings.findIndex(r=>r.name===sName)+1;
+
+        // Call reviews last 2 months
+        const recentReviews=callReviews.filter(r=>r.agentName===sName).sort((a,b)=>new Date(b.date||b.createdAt)-new Date(a.date||a.createdAt)).slice(0,20);
+
+        const d=sm.d;const sk=d._kpis||[];
+        const passK=sk.filter(k=>isPass(d[k.key],k)===true);
+        const failK=sk.filter(k=>isPass(d[k.key],k)===false);
+
+        const buildPreview=()=>{
+          let t=`Hi ${sName.split(" ")[0]},\n\nHere is your performance summary for ${sLb}.\n\n`;
+          if(checks.productivity){t+=`PRODUCTIVITY\n`;t+=`  Your score: ${autoScore!=null?autoScore+" pts/hr":"—"}\n`;if(ap)t+=`  Team average: ${ap} pts/hr\n`;if(checks.ranking&&myRank)t+=`  Team ranking: #${myRank} of ${rankings.length}\n`;t+=`\n`;}
+          if(icStats&&(checks.tickets||checks.emails||checks.calls||checks.wfs||checks.caseActions||checks.hours||checks.responseTimes)){t+=`STATS\n`;
+            if(checks.tickets)t+=`  Tickets closed: ${icStats.closed||0}\n`;
+            if(checks.emails)t+=`  Emails: ${icStats.emails||0}\n`;
+            if(checks.caseActions)t+=`  Case Actions: ${icStats.caseActions||0}\n`;
+            if(checks.wfs)t+=`  Workflows: ${icStats.wfs||0}\n`;
+            if(checks.calls)t+=`  Calls: ${icStats.calls||0}\n`;
+            if(checks.hours)t+=`  Hours worked: ${hrs||"—"}h\n`;
+            if(checks.responseTimes){if(icStats.medFirstReply!=null)t+=`  Median first reply: ${Math.round(icStats.medFirstReply*100)/100}h\n`;if(icStats.medClose!=null)t+=`  Median close time: ${Math.round(icStats.medClose*100)/100}h\n`;}
+            t+=`\n`;
+          }
+          if(checks.kpis&&sk.length){
+            if(passK.length){t+=`PASSING (${passK.length})\n`;passK.forEach(k=>{t+=`  ✓ ${k.label}: ${dv(d[k.key],k)}\n`;});t+=`\n`;}
+            if(failK.length){t+=`NEEDS ATTENTION (${failK.length})\n`;failK.forEach(k=>{t+=`  ✗ ${k.label}: ${dv(d[k.key],k)} (target: ${k.target})\n`;});t+=`\n`;}
+          }
+          if(selReviews.length){t+=`CALL REVIEWS (${selReviews.length} selected)\n`;
+            selReviews.forEach(r=>{t+=`  ${r.passed?"✓ Pass":"✗ Needs Improvement"} — ${r.date||""}${r.callType?" ("+r.callType+")":""} — Score: ${r.score||"—"}/10\n`;
+              if(r.callSummary)t+=`    Summary: ${r.callSummary}\n`;
+              if(r.notes)t+=`    Feedback: ${r.notes}\n`;
+              if(r.advisories)t+=`    Advisories: ${r.advisories}\n`;
+            });t+=`\n`;
+          }
+          if(checks.managerNote&&d._note){t+=`MANAGER NOTE\n${d._note}\n\n`;}
+          if(aiInsight){t+=`FEEDBACK & SUGGESTIONS\n${aiInsight}\n\n`;}
+          t+=`Kind regards,\n${currentUser?.displayName||""}\n`;
+          return t;
+        };
+
+        const generateInsight=async()=>{
+          if(!claudeKey){toast2("Set up your API key in Settings first.");return;}
+          setAiLoading(true);
+          try{
+            const ctx=buildPreview();
+            const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":claudeKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:`You are a supportive team leader providing a weekly performance summary to an employee named ${sName} at Bachcare (holiday home management, NZ).
+
+Here are their stats for ${sLb}:
+${ctx}
+
+Write 3-4 short paragraphs:
+1. Start with genuine recognition of what they did well this period. Be specific about their numbers.
+2. If there are areas below target or team average, frame them constructively — not as criticism but as opportunities. Be encouraging.
+3. If call reviews are included, mention specific strengths and one area to focus on.
+4. End with a motivating closing thought for next period.
+
+Keep the tone warm, professional, and genuine. Use their first name. Don't be generic — reference their actual stats. Keep it under 200 words.`}]})});
+            const data2=await resp.json();
+            const insight=data2.content?.[0]?.text||"";
+            setAiInsight(insight);
+          }catch(e){toast2("⚠ "+e.message);}
+          setAiLoading(false);
+        };
+
+        return<Modal title="Build Summary" sub={sName+" · "+sLb} onClose={()=>onClose()} wide>
+          <div style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:20,minHeight:400}}>
+            {/* Left: Options */}
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Include in Summary</div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                {[{k:"productivity",l:"Productivity Score"},{k:"ranking",l:"Team Ranking (#"+myRank+" of "+rankings.length+")"},{k:"tickets",l:"Tickets Closed"},{k:"emails",l:"Emails"},{k:"caseActions",l:"Case Actions"},{k:"wfs",l:"Workflows"},{k:"calls",l:"Calls"},{k:"hours",l:"Hours Worked"},{k:"responseTimes",l:"Response Times"},{k:"kpis",l:"KPI Pass/Fail"},{k:"managerNote",l:"Manager Note"}].map(opt=>
+                  <label key={opt.k} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:6,cursor:"pointer",fontSize:12,color:"#374151",background:checks[opt.k]?"#f0fdfa":"transparent"}} onClick={()=>toggle(opt.k)}>
+                    <div style={{width:16,height:16,borderRadius:4,border:"2px solid "+(checks[opt.k]?"#0d9488":"#d1d5db"),background:checks[opt.k]?"#0d9488":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:10,flexShrink:0}}>{checks[opt.k]?"✓":""}</div>
+                    {opt.l}
+                  </label>
+                )}
+              </div>
+
+              {/* Call Reviews */}
+              <div style={{marginTop:16}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".04em",marginBottom:6}}>Call Reviews (last 2 months)</div>
+                {recentReviews.length===0&&<div style={{fontSize:11,color:"#d1d5db",fontStyle:"italic"}}>No reviews found</div>}
+                <div style={{maxHeight:160,overflowY:"auto"}}>
+                  {recentReviews.map(r=><label key={r.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",fontSize:11,cursor:"pointer",borderRadius:4,background:selReviews.some(s=>s.id===r.id)?"#f0fdfa":"transparent"}}
+                    onClick={()=>setSelReviews(prev=>prev.some(s=>s.id===r.id)?prev.filter(s=>s.id!==r.id):[...prev,r])}>
+                    <div style={{width:14,height:14,borderRadius:3,border:"2px solid "+(selReviews.some(s=>s.id===r.id)?"#0d9488":"#d1d5db"),background:selReviews.some(s=>s.id===r.id)?"#0d9488":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:8,flexShrink:0}}>{selReviews.some(s=>s.id===r.id)?"✓":""}</div>
+                    <span style={{color:r.passed?"#059669":"#dc2626",fontWeight:600}}>{r.passed?"Pass":"Fail"}</span>
+                    <span style={{color:"#6b7280"}}>{r.date||""}</span>
+                    <span style={{color:"#9ca3af"}}>{r.score?r.score+"/10":""}</span>
+                  </label>)}
+                </div>
+              </div>
+
+              {/* AI Button */}
+              <div style={{marginTop:16}}>
+                <button onClick={generateInsight} disabled={aiLoading} style={{width:"100%",fontSize:12,padding:"10px",background:aiLoading?"#9ca3af":"linear-gradient(135deg,#0d9488,#0e7490)",color:"#fff",border:"none",borderRadius:8,cursor:aiLoading?"wait":"pointer",fontWeight:600}}>
+                  {aiLoading?"Generating...":"✨ Generate Feedback & Insights"}
+                </button>
+              </div>
+            </div>
+
+            {/* Right: Preview */}
+            <div style={{display:"flex",flexDirection:"column"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".04em",flex:1}}>Preview</div>
+                <button onClick={()=>{try{navigator.clipboard.writeText(buildPreview());toast2("Summary copied!");}catch{toast2("Copy failed");}}} style={{fontSize:11,padding:"6px 16px",background:"#0d9488",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontWeight:600}}>📋 Copy</button>
+              </div>
+              <div style={{flex:1,background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:10,padding:"14px 16px",fontSize:12,lineHeight:1.7,whiteSpace:"pre-wrap",overflowY:"auto",color:"#374151",fontFamily:"Calibri,Arial,sans-serif"}}>{buildPreview()}</div>
+              {aiInsight&&<div style={{marginTop:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#6b7280",marginBottom:4}}>AI Feedback (editable)</div>
+                <textarea value={aiInsight} onChange={e=>setAiInsight(e.target.value)} rows={5} style={{width:"100%",fontSize:12,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8,resize:"vertical",lineHeight:1.6,fontFamily:"inherit",boxSizing:"border-box"}}/>
+              </div>}
+            </div>
+          </div>
+        </Modal>;
+}
+
 function App(){
   const init={data:{},roster:migrateRoster({...DEFAULT_ROSTER}),tc:migrateTeamColors({...DEFAULT_TEAMS})};
   const[currentUser,setCurrentUser]=useState(()=>{try{const u=sessionStorage.getItem("bc_user");return u?JSON.parse(u):null;}catch{return null;}});
@@ -7082,139 +7215,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         }}/>}
       {showProfile&&<ProfileTab/>}
       {/* Summary Builder Modal */}
-      {summaryModal&&(()=>{
-        const sm=summaryModal;const sName=sm.name;const sTn=sm.teamName;const sLb=sm.lb;
-        const[checks,setChecks]=React.useState({productivity:true,tickets:true,emails:true,caseActions:true,wfs:true,calls:true,hours:true,responseTimes:true,ranking:true,kpis:true,managerNote:true});
-        const[selReviews,setSelReviews]=React.useState([]);
-        const[aiInsight,setAiInsight]=React.useState("");
-        const[aiLoading,setAiLoading]=React.useState(false);
-        const[preview,setPreview]=React.useState("");
-
-        const toggle=(k)=>setChecks(prev=>({...prev,[k]:!prev[k]}));
-        const icStats=getIcStats(sName,sm.iPt,sm.iWk,sm.iMo);
-        const hrs=getSchedHours(sName,sm.iPt,sm.iWk,sm.iMo);
-        const tw=getW(sTn);
-        const autoScore=icStats&&hrs?Math.round(((icStats.closed||0)*tw.tickets+(icStats.emails||0)*tw.emails+(icStats.wfs||0)*tw.wfs+(icStats.calls||0)*tw.calls+(icStats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10:null;
-        const ap=avgProd(sTn,sm.iPt,sm.iMo,sm.iWk,false);
-
-        // Team ranking
-        const teamMems2=(roster[sTn]?.members||[]).map(m=>m.name);
-        const rankings=teamMems2.map(n=>{const s=getIcStats(n,sm.iPt,sm.iWk,sm.iMo);const h=getSchedHours(n,sm.iPt,sm.iWk,sm.iMo);const p=s&&h&&h>0?Math.round(((s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0))/h*10)/10:0;return{name:n,prod:p};}).sort((a,b)=>b.prod-a.prod);
-        const myRank=rankings.findIndex(r=>r.name===sName)+1;
-
-        // Call reviews last 2 months
-        const recentReviews=callReviews.filter(r=>r.agentName===sName).sort((a,b)=>new Date(b.date||b.createdAt)-new Date(a.date||a.createdAt)).slice(0,20);
-
-        const d=sm.d;const sk=d._kpis||[];
-        const passK=sk.filter(k=>isPass(d[k.key],k)===true);
-        const failK=sk.filter(k=>isPass(d[k.key],k)===false);
-
-        const buildPreview=()=>{
-          let t=`Hi ${sName.split(" ")[0]},\n\nHere is your performance summary for ${sLb}.\n\n`;
-          if(checks.productivity){t+=`PRODUCTIVITY\n`;t+=`  Your score: ${autoScore!=null?autoScore+" pts/hr":"—"}\n`;if(ap)t+=`  Team average: ${ap} pts/hr\n`;if(checks.ranking&&myRank)t+=`  Team ranking: #${myRank} of ${rankings.length}\n`;t+=`\n`;}
-          if(icStats&&(checks.tickets||checks.emails||checks.calls||checks.wfs||checks.caseActions||checks.hours||checks.responseTimes)){t+=`STATS\n`;
-            if(checks.tickets)t+=`  Tickets closed: ${icStats.closed||0}\n`;
-            if(checks.emails)t+=`  Emails: ${icStats.emails||0}\n`;
-            if(checks.caseActions)t+=`  Case Actions: ${icStats.caseActions||0}\n`;
-            if(checks.wfs)t+=`  Workflows: ${icStats.wfs||0}\n`;
-            if(checks.calls)t+=`  Calls: ${icStats.calls||0}\n`;
-            if(checks.hours)t+=`  Hours worked: ${hrs||"—"}h\n`;
-            if(checks.responseTimes){if(icStats.medFirstReply!=null)t+=`  Median first reply: ${Math.round(icStats.medFirstReply*100)/100}h\n`;if(icStats.medClose!=null)t+=`  Median close time: ${Math.round(icStats.medClose*100)/100}h\n`;}
-            t+=`\n`;
-          }
-          if(checks.kpis&&sk.length){
-            if(passK.length){t+=`PASSING (${passK.length})\n`;passK.forEach(k=>{t+=`  ✓ ${k.label}: ${dv(d[k.key],k)}\n`;});t+=`\n`;}
-            if(failK.length){t+=`NEEDS ATTENTION (${failK.length})\n`;failK.forEach(k=>{t+=`  ✗ ${k.label}: ${dv(d[k.key],k)} (target: ${k.target})\n`;});t+=`\n`;}
-          }
-          if(selReviews.length){t+=`CALL REVIEWS (${selReviews.length} selected)\n`;
-            selReviews.forEach(r=>{t+=`  ${r.passed?"✓ Pass":"✗ Needs Improvement"} — ${r.date||""}${r.callType?" ("+r.callType+")":""} — Score: ${r.score||"—"}/10\n`;
-              if(r.callSummary)t+=`    Summary: ${r.callSummary}\n`;
-              if(r.notes)t+=`    Feedback: ${r.notes}\n`;
-              if(r.advisories)t+=`    Advisories: ${r.advisories}\n`;
-            });t+=`\n`;
-          }
-          if(checks.managerNote&&d._note){t+=`MANAGER NOTE\n${d._note}\n\n`;}
-          if(aiInsight){t+=`FEEDBACK & SUGGESTIONS\n${aiInsight}\n\n`;}
-          t+=`Kind regards,\n${currentUser?.displayName||""}\n`;
-          return t;
-        };
-
-        const generateInsight=async()=>{
-          if(!claudeKey){toast2("Set up your API key in Settings first.");return;}
-          setAiLoading(true);
-          try{
-            const ctx=buildPreview();
-            const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":claudeKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:`You are a supportive team leader providing a weekly performance summary to an employee named ${sName} at Bachcare (holiday home management, NZ).
-
-Here are their stats for ${sLb}:
-${ctx}
-
-Write 3-4 short paragraphs:
-1. Start with genuine recognition of what they did well this period. Be specific about their numbers.
-2. If there are areas below target or team average, frame them constructively — not as criticism but as opportunities. Be encouraging.
-3. If call reviews are included, mention specific strengths and one area to focus on.
-4. End with a motivating closing thought for next period.
-
-Keep the tone warm, professional, and genuine. Use their first name. Don't be generic — reference their actual stats. Keep it under 200 words.`}]})});
-            const data2=await resp.json();
-            const insight=data2.content?.[0]?.text||"";
-            setAiInsight(insight);
-          }catch(e){toast2("⚠ "+e.message);}
-          setAiLoading(false);
-        };
-
-        return<Modal title="Build Summary" sub={sName+" · "+sLb} onClose={()=>setSummaryModal(null)} wide>
-          <div style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:20,minHeight:400}}>
-            {/* Left: Options */}
-            <div>
-              <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Include in Summary</div>
-              <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                {[{k:"productivity",l:"Productivity Score"},{k:"ranking",l:"Team Ranking (#"+myRank+" of "+rankings.length+")"},{k:"tickets",l:"Tickets Closed"},{k:"emails",l:"Emails"},{k:"caseActions",l:"Case Actions"},{k:"wfs",l:"Workflows"},{k:"calls",l:"Calls"},{k:"hours",l:"Hours Worked"},{k:"responseTimes",l:"Response Times"},{k:"kpis",l:"KPI Pass/Fail"},{k:"managerNote",l:"Manager Note"}].map(opt=>
-                  <label key={opt.k} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:6,cursor:"pointer",fontSize:12,color:"#374151",background:checks[opt.k]?"#f0fdfa":"transparent"}} onClick={()=>toggle(opt.k)}>
-                    <div style={{width:16,height:16,borderRadius:4,border:"2px solid "+(checks[opt.k]?"#0d9488":"#d1d5db"),background:checks[opt.k]?"#0d9488":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:10,flexShrink:0}}>{checks[opt.k]?"✓":""}</div>
-                    {opt.l}
-                  </label>
-                )}
-              </div>
-
-              {/* Call Reviews */}
-              <div style={{marginTop:16}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".04em",marginBottom:6}}>Call Reviews (last 2 months)</div>
-                {recentReviews.length===0&&<div style={{fontSize:11,color:"#d1d5db",fontStyle:"italic"}}>No reviews found</div>}
-                <div style={{maxHeight:160,overflowY:"auto"}}>
-                  {recentReviews.map(r=><label key={r.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",fontSize:11,cursor:"pointer",borderRadius:4,background:selReviews.some(s=>s.id===r.id)?"#f0fdfa":"transparent"}}
-                    onClick={()=>setSelReviews(prev=>prev.some(s=>s.id===r.id)?prev.filter(s=>s.id!==r.id):[...prev,r])}>
-                    <div style={{width:14,height:14,borderRadius:3,border:"2px solid "+(selReviews.some(s=>s.id===r.id)?"#0d9488":"#d1d5db"),background:selReviews.some(s=>s.id===r.id)?"#0d9488":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:8,flexShrink:0}}>{selReviews.some(s=>s.id===r.id)?"✓":""}</div>
-                    <span style={{color:r.passed?"#059669":"#dc2626",fontWeight:600}}>{r.passed?"Pass":"Fail"}</span>
-                    <span style={{color:"#6b7280"}}>{r.date||""}</span>
-                    <span style={{color:"#9ca3af"}}>{r.score?r.score+"/10":""}</span>
-                  </label>)}
-                </div>
-              </div>
-
-              {/* AI Button */}
-              <div style={{marginTop:16}}>
-                <button onClick={generateInsight} disabled={aiLoading} style={{width:"100%",fontSize:12,padding:"10px",background:aiLoading?"#9ca3af":"linear-gradient(135deg,#0d9488,#0e7490)",color:"#fff",border:"none",borderRadius:8,cursor:aiLoading?"wait":"pointer",fontWeight:600}}>
-                  {aiLoading?"Generating...":"✨ Generate Feedback & Insights"}
-                </button>
-              </div>
-            </div>
-
-            {/* Right: Preview */}
-            <div style={{display:"flex",flexDirection:"column"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".04em",flex:1}}>Preview</div>
-                <button onClick={()=>{try{navigator.clipboard.writeText(buildPreview());toast2("Summary copied!");}catch{toast2("Copy failed");}}} style={{fontSize:11,padding:"6px 16px",background:"#0d9488",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontWeight:600}}>📋 Copy</button>
-              </div>
-              <div style={{flex:1,background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:10,padding:"14px 16px",fontSize:12,lineHeight:1.7,whiteSpace:"pre-wrap",overflowY:"auto",color:"#374151",fontFamily:"Calibri,Arial,sans-serif"}}>{buildPreview()}</div>
-              {aiInsight&&<div style={{marginTop:8}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#6b7280",marginBottom:4}}>AI Feedback (editable)</div>
-                <textarea value={aiInsight} onChange={e=>setAiInsight(e.target.value)} rows={5} style={{width:"100%",fontSize:12,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8,resize:"vertical",lineHeight:1.6,fontFamily:"inherit",boxSizing:"border-box"}}/>
-              </div>}
-            </div>
-          </div>
-        </Modal>;
-      })()}
+      {summaryModal&&<WeeklySummaryModalBuilder sm={summaryModal} onClose={()=>setSummaryModal(null)} roster={roster} callReviews={callReviews} currentUser={currentUser} claudeKey={claudeKey} toast2={toast2} getIcStats={getIcStats} getSchedHours={getSchedHours} getW={getW} avgProd={avgProd}/>}
       {reportTeamModal&&<Modal title={(reportTeamModal.evening?"End of Day Report":"Morning Report")+" — "+reportTeamModal.teamName} onClose={()=>setReportTeamModal(null)}
         footer={<><button onClick={()=>setReportTeamModal(null)} style={S.out}>Cancel</button><button onClick={()=>{
           const m=reportTeamModal;const mr=m.morning;const er=m.evening;const cfg=m.cfg;

@@ -3665,23 +3665,41 @@ function App(){
             <div style={{display:"flex",gap:8,marginBottom:16}}>
               <button onClick={()=>{
                 const v=vals;const byP=v.byPlatform||{};
-                const h=`<div style="font-family:Calibri,Arial,sans-serif;max-width:620px;color:#1f2937;">
-<h2 style="color:#0d9488;margin:0 0 4px;font-size:20px;">Monthly Cancellation Review</h2>
-<p style="color:#6b7280;font-size:12px;margin:0 0 16px;">March 2026</p>
-<table style="width:100%;border-collapse:separate;border-spacing:8px 0;margin-bottom:16px;"><tr>
-<td style="background:#f0fdf4;border-radius:8px;padding:14px 16px;text-align:center;"><div style="font-size:26px;font-weight:800;color:#111827;">${v.total}</div><div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;">Total</div></td>
-<td style="background:#fef2f2;border-radius:8px;padding:14px 16px;text-align:center;"><div style="font-size:26px;font-weight:800;color:#dc2626;">${v.outsideBAUCount}</div><div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;">Outside Policy</div></td>
-<td style="background:#f9fafb;border-radius:8px;padding:14px 16px;text-align:center;"><div style="font-size:26px;font-weight:800;color:#059669;">${v.bauCount}</div><div style="font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;">Within Policy</div></td>
+                const monthName=config.pk||"this month";
+                const userName=currentUser?.displayName||"";
+                const h=`<div style="font-family:Calibri,Arial,sans-serif;max-width:620px;color:#1f2937;font-size:14px;line-height:1.6;">
+<p>Hi Team,</p>
+<p>Please find below a summary of cancellations for <strong>${monthName}</strong>.</p>
+
+<hr style="border:none;border-top:2px solid #0d9488;margin:16px 0;"/>
+
+<table style="width:100%;border-collapse:separate;border-spacing:8px 0;margin-bottom:20px;"><tr>
+<td style="background:#f0fdf4;border-radius:8px;padding:16px;text-align:center;"><div style="font-size:28px;font-weight:800;color:#111827;">${v.total}</div><div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;margin-top:4px;">Total</div></td>
+<td style="background:#fef2f2;border-radius:8px;padding:16px;text-align:center;"><div style="font-size:28px;font-weight:800;color:#dc2626;">${v.outsideBAUCount}</div><div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;margin-top:4px;">Outside Policy</div></td>
+<td style="background:#f9fafb;border-radius:8px;padding:16px;text-align:center;"><div style="font-size:28px;font-weight:800;color:#059669;">${v.bauCount}</div><div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;margin-top:4px;">Within Policy</div></td>
 </tr></table>
-<p style="font-size:13px;margin:0 0 16px;"><strong>Customer:</strong> ${v.byType?.Customer||0} &nbsp;&nbsp; <strong>Owner:</strong> ${v.byType?.Owner||0} &nbsp;&nbsp; <strong>Office:</strong> ${v.byType?.Office||0}</p>
-<h3 style="color:#111827;font-size:14px;margin:16px 0 8px;border-bottom:2px solid #e5e7eb;padding-bottom:6px;">Platform Breakdown</h3>
-<table style="width:100%;border-collapse:collapse;font-size:13px;">
-<tr style="background:#f9fafb;"><th style="text-align:left;padding:8px 12px;font-size:11px;color:#6b7280;">PLATFORM</th><th style="text-align:center;padding:8px 12px;font-size:11px;color:#6b7280;">CANCELLATIONS</th><th style="text-align:center;padding:8px 12px;font-size:11px;color:#dc2626;">OUTSIDE POLICY</th></tr>
-${Object.entries(byP).sort((a,b)=>b[1].total-a[1].total).map(([p2,d])=>'<tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:8px 12px;font-weight:600;">'+p2+'</td><td style="padding:8px 12px;text-align:center;">'+d.total+'</td><td style="padding:8px 12px;text-align:center;color:'+(d.outside?'#dc2626':'#9ca3af')+';font-weight:'+(d.outside?'700':'400')+';">'+d.outside+'</td></tr>').join("")}
+
+<p style="font-size:13px;line-height:2.2;margin:0 0 16px;">
+<strong>Customer Cancellations:</strong> ${v.byType?.Customer||0}<br/>
+<strong>Owner Cancellations:</strong> ${v.byType?.Owner||0}<br/>
+<strong>Office Cancellations:</strong> ${v.byType?.Office||0}
+</p>
+
+<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;border-bottom:2px solid #e5e7eb;padding-bottom:6px;">Platform Breakdown</h3>
+<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px;">
+<tr style="background:#f9fafb;"><th style="text-align:left;padding:10px 14px;font-size:11px;color:#6b7280;font-weight:700;">PLATFORM</th><th style="text-align:center;padding:10px 14px;font-size:11px;color:#6b7280;font-weight:700;">CANCELLATIONS</th><th style="text-align:center;padding:10px 14px;font-size:11px;color:#dc2626;font-weight:700;">OUTSIDE POLICY</th></tr>
+${Object.entries(byP).sort((a,b)=>b[1].total-a[1].total).map(([p2,d])=>'<tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:10px 14px;font-weight:600;">'+p2+'</td><td style="padding:10px 14px;text-align:center;">'+d.total+'</td><td style="padding:10px 14px;text-align:center;color:'+(d.outside?'#dc2626':'#9ca3af')+';font-weight:'+(d.outside?'700':'400')+';">'+d.outside+'</td></tr>').join("")}
 </table>
-${v.outsideBAUCount>0?'<h3 style="color:#dc2626;font-size:14px;margin:16px 0 8px;border-bottom:2px solid #fecaca;padding-bottom:6px;">Outside Cancellation Policy \u2014 Key Reasons</h3><table style="width:100%;border-collapse:collapse;font-size:13px;">'+(v.topReasons||[]).map(([reason,count])=>'<tr style="border-bottom:1px solid #fef2f2;"><td style="padding:5px 12px;color:#dc2626;font-weight:700;width:40px;">'+count+'x</td><td style="padding:5px 12px;">'+reason+'</td></tr>').join("")+'</table>':""}
-${v.review_summary?'<h3 style="color:#111827;font-size:14px;margin:16px 0 8px;border-bottom:2px solid #e5e7eb;padding-bottom:6px;">Action Plan</h3><p style="font-size:13px;line-height:1.6;white-space:pre-wrap;">'+v.review_summary+'</p>':""}
-<p style="color:#9ca3af;font-size:10px;margin-top:16px;border-top:1px solid #e5e7eb;padding-top:6px;">Report generated ${new Date().toLocaleDateString("en-NZ",{day:"numeric",month:"long",year:"numeric"})}</p>
+
+${v.outsideBAUCount>0?'<h3 style="color:#dc2626;font-size:15px;margin:24px 0 10px;border-bottom:2px solid #fecaca;padding-bottom:6px;">Outside Cancellation Policy \u2014 Key Reasons</h3><table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px;">'+(v.topReasons||[]).map(([reason,count])=>'<tr style="border-bottom:1px solid #fef2f2;"><td style="padding:6px 14px;color:#dc2626;font-weight:700;width:40px;">'+count+'x</td><td style="padding:6px 14px;">'+reason+'</td></tr>').join("")+'</table>':""}
+
+${v.outside_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;border-bottom:2px solid #e5e7eb;padding-bottom:6px;">Summary of bookings outside of cancellation policy</h3><p style="font-size:13px;line-height:1.8;white-space:pre-wrap;">'+v.outside_summary+'</p>':""}
+
+${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;border-bottom:2px solid #e5e7eb;padding-bottom:6px;">What we plan on doing to reduce this</h3><p style="font-size:13px;line-height:1.8;white-space:pre-wrap;">'+v.review_summary+'</p>':""}
+
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0 12px;"/>
+<p>Kind regards,<br/><strong>${userName}</strong></p>
+<p style="color:#9ca3af;font-size:10px;margin-top:12px;">Report generated ${new Date().toLocaleDateString("en-NZ",{day:"numeric",month:"long",year:"numeric"})}</p>
 </div>`;
                 try{
                   const blob=new Blob([h],{type:"text/html"});
@@ -3709,8 +3727,12 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:14px;margin:16px 0 8px;bo
               )}
             </div>
             {/* By Type */}
-            <div style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:700,color:"#111827",marginBottom:6}}>By Cancellation Type</div>
-              <div style={{display:"flex",gap:8}}>{Object.entries(vals.byType||{}).map(([type,count])=><div key={type} style={{flex:1,background:"#f9fafb",borderRadius:8,padding:"8px 12px",textAlign:"center"}}><div style={{fontSize:18,fontWeight:700,color:"#111827"}}>{count}</div><div style={{fontSize:10,color:"#6b7280"}}>{type}</div></div>)}</div>
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:13,color:"#374151",lineHeight:2}}>
+                <div><strong>Customer Cancellations:</strong> {vals.byType?.Customer||0}</div>
+                <div><strong>Owner Cancellations:</strong> {vals.byType?.Owner||0}</div>
+                <div><strong>Office Cancellations:</strong> {vals.byType?.Office||0}</div>
+              </div>
             </div>
             {/* By Platform */}
             <div style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:700,color:"#111827",marginBottom:6}}>By Platform</div>
@@ -3725,10 +3747,16 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:14px;margin:16px 0 8px;bo
             {(vals.topReasons||[]).length>0&&<div style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:700,color:"#dc2626",marginBottom:6}}>Outside Cancellation Policy — Key Reasons</div>
               <div style={{background:"#fef2f2",borderRadius:10,padding:"10px 14px"}}>{vals.topReasons.map(([reason,count],i)=><div key={i} style={{display:"flex",gap:8,padding:"4px 0",borderBottom:i<vals.topReasons.length-1?"1px solid #fecaca":"none",fontSize:12}}><span style={{fontWeight:700,color:"#dc2626",minWidth:30}}>{count}x</span><span style={{color:"#374151"}}>{reason}</span></div>)}</div>
             </div>}
+            {/* Summary of outside policy bookings */}
+            <div style={{marginBottom:14}}><div style={{fontSize:12,fontWeight:700,color:"#111827",marginBottom:4}}>Summary of the majority of bookings outside of cancellation policy</div>
+              <textarea value={vals.outside_summary||""} onChange={e=>setVals(prev=>({...prev,outside_summary:e.target.value}))} rows={4} readOnly={viewOnly}
+                placeholder="Describe the common patterns, recurring reasons, and any notable bookings that fell outside of cancellation policy..."
+                style={{width:"100%",fontSize:12,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8,resize:"vertical",lineHeight:1.6,fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
             {/* Action plan */}
-            <div><div style={{fontSize:12,fontWeight:700,color:"#111827",marginBottom:4}}>Action Plan</div>
+            <div><div style={{fontSize:12,fontWeight:700,color:"#111827",marginBottom:4}}>What we plan on doing to reduce this</div>
               <textarea value={vals.review_summary||""} onChange={e=>setVals(prev=>({...prev,review_summary:e.target.value}))} rows={4} readOnly={viewOnly}
-                placeholder="What patterns do you see? What actions will we take to minimise outside-policy cancellations next month?"
+                placeholder="What steps will we take to minimise outside-policy cancellations next month? Any process changes, team training, or system improvements?"
                 style={{width:"100%",fontSize:12,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8,resize:"vertical",lineHeight:1.6,fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
             {vals.submittedBy&&<div style={{fontSize:10,color:"#9ca3af",marginTop:8}}>{"Submitted by "+vals.submittedBy+" · "+(vals.submittedAt?new Date(vals.submittedAt).toLocaleDateString("en-NZ",{day:"numeric",month:"short",year:"numeric"}):"")}</div>}

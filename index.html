@@ -7067,7 +7067,13 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         onClose={()=>{delete window["_cancelReview_"+(monRevModal.key||"cr")+"_"+(monRevModal.pk||"")];setMonRevModal(null);}}
         onSave={(vals)=>{
           const{key,teamName,pk}=monRevModal;
-          setData(d=>{const ex=d[teamName]?.[pk]||{};return{...d,[teamName]:{...(d[teamName]||{}),[pk]:{...ex,[key]:"yes",[key+"_data"]:vals,_at:nowNZ()}}};});
+          setData(d=>{
+            const ex=d[teamName]?.[pk]||{};
+            const newData={...d,[teamName]:{...(d[teamName]||{}),[pk]:{...ex,[key]:"yes",[key+"_data"]:vals,_at:nowNZ()}}};
+            // Direct save to Supabase immediately — don't wait for sync effect
+            dbSaveConfigKey("sys","app_data",{...newData,_r:roster,_tc:tc});
+            return newData;
+          });
           addAudit("Monthly Review Submitted",`${teamName} · ${pk} · ${key}`);
           toast2("Review submitted.");
           delete window["_cancelReview_"+(monRevModal.key||"cr")+"_"+(monRevModal.pk||"")];

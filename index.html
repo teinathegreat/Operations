@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.2.5";
+const APP_VERSION="1.2.6";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -1393,7 +1393,7 @@ function App(){
       setTimeout(()=>{
         saveEnabled.current=true;
         // Initialize _prev with current data so only future changes trigger syncs
-        _prev.current={cr:[...callReviews],ai:[...actionItems],td:[...todos],dr:[...dailyReports],mn:[...meetingNotes],ah:[...assessHistory],gl:[...goals],au:[...auditLog].slice(0,200),nf:[...notifications],aa:[...adminAlerts],pb:[...plannerBoards],pc:[...plannerCards]};
+        _prev.current={cr:[...callReviews],ai:[...actionItems],td:[...todos],dr:[...dailyReports],mn:[...meetingNotes],ah:[...assessHistory],gl:[...goals],au:[...auditLog].slice(0,200),nf:[...notifications],aa:[...adminAlerts],pb:[...plannerBoards],pc:[...plannerCards],ms:[...matrixSnapshots]};
         console.log("Save-backs enabled — Supabase data confirmed loaded");
       },1000);
     }
@@ -1417,7 +1417,11 @@ function App(){
     // Load accounts from config_rows (new) with bc_store fallback
     (async()=>{
       let saved=null;
-      try{const sysConf2=await dbLoadConfig("sys");if(sysConf2?.accounts)saved=sysConf2.accounts;}catch{}
+      try{const sysConf2=await dbLoadConfig("sys");if(sysConf2?.accounts){saved=sysConf2.accounts;
+        // Defensive: if accounts came back wrapped (shouldn't after dbLoadConfig unwraps,
+        // but legacy data from v1.2.0-1.2.5 may still slip through), unwrap once more.
+        if(saved&&!Array.isArray(saved)&&typeof saved==="object"&&Array.isArray(saved._v))saved=saved._v;
+      }}catch{}
       if(!saved||!Array.isArray(saved)||saved.length===0){
         try{saved=await sbLoad("bc_store","accounts");}catch{}
       }
@@ -1441,13 +1445,13 @@ function App(){
   // Direct fetch for todos, actions, notifications on relevant tabs
   useEffect(()=>{const url=sbUrlRef.current||sbUrl;const key=sbKeyRef.current||sbKey;if(!url||!key)return;const headers={"apikey":key,"Authorization":"Bearer "+key};const directFetch=async(sbKey2,setter)=>{try{const resp=await fetch(url+"/rest/v1/bc_store?key=eq."+sbKey2+"&select=value",{headers});if(!resp.ok)return;const d=await resp.json();if(d&&d[0]&&d[0].value){const parsed=JSON.parse(d[0].value);const prev=saveEnabled.current;saveEnabled.current=false;if(Array.isArray(parsed))setter(parsed);else if(typeof parsed==="object")setter(parsed);setTimeout(()=>{saveEnabled.current=prev;},300);}}catch(e){console.error("Refresh "+sbKey2+" failed:",e);}};const directFetchRows=async(table,setter)=>{const prev=saveEnabled.current;saveEnabled.current=false;const rows=await dbLoadAll(table);if(rows.length>0)setter(rows);setTimeout(()=>{saveEnabled.current=prev;},300);};if(tab==="to-do list"||tab==="home"){directFetchRows("todos",setTodos);directFetchRows("notif_entries",setNotifications);directFetchRows("alert_entries",setAdminAlerts);}if(tab==="action list"||tab==="home"){directFetchRows("action_items",setActionItems);}if(tab==="dashboard"||tab==="people"){
       // Fetch app_data from config_rows (not bc_store)
-      const fetchAppData=async()=>{const prev=saveEnabled.current;saveEnabled.current=false;try{const sysConf=await dbLoadConfig("sys");const d=sysConf?.app_data;if(d){const{_r,_tc,...rest}=d;if(_r)setRoster(migrateRoster(fixRosterNames(_r)));if(_tc)setTc(_tc);setData(rest);}}catch(e){console.error("Dashboard refresh failed:",e);}setTimeout(()=>{saveEnabled.current=prev;},300);};
+      const fetchAppData=async()=>{const prev=saveEnabled.current;saveEnabled.current=false;try{const sysConf=await dbLoadConfig("sys");let d=sysConf?.app_data;if(d&&!Array.isArray(d)&&typeof d==="object"&&"_v" in d&&"_origin" in d)d=d._v;if(d){const{_r,_tc,...rest}=d;if(_r)setRoster(migrateRoster(fixRosterNames(_r)));if(_tc)setTc(_tc);setData(rest);}}catch(e){console.error("Dashboard refresh failed:",e);}setTimeout(()=>{saveEnabled.current=prev;},300);};
       fetchAppData();const directFetchConfig=async(prefix,setter)=>{const prev2=saveEnabled.current;saveEnabled.current=false;const obj=await dbLoadConfig(prefix);if(obj)setter(obj);setTimeout(()=>{saveEnabled.current=prev2;},300);};directFetchConfig("ic",setIcData);directFetchConfig("sched",setSchedData);}},[tab]);
     useEffect(()=>{if(sbUrl&&sbKey)loadFromSupabase();},[]);
   // ── ROW-LEVEL SYNC EFFECTS ──────────────────────────────────────────
   // Detect changes to migrated arrays and sync only the differences to row tables.
   // Adds/updates → dbUpsert. Deletes → dbDeleteRow. Only runs after Supabase loaded.
-  const _prev=useRef({cr:[],ai:[],td:[],dr:[],mn:[],ah:[],gl:[],au:[],nf:[],aa:[],pb:[],pc:[]});
+  const _prev=useRef({cr:[],ai:[],td:[],dr:[],mn:[],ah:[],gl:[],au:[],nf:[],aa:[],pb:[],pc:[],ms:[]});
   const syncRows=(table,curr,prevKey)=>{
     if(!saveEnabled.current)return;
     const prev=_prev.current[prevKey];
@@ -1573,7 +1577,7 @@ function App(){
           }
         }catch(err){console.error("[Realtime config_rows] handler error",err,payload);}
       })
-      .subscribe((status)=>{if(status==="SUBSCRIBED")console.log("[Realtime] connected");else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")console.warn("[Realtime] status",status);});
+      .subscribe((status)=>{if(status==="SUBSCRIBED"){console.log("[Realtime] connected");}else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED"){console.warn("[Realtime] status:",status,"— will retry on next page load");}});
     return()=>{try{sbClient.removeChannel(channel);}catch(e){}};
   },[sbUrl,sbKey,saveEnabled]);
   useEffect(()=>{if(!selBoard&&plannerBoards.length>0)setSelBoard(plannerBoards[0].id);},[plannerBoards]);

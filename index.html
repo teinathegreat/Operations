@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.2.3";
+const APP_VERSION="1.2.5";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -749,6 +749,10 @@ function App(){
   const[actionItems,setActionItems]=useState(()=>{return[];});
 
   const[capabilities,setCapabilities]=useState(()=>{return{};});
+  const[matrixSnapshots,setMatrixSnapshots]=useState([]);
+  const[viewingSnapshot,setViewingSnapshot]=useState(null);
+  const[showSnapshotList,setShowSnapshotList]=useState(false);
+  const[cellEditor,setCellEditor]=useState(null);
 
   const[permissions,setPermissions]=useState(()=>{return{};});
   const[alertSnooze,setAlertSnooze]=useState(()=>{return{};});
@@ -1257,11 +1261,11 @@ function App(){
     setSbMsg("Loading from Supabase...");
     try{
       // Load row-level tables + config from config_rows
-      const[cr2,ai2,td2,dr2,mn2,ah2,gl2,au2,nf2,aa2,pb2,pc2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence,rc_tgt]=await Promise.all([
+      const[cr2,ai2,td2,dr2,mn2,ah2,gl2,au2,nf2,aa2,pb2,pc2,ms2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence,rc_tgt]=await Promise.all([
         dbLoadAll("call_reviews"),dbLoadAll("action_items"),dbLoadAll("todos"),dbLoadAll("daily_reports"),
         dbLoadAll("meeting_notes"),dbLoadAll("assess_history"),dbLoadAll("goals"),
         dbLoadAll("audit_entries"),dbLoadAll("notif_entries"),dbLoadAll("alert_entries"),
-        dbLoadAll("planner_boards"),dbLoadAll("planner_cards"),
+        dbLoadAll("planner_boards"),dbLoadAll("planner_cards"),dbLoadAll("matrix_snapshots"),
         dbLoadConfig("caps"),dbLoadConfig("capcrit"),dbLoadConfig("notes"),dbLoadConfig("onboard"),
         dbLoadConfig("perms"),dbLoadConfig("dailycfg"),dbLoadConfig("snooze"),
         dbLoadConfig("sched"),dbLoadConfig("ic"),dbLoadConfig("icppt"),
@@ -1328,7 +1332,7 @@ function App(){
       setCallReviews(f_cr);setActionItems(f_ai);setTodos(f_td);setDailyReports(f_dr);
       setMeetingNotes(f_mn);setAssessHistory(f_ah);setGoals(f_gl);
       setAuditLog(f_au);setNotifications(f_nf);setAdminAlerts(f_aa);
-      setPlannerBoards(pb2);setPlannerCards(pc2);
+      setPlannerBoards(pb2);setPlannerCards(pc2);if(Array.isArray(ms2))setMatrixSnapshots(ms2);
       if(f_caps&&typeof f_caps==="object")setCapabilities(f_caps);
       if(f_cc&&typeof f_cc==="object")setCapCriteria(f_cc);
       if(f_qn&&typeof f_qn==="object")setQuickNotes(f_qn);
@@ -1469,6 +1473,7 @@ function App(){
   useEffect(()=>syncRows("alert_entries",adminAlerts,"aa"),[adminAlerts]);
   useEffect(()=>syncRows("planner_boards",plannerBoards,"pb"),[plannerBoards]);
   useEffect(()=>syncRows("planner_cards",plannerCards,"pc"),[plannerCards]);
+  useEffect(()=>syncRows("matrix_snapshots",matrixSnapshots,"ms"),[matrixSnapshots]);
 
   // ── Pro Features: Realtime subscriptions ──────────────────────────────────
   // Subscribes to all row-level tables EXCEPT audit_entries when Supabase is configured
@@ -1514,6 +1519,7 @@ function App(){
       .on("postgres_changes",{event:"*",schema:"public",table:"alert_entries"},handle(setAdminAlerts,"aa"))
       .on("postgres_changes",{event:"*",schema:"public",table:"planner_boards"},handle(setPlannerBoards,"pb"))
       .on("postgres_changes",{event:"*",schema:"public",table:"planner_cards"},handle(setPlannerCards,"pc"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"matrix_snapshots"},handle(setMatrixSnapshots,"ms"))
       .on("postgres_changes",{event:"*",schema:"public",table:"config_rows"},(payload)=>{
         try{
           const ev=payload.eventType||payload.event;
@@ -4477,20 +4483,108 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
           </div>}
 
           {/* ═══ HEAT MAP ═══ */}
-          {capSubView==="heatmap"&&<div>
+          {capSubView==="heatmap"&&(()=>{
+            const matrixMems=allMems.filter(mn=>mn!==(roster[teamName]?.lead));
+            const matrixCaps=viewingSnapshot?(viewingSnapshot.capabilities||{}):capabilities;
+            const isReadonly=!!viewingSnapshot;
+            const teamSnaps=matrixSnapshots.filter(s=>s.teamName===teamName).sort((a,b)=>(b.capturedAt||"").localeCompare(a.capturedAt||""));
+
+            const saveSnapshot=()=>{
+              if(!isAdmin){toast2("Only admins can save snapshots.");return;}
+              const label=window.prompt("Name this snapshot (e.g. \"2nd Quarter 2026\", \"After training\", \"Pre-restructure\"):","");
+              if(label===null)return;
+              const trimmedLabel=(label||"").trim();
+              if(!trimmedLabel){toast2("Snapshot needs a name.");return;}
+              const snap={
+                id:"ms_"+Date.now()+"_"+Math.random().toString(36).slice(2,7),
+                teamName,
+                label:trimmedLabel,
+                capturedAt:new Date().toISOString(),
+                capturedBy:currentUser?.displayName||currentUser?.username||"",
+                memberCount:matrixMems.length,
+                skillCount:allSkills.length,
+                capabilities:JSON.parse(JSON.stringify(Object.fromEntries(matrixMems.map(mn=>[mn,capabilities[mn]||{}])))),
+                members:matrixMems,
+                skills:allSkills.map(s=>({name:s.name,section:s.section}))
+              };
+              setMatrixSnapshots(prev=>[snap,...prev]);
+              dbUpsert("matrix_snapshots",snap);
+              addAudit("Matrix Snapshot Saved",teamName+" — \""+trimmedLabel+"\" — "+matrixMems.length+" members, "+allSkills.length+" skills");
+              toast2("Snapshot \""+trimmedLabel+"\" saved ✓");
+            };
+            const renameSnapshot=(snap)=>{
+              if(!isAdmin)return;
+              const newLabel=window.prompt("Rename snapshot:",snap.label||"");
+              if(newLabel===null)return;
+              const trimmed=(newLabel||"").trim();
+              if(!trimmed){toast2("Name cannot be empty.");return;}
+              const updated={...snap,label:trimmed};
+              setMatrixSnapshots(prev=>prev.map(s=>s.id===snap.id?updated:s));
+              dbUpsert("matrix_snapshots",updated);
+              addAudit("Matrix Snapshot Renamed","ID "+snap.id+" → \""+trimmed+"\"");
+              toast2("Renamed.");
+              if(viewingSnapshot?.id===snap.id)setViewingSnapshot(updated);
+            };
+            const deleteSnapshot=(snapId)=>{
+              if(!isAdmin)return;
+              if(!window.confirm("Delete this snapshot? This cannot be undone."))return;
+              setMatrixSnapshots(prev=>prev.filter(s=>s.id!==snapId));
+              dbDeleteRow("matrix_snapshots",snapId);
+              addAudit("Matrix Snapshot Deleted","ID: "+snapId);
+              toast2("Snapshot deleted.");
+              if(viewingSnapshot?.id===snapId)setViewingSnapshot(null);
+            };
+            const setCellLevel=(mn,skName,lv)=>{
+              if(!isAdmin)return;
+              const existing=capabilities[mn]?.[skName]||{history:[]};
+              const updated={...existing,level:lv,manualOverride:true,reason:lv===0?"":"Set manually by admin",updatedAt:new Date().toISOString(),updatedBy:currentUser?.displayName||"Admin",history:[...(existing.history||[]),{level:lv,date:new Date().toISOString(),by:currentUser?.displayName||"Admin",manual:true}]};
+              setCapabilities(prev=>{const pd={...(prev[mn]||{})};pd[skName]=updated;const n={...prev,[mn]:pd};dbSaveConfigKey("caps",mn,pd);return n;});
+              addAudit("Capability Manually Set",mn+" — "+skName+" → Level "+lv);
+              setCellEditor(null);
+            };
+
+            return<div>
             <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
-              <div style={{padding:"14px 20px",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center"}}>
-                <span style={{fontWeight:700,fontSize:14,color:"#111827",flex:1}}>{"Team Matrix \u2014 "+teamName}</span>
+              <div style={{padding:"14px 20px",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",flexWrap:"wrap",gap:10}}>
+                <span style={{fontWeight:700,fontSize:14,color:"#111827",flex:1}}>{"Team Matrix — "+teamName+(isReadonly?" — \""+(viewingSnapshot.label||"Snapshot")+"\" ("+fmtNZDate(viewingSnapshot.capturedAt?.slice(0,10))+")":"")}</span>
+                {isReadonly&&<button onClick={()=>setViewingSnapshot(null)} style={{fontSize:11,padding:"6px 12px",background:"#f3f4f6",color:"#374151",border:"1px solid #d1d5db",borderRadius:6,cursor:"pointer",fontWeight:600}}>← Back to live</button>}
+                {!isReadonly&&isAdmin&&<button onClick={saveSnapshot} style={{fontSize:11,padding:"6px 12px",background:"#0d9488",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontWeight:600}}>Save Snapshot</button>}
+                {teamSnaps.length>0&&<button onClick={()=>setShowSnapshotList(s=>!s)} style={{fontSize:11,padding:"6px 12px",background:showSnapshotList?"#1f2937":"#fff",color:showSnapshotList?"#fff":"#374151",border:"1px solid #d1d5db",borderRadius:6,cursor:"pointer",fontWeight:600}}>{showSnapshotList?"Hide":"View"} History ({teamSnaps.length})</button>}
                 <div style={{display:"flex",gap:8,fontSize:10}}>{[{l:"0",c:"#e5e7eb"},{l:"1",c:"#93c5fd"},{l:"2",c:"#fbbf24"},{l:"3",c:"#34d399"}].map(x=><div key={x.l} style={{display:"flex",alignItems:"center",gap:3}}><div style={{width:14,height:14,borderRadius:3,background:x.c}}/><span style={{color:"#6b7280",fontWeight:600}}>{x.l}</span></div>)}</div>
               </div>
+              {showSnapshotList&&teamSnaps.length>0&&<div style={{padding:"10px 20px",background:"#f9fafb",borderBottom:"1px solid #e5e7eb",maxHeight:180,overflowY:"auto"}}>
+                <div style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".04em",marginBottom:6}}>Saved Snapshots</div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {teamSnaps.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:viewingSnapshot?.id===s.id?"#ecfdf5":"#fff",border:"1px solid "+(viewingSnapshot?.id===s.id?"#0d9488":"#e5e7eb"),borderRadius:6,fontSize:11}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+                        <span style={{fontWeight:700,color:"#0d9488",fontSize:12}}>{s.label||"(unnamed)"}</span>
+                        <span style={{fontSize:10,color:"#6b7280"}}>{fmtNZDate(s.capturedAt?.slice(0,10))+" · "+new Date(s.capturedAt).toLocaleTimeString("en-NZ",{hour:"2-digit",minute:"2-digit"})}</span>
+                      </div>
+                      <div style={{fontSize:10,color:"#9ca3af"}}>{"by "+(s.capturedBy||"unknown")+" · "+(s.memberCount||0)+" members · "+(s.skillCount||0)+" skills"}</div>
+                    </div>
+                    <button onClick={()=>setViewingSnapshot(viewingSnapshot?.id===s.id?null:s)} style={{fontSize:10,padding:"4px 10px",background:viewingSnapshot?.id===s.id?"#0d9488":"#fff",color:viewingSnapshot?.id===s.id?"#fff":"#0d9488",border:"1px solid #0d9488",borderRadius:4,cursor:"pointer",fontWeight:600}}>{viewingSnapshot?.id===s.id?"Viewing":"View"}</button>
+                    {isAdmin&&<button onClick={()=>renameSnapshot(s)} style={{fontSize:10,padding:"4px 8px",background:"transparent",color:"#6b7280",border:"1px solid #d1d5db",borderRadius:4,cursor:"pointer"}}>Rename</button>}
+                    {isAdmin&&<button onClick={()=>deleteSnapshot(s.id)} style={{fontSize:10,padding:"4px 8px",background:"transparent",color:"#dc2626",border:"1px solid #fecaca",borderRadius:4,cursor:"pointer"}}>Delete</button>}
+                  </div>)}
+                </div>
+              </div>}
               <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-                <thead><tr style={{background:"#f9fafb"}}><th style={{padding:"8px 12px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",position:"sticky",left:0,background:"#f9fafb",minWidth:140,zIndex:1}}>Skill</th>{allMems.map(mn=><th key={mn} style={{padding:"6px 4px",textAlign:"center",fontWeight:600,borderBottom:"2px solid #e5e7eb",minWidth:36,fontSize:10,writingMode:"vertical-lr",height:80}}>{mn.split(" ")[0]}</th>)}</tr></thead>
-                <tbody>{sections.map(sec=>{const sc=getSC(sec);return<React.Fragment key={sec}><tr><td colSpan={allMems.length+1} style={{padding:"8px 12px",fontWeight:800,fontSize:12,color:"#fff",background:sc.bg}}>{sec}</td></tr>
-                  {allSkills.filter(s=>s.section===sec).map(sk=><tr key={sk.name}><td style={{padding:"6px 12px",fontWeight:500,borderBottom:"1px solid #f3f4f6",position:"sticky",left:0,background:"#fff",zIndex:1}}>{sk.name}</td>{allMems.map(mn=>{const lv2=(capabilities[mn]?.[sk.name]?.level||0);const bg2=lv2===3?"#34d399":lv2===2?"#fbbf24":lv2===1?"#93c5fd":"#e5e7eb";return<td key={mn} style={{padding:"3px",borderBottom:"1px solid #f3f4f6",textAlign:"center"}}><div style={{width:24,height:24,borderRadius:5,background:bg2,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"center",color:lv2>=2?"#fff":"#9ca3af",fontSize:10,fontWeight:700}}>{lv2||""}</div></td>})}</tr>)}
+                <thead><tr style={{background:"#f9fafb"}}><th style={{padding:"8px 12px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",position:"sticky",left:0,background:"#f9fafb",minWidth:140,zIndex:1}}>Skill</th>{matrixMems.map(mn=><th key={mn} style={{padding:"6px 4px",textAlign:"center",fontWeight:600,borderBottom:"2px solid #e5e7eb",minWidth:36,fontSize:10,writingMode:"vertical-lr",height:80}}>{mn.split(" ")[0]}</th>)}</tr></thead>
+                <tbody>{sections.map(sec=>{const sc=getSC(sec);return<React.Fragment key={sec}><tr><td colSpan={matrixMems.length+1} style={{padding:"8px 12px",fontWeight:800,fontSize:12,color:"#fff",background:sc.bg}}>{sec}</td></tr>
+                  {allSkills.filter(s=>s.section===sec).map(sk=><tr key={sk.name}><td style={{padding:"6px 12px",fontWeight:500,borderBottom:"1px solid #f3f4f6",position:"sticky",left:0,background:"#fff",zIndex:1}}>{sk.name}</td>{matrixMems.map(mn=>{const cellData=matrixCaps[mn]?.[sk.name];const lv2=cellData?.level||0;const bg2=lv2===3?"#34d399":lv2===2?"#fbbf24":lv2===1?"#93c5fd":"#e5e7eb";const isManual=cellData?.manualOverride;const isEditingThis=cellEditor?.memberName===mn&&cellEditor?.skillName===sk.name;const canEdit=isAdmin&&!isReadonly;return<td key={mn} style={{padding:"3px",borderBottom:"1px solid #f3f4f6",textAlign:"center",position:"relative"}}>
+                    <div onClick={()=>{if(canEdit)setCellEditor(isEditingThis?null:{memberName:mn,skillName:sk.name});}} title={isManual?"Manually set by admin":(canEdit?"Click to set level":undefined)} style={{width:24,height:24,borderRadius:5,background:bg2,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"center",color:lv2>=2?"#fff":"#9ca3af",fontSize:10,fontWeight:700,cursor:canEdit?"pointer":"default",border:isManual?"2px solid #7c3aed":"none",boxSizing:"border-box",position:"relative"}}>{lv2||""}{isManual&&<span style={{position:"absolute",top:-4,right:-4,fontSize:8,color:"#7c3aed"}}>✱</span>}</div>
+                    {isEditingThis&&<div style={{position:"absolute",top:30,left:"50%",transform:"translateX(-50%)",background:"#fff",border:"1px solid #d1d5db",borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,0.15)",padding:6,zIndex:10,display:"flex",gap:4,whiteSpace:"nowrap"}}>
+                      {[0,1,2,3].map(lv=><button key={lv} onClick={()=>setCellLevel(mn,sk.name,lv)} style={{width:30,height:30,borderRadius:5,border:lv===lv2?"2px solid #0d9488":"1px solid #d1d5db",background:lv===3?"#34d399":lv===2?"#fbbf24":lv===1?"#93c5fd":"#f3f4f6",color:lv>=2?"#fff":"#374151",fontSize:11,fontWeight:700,cursor:"pointer"}}>{lv}</button>)}
+                      <button onClick={()=>setCellEditor(null)} style={{width:24,height:30,borderRadius:5,border:"1px solid #d1d5db",background:"#fff",color:"#6b7280",fontSize:14,cursor:"pointer"}}>×</button>
+                    </div>}
+                  </td>})}</tr>)}
                 </React.Fragment>})}</tbody>
               </table></div>
+              {isAdmin&&!isReadonly&&<div style={{padding:"10px 20px",borderTop:"1px solid #f3f4f6",background:"#fafafa",fontSize:10,color:"#6b7280"}}>✱ = manually set by admin (not from a test). Click any cell to set level 0–3.</div>}
             </div>
-          </div>}
+          </div>;
+          })()}
         </div>;
       })()}
       {profTab==="reviews"&&<div>{pdRevs.length===0?<div style={{background:"#fff",borderRadius:10,border:"1px solid #e5e7eb",padding:32,textAlign:"center",color:"#9ca3af",fontSize:13}}>{"No call reviews for "+name+" in "+lb2}</div>:<div style={{display:"grid",gap:10}}>{pdRevs.map(rev=>{const revCriteria=getReviewCriteria(rev.team||teamName);return<div key={rev.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e5e7eb",padding:"16px 20px"}}><div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}><span style={{fontSize:12,padding:"3px 10px",borderRadius:6,background:rev.passed?"#ecfdf5":"#fef2f2",color:rev.passed?"#059669":"#dc2626",fontWeight:700}}>{rev.passed?"Pass \u2713":"Needs Improvement \u2717"}</span><span style={{fontSize:13,color:"#6b7280"}}>{fmtNZDate(rev.date)}</span><span style={{fontSize:12,color:"#9ca3af"}}>{rev.score+"/"+revCriteria.length}</span>{rev.callType&&<span style={{fontSize:11,background:"#f3f4f6",borderRadius:6,padding:"2px 8px"}}>{rev.callType}</span>}</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:6,marginBottom:8}}>{revCriteria.map(cr=>{const v=rev.criteria?.[cr.id];return<div key={cr.id} style={{display:"flex",gap:6,alignItems:"center",fontSize:12,padding:"4px 8px",borderRadius:6,background:v===true?"#f0fdf4":v===false?"#fef2f2":"#f9fafb"}}><span style={{color:v===true?"#059669":"#dc2626",fontSize:11}}>{v===true?"\u2713":"\u2717"}</span><span style={{color:"#4b5563"}}>{cr.label}</span></div>})}</div>{rev.callSummary&&<div style={{fontSize:12,color:"#4b5563",padding:"8px 10px",background:"#f9fafb",borderRadius:6,marginBottom:6}}>{"Summary: "+rev.callSummary}</div>}{rev.notes&&<div style={{fontSize:12,color:"#6b7280",fontStyle:"italic"}}>{"Feedback: "+rev.notes}</div>}</div>})}</div>}</div>}

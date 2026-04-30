@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.2.7";
+const APP_VERSION="1.2.8";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -391,7 +391,7 @@ function OwnerWithdrawalsTab({data,setData,dbSaveConfigKey,addAudit,toast2,curre
     return()=>window.removeEventListener("message",onMsg);
   },[setData,dbSaveConfigKey,addAudit,toast2,currentUser]);
 
-  return<div style={{margin:"-24px -24px 0",height:"calc(100vh - 60px)",background:"#f0f4f8",position:"relative"}}>
+  return<div style={{margin:0,height:"100vh",background:"#f0f4f8",position:"relative"}}>
     {data&&data.uploadedAt&&<div style={{position:"absolute",top:12,right:24,zIndex:5,background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:"6px 12px",fontSize:11,color:"#6b7280",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>Last upload: <strong style={{color:"#0d9488"}}>{new Date(data.uploadedAt).toLocaleString("en-NZ",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</strong> by {data.uploadedBy} · {data.count} records</div>}
     <iframe ref={iframeRef} srcDoc={TRACKER_HTML} title="Owner Withdrawals Tracker" style={{width:"100%",height:"100%",border:"none",display:"block"}}/>
   </div>;
@@ -5519,7 +5519,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             <button onClick={()=>setTab("audit")} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"4px 14px",fontSize:12,cursor:"pointer",marginLeft:4,fontWeight:500}}>Review</button>
           </div>
         )}
-        <div key={tab} className="bc-page-fade" style={{maxWidth:tab==="planner"?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":"24px 28px"}}>
+        <div key={tab} className="bc-page-fade" style={{maxWidth:(tab==="planner"||tab==="owner withdrawals")?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":(tab==="owner withdrawals"?"0":"24px 28px")}}>
 
         {/* Profile View takes over main content */}
         {tab==="dashboard"&&isAdmin&&(

@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.4.1";
+const APP_VERSION="1.4.2";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -410,8 +410,16 @@ function OwnerWithdrawalsTab({data,setData,dbSaveConfigKey,addAudit,toast2,curre
         "- A narrative explanation of what happened and why they withdrew, drawing from Notes, Detailed Reason, Service Reflection, and Retention Call Summary. Be as specific as the details allow — name root causes, mention competitor moves, pricing concerns, service issues, life events, etc.",
         "- If the record has no underlying details (all of Notes, Detailed Reason, Service Reflection, and Retention Call Summary are empty), write exactly: \"No details to evaluate.\" Do not speculate.",
         "",
-        "FORMATTING:",
-        "Output valid HTML using only these tags: h2, h3, h4, p, ul, ol, li, strong, em, br, hr, blockquote. Use h2 for each of the three top-level sections (you may include the ═══ markers in the heading text or omit them — your choice for readability). Use h3 for subsections (e.g. each Main Reason group in Section 3). Use h4 for individual booking entries. Wrap Property IDs in <strong> tags. Do NOT use markdown. Do NOT include <html>, <body>, <head>, <style>, or <script> tags.",
+        "FORMATTING REQUIREMENTS:",
+        "Output clean, well-structured HTML using ONLY these tags: h2, h3, h4, p, ul, ol, li, strong, em, br, hr, blockquote.",
+        "- Use h2 for the three TOP-LEVEL section headings ONLY (Executive Summary, Recommendations, Per-Booking Analysis). Do NOT include the ═══ markers in your output.",
+        "- Use h3 for sub-sections within each top-level section (e.g. \"Top 3 Underlying Causes\", \"Priority Recommendations\", or each Main Reason group in Section 3).",
+        "- Use h4 for INDIVIDUAL booking entries in Section 3 (one h4 per booking, with the booking narrative in a <p> tag right after).",
+        "- Use <ul> with <li> for bullet lists. Use <ol> for numbered/prioritised lists. Each list item should be ONE clear point \u2014 do not stuff multiple ideas into one bullet.",
+        "- Wrap ALL Property IDs and dollar values in <strong> tags so they stand out for traceability.",
+        "- Each paragraph should be 2-4 sentences maximum. If you need more, break it into multiple paragraphs or convert to a list.",
+        "- Do NOT use markdown. Do NOT include <html>, <body>, <head>, <style>, or <script> tags.",
+        "- Keep the output visually scannable: lists, short paragraphs, clear headings.",
         "",
         "Today is "+today+".",
         "",

@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.4.9";
+const APP_VERSION="1.5.0";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -269,6 +269,15 @@ const NAME_CORRECTIONS={"Gay Barclay":"Gayle Barclay","Loranna De Carvalho":"Lor
    Intercom CSVs have inconsistencies like "Drew paogofie" (lowercase) or
    "Ami Bennett - Howden" (extra spaces around hyphen). This matches them
    to the roster's canonical names so per-agent data buckets line up correctly. */
+/* Format seconds as HH:MM (e.g. 3725 → "01:02"). Returns "—" for 0/null/undefined. */
+const fmtHHMM=(secs)=>{
+  if(!secs||secs<=0)return "—";
+  const totalMin=Math.round(secs/60);
+  const h=Math.floor(totalMin/60);
+  const m=totalMin%60;
+  return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
+};
+
 const _normName=(s)=>String(s||"").toLowerCase().replace(/\s+/g," ").replace(/\s*-\s*/g,"-").trim();
 const normalizeAgentToRoster=(rawName,roster)=>{
   if(!rawName)return rawName;

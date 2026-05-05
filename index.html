@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.6.5";
+const APP_VERSION="1.6.6";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -3249,7 +3249,7 @@ function App(){
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{fontSize:15,fontWeight:isWinner?800:600,color:isWinner?s.color:(myVal?"#111827":"#d1d5db"),fontVariantNumeric:"tabular-nums"}}>{fmtStatVal(myVal,s.key)}</span>
-                  {isWinner&&<span style={{fontSize:13}}>{"í ¼í¿†"}</span>}
+                  {isWinner&&<span style={{fontSize:13}}>{"ğŸ†"}</span>}
                   {isTie&&<span style={{fontSize:10,color:"#9ca3af"}}>=</span>}
                 </div>
               </div>
@@ -3287,7 +3287,7 @@ function App(){
                       borderRadius:12,padding:"18px 20px",position:"relative",
                       boxShadow:overallWinner==="a"?"0 4px 16px rgba(13,148,136,.12)":"0 1px 3px rgba(0,0,0,.04)"
                     }}>
-                      {overallWinner==="a"&&<div style={{position:"absolute",top:-12,right:14,background:"#0d9488",color:"#fff",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:10,letterSpacing:".05em",textTransform:"uppercase"}}>{"í ¼í¿†"} Leading</div>}
+                      {overallWinner==="a"&&<div style={{position:"absolute",top:-12,right:14,background:"#0d9488",color:"#fff",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:10,letterSpacing:".05em",textTransform:"uppercase"}}>{"ğŸ†"} Leading</div>}
                       {/* Header */}
                       <div style={{paddingBottom:12,borderBottom:"1px solid #f3f4f6",marginBottom:10}}>
                         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
@@ -3314,7 +3314,7 @@ function App(){
                       borderRadius:12,padding:"18px 20px",position:"relative",
                       boxShadow:overallWinner==="b"?"0 4px 16px rgba(13,148,136,.12)":"0 1px 3px rgba(0,0,0,.04)"
                     }}>
-                      {overallWinner==="b"&&<div style={{position:"absolute",top:-12,right:14,background:"#0d9488",color:"#fff",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:10,letterSpacing:".05em",textTransform:"uppercase"}}>{"í ¼í¿†"} Leading</div>}
+                      {overallWinner==="b"&&<div style={{position:"absolute",top:-12,right:14,background:"#0d9488",color:"#fff",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:10,letterSpacing:".05em",textTransform:"uppercase"}}>{"ğŸ†"} Leading</div>}
                       <div style={{paddingBottom:12,borderBottom:"1px solid #f3f4f6",marginBottom:10}}>
                         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                           <div style={{width:8,height:8,borderRadius:50,background:tB.color}}/>

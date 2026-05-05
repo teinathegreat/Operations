@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.6.3";
+const APP_VERSION="1.6.4";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -3077,6 +3077,9 @@ function App(){
 
   function LeaderboardTab(){
     const[lbStat,setLbStat]=React.useState("closed");
+    const[compareMode,setCompareMode]=React.useState(false);
+    const[compareA,setCompareA]=React.useState("");
+    const[compareB,setCompareB]=React.useState("");
     const STAT_DEFS=[
       {key:"closed",label:"Tickets Closed",icon:"\ud83c\udfab",color:"#0d9488"},
       {key:"emails",label:"Emails",icon:"\u2709\ufe0f",color:"#2563eb"},
@@ -3140,8 +3143,18 @@ function App(){
         <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
           <div>
             <div style={{fontSize:22,fontWeight:800,color:"#111827",letterSpacing:"-.02em"}}>{"\ud83c\udfc6"} Leaderboard</div>
-            <div style={{fontSize:12,color:"#6b7280",marginTop:2}}>Ranking {filteredPeople.length} {filteredPeople.length===1?"person":"people"} by {sd.label.toLowerCase()} \u00b7 {lb2}</div>
+            <div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{compareMode?"Compare two people side-by-side · "+lb2:"Ranking "+filteredPeople.length+" "+(filteredPeople.length===1?"person":"people")+" by "+sd.label.toLowerCase()+" · "+lb2}</div>
           </div>
+          <button onClick={()=>setCompareMode(v=>!v)} style={{
+            padding:"8px 14px",borderRadius:8,
+            border:"1px solid "+(compareMode?"#0d9488":"#e5e7eb"),
+            background:compareMode?"#0d9488":"#fff",
+            color:compareMode?"#fff":"#374151",
+            fontSize:13,fontWeight:600,cursor:"pointer",
+            display:"flex",alignItems:"center",gap:6,transition:"all .15s"
+          }}>
+            <span>{compareMode?"← Back to Leaderboard":"⚖️ Compare 2 People"}</span>
+          </button>
         </div>
 
         {/* Stat selector pills */}
@@ -3162,8 +3175,101 @@ function App(){
           </div>
         </div>
 
+        {/* Compare view */}
+        {compareMode&&(()=>{
+          const ranked=rows;
+          const optsList=allPeople.map(p=>p.name).sort();
+          const findPerson=(name)=>{
+            const r=ranked.find(x=>x.name===name);
+            const team=allPeople.find(p=>p.name===name)?.team||"";
+            return{name,team,rank:r?.rank||null,value:r?.value||0};
+          };
+          const personA=compareA?findPerson(compareA):null;
+          const personB=compareB?findPerson(compareB):null;
+          const tA=personA?(tc[personA.team]||{color:"#6b7280"}):null;
+          const tB=personB?(tc[personB.team]||{color:"#6b7280"}):null;
+          const winner=(personA&&personB&&personA.value!==personB.value)?(personA.value>personB.value?"a":"b"):null;
+          const diffVal=(personA&&personB)?Math.abs(personA.value-personB.value):0;
+          const lowerVal=(personA&&personB)?Math.min(personA.value,personB.value):0;
+          const diffPct=lowerVal>0?Math.round(diffVal/lowerVal*100):null;
+          return(
+            <div>
+              {/* Person selectors */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:14,marginBottom:14,alignItems:"center"}}>
+                <select value={compareA} onChange={e=>setCompareA(e.target.value)} style={{padding:"10px 14px",borderRadius:8,border:"2px solid "+(compareA?"#0d9488":"#e5e7eb"),background:"#fff",fontSize:14,fontWeight:600,color:"#111827",cursor:"pointer"}}>
+                  <option value="">Select Person A...</option>
+                  {optsList.filter(n=>n!==compareB).map(n=><option key={n} value={n}>{n}</option>)}
+                </select>
+                <div style={{fontSize:18,fontWeight:800,color:"#9ca3af",letterSpacing:".1em"}}>VS</div>
+                <select value={compareB} onChange={e=>setCompareB(e.target.value)} style={{padding:"10px 14px",borderRadius:8,border:"2px solid "+(compareB?"#0d9488":"#e5e7eb"),background:"#fff",fontSize:14,fontWeight:600,color:"#111827",cursor:"pointer"}}>
+                  <option value="">Select Person B...</option>
+                  {optsList.filter(n=>n!==compareA).map(n=><option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              {(!compareA||!compareB)?(
+                <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:48,textAlign:"center",color:"#9ca3af"}}>
+                  <div style={{fontSize:32,marginBottom:8}}>{"⚖️"}</div>
+                  <div style={{fontSize:14,fontWeight:600,color:"#6b7280"}}>Pick two people to compare</div>
+                  <div style={{fontSize:12,marginTop:4}}>Comparing {sd.label.toLowerCase()} for {lb2}</div>
+                </div>
+              ):(
+                <div>
+                  {/* Side-by-side cards */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+                    {/* Person A */}
+                    <div style={{
+                      background:winner==="a"?"linear-gradient(135deg,#f0fdfa,#fff)":"#fff",
+                      border:"2px solid "+(winner==="a"?"#0d9488":"#e5e7eb"),
+                      borderRadius:12,padding:"20px 22px",position:"relative",
+                      boxShadow:winner==="a"?"0 4px 16px rgba(13,148,136,.12)":"0 1px 3px rgba(0,0,0,.04)"
+                    }}>
+                      {winner==="a"&&<div style={{position:"absolute",top:-12,right:14,background:"#0d9488",color:"#fff",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:10,letterSpacing:".05em",textTransform:"uppercase"}}>{"🏆"} Leading</div>}
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                        <div style={{width:8,height:8,borderRadius:50,background:tA.color}}/>
+                        <div style={{fontSize:11,color:"#6b7280",fontWeight:600}}>{personA.team}</div>
+                      </div>
+                      <div onClick={()=>setProfilePerson({id:personA.name,name:personA.name,teamName:personA.team})} style={{fontSize:18,fontWeight:800,color:"#111827",cursor:"pointer",letterSpacing:"-.02em",marginBottom:12}}>{personA.name}</div>
+                      <div style={{fontSize:10,color:"#9ca3af",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{sd.label}</div>
+                      <div style={{fontSize:42,fontWeight:800,color:sd.color,letterSpacing:"-.03em",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{fmtVal(personA.value)}</div>
+                      {personA.rank&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f3f4f6",fontSize:12,color:"#6b7280"}}>Leaderboard rank: <strong style={{color:"#111827",fontVariantNumeric:"tabular-nums"}}>#{personA.rank}</strong> of {ranked.length}</div>}
+                    </div>
+                    {/* Person B */}
+                    <div style={{
+                      background:winner==="b"?"linear-gradient(135deg,#f0fdfa,#fff)":"#fff",
+                      border:"2px solid "+(winner==="b"?"#0d9488":"#e5e7eb"),
+                      borderRadius:12,padding:"20px 22px",position:"relative",
+                      boxShadow:winner==="b"?"0 4px 16px rgba(13,148,136,.12)":"0 1px 3px rgba(0,0,0,.04)"
+                    }}>
+                      {winner==="b"&&<div style={{position:"absolute",top:-12,right:14,background:"#0d9488",color:"#fff",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:10,letterSpacing:".05em",textTransform:"uppercase"}}>{"🏆"} Leading</div>}
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                        <div style={{width:8,height:8,borderRadius:50,background:tB.color}}/>
+                        <div style={{fontSize:11,color:"#6b7280",fontWeight:600}}>{personB.team}</div>
+                      </div>
+                      <div onClick={()=>setProfilePerson({id:personB.name,name:personB.name,teamName:personB.team})} style={{fontSize:18,fontWeight:800,color:"#111827",cursor:"pointer",letterSpacing:"-.02em",marginBottom:12}}>{personB.name}</div>
+                      <div style={{fontSize:10,color:"#9ca3af",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{sd.label}</div>
+                      <div style={{fontSize:42,fontWeight:800,color:sd.color,letterSpacing:"-.03em",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{fmtVal(personB.value)}</div>
+                      {personB.rank&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f3f4f6",fontSize:12,color:"#6b7280"}}>Leaderboard rank: <strong style={{color:"#111827",fontVariantNumeric:"tabular-nums"}}>#{personB.rank}</strong> of {ranked.length}</div>}
+                    </div>
+                  </div>
+                  {/* Difference summary */}
+                  <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+                    <div style={{fontSize:12,color:"#6b7280"}}>
+                      {winner?(
+                        <span><strong style={{color:"#111827"}}>{(winner==="a"?personA.name:personB.name)}</strong> leads by <strong style={{color:sd.color}}>{fmtVal(diffVal)}</strong>{diffPct!==null&&<span> ({diffPct}% more)</span>}</span>
+                      ):(
+                        <span>Both have the same {sd.label.toLowerCase()}</span>
+                      )}
+                    </div>
+                    {personA.rank&&personB.rank&&<div style={{fontSize:12,color:"#6b7280"}}>Rank difference: <strong style={{color:"#111827"}}>{Math.abs(personA.rank-personB.rank)}</strong> {Math.abs(personA.rank-personB.rank)===1?"position":"positions"}</div>}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Leaderboard list */}
-        {haveData.length===0?(
+        {!compareMode&&(haveData.length===0?(
           <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:48,textAlign:"center",color:"#9ca3af"}}>
             <div style={{fontSize:32,marginBottom:8}}>{"\ud83d\udcca"}</div>
             <div style={{fontSize:14,fontWeight:600,color:"#6b7280"}}>No data for {sd.label.toLowerCase()} in {lb2}</div>
@@ -3224,7 +3330,7 @@ function App(){
               </div>
             )}
           </div>
-        )}
+        ))}
       </div>
     );
   }

@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.6.2";
+const APP_VERSION="1.6.3";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -5669,7 +5669,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",flexWrap:"wrap"}}>
             {(()=>{
               const onSched=tab==="schedule";
-              const onRep=tab==="reports";
+              const onRep=tab==="reports"||tab==="leaderboard";
               const onCR=tab==="call reviews";
               const onSet=tab==="home"||tab==="to-do list"||tab==="daily"||tab==="daily config"||tab==="settings"||tab==="export"||tab==="accounts"||tab==="audit"||tab==="weights"||tab==="kpi targets"||tab==="capabilities"||tab==="quick references"||tab==="review criteria";
               const dimAll=onSet;

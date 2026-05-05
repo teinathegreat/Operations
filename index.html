@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.6.1";
+const APP_VERSION="1.6.2";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -3139,7 +3139,7 @@ function App(){
         {/* Header */}
         <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
           <div>
-            <div style={{fontSize:22,fontWeight:800,color:"#111827",letterSpacing:"-.02em"}}>\ud83c\udfc6 Leaderboard</div>
+            <div style={{fontSize:22,fontWeight:800,color:"#111827",letterSpacing:"-.02em"}}>{"\ud83c\udfc6"} Leaderboard</div>
             <div style={{fontSize:12,color:"#6b7280",marginTop:2}}>Ranking {filteredPeople.length} {filteredPeople.length===1?"person":"people"} by {sd.label.toLowerCase()} \u00b7 {lb2}</div>
           </div>
         </div>
@@ -3165,7 +3165,7 @@ function App(){
         {/* Leaderboard list */}
         {haveData.length===0?(
           <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:48,textAlign:"center",color:"#9ca3af"}}>
-            <div style={{fontSize:32,marginBottom:8}}>\ud83d\udcca</div>
+            <div style={{fontSize:32,marginBottom:8}}>{"\ud83d\udcca"}</div>
             <div style={{fontSize:14,fontWeight:600,color:"#6b7280"}}>No data for {sd.label.toLowerCase()} in {lb2}</div>
             <div style={{fontSize:12,marginTop:4}}>Try a different period or stat.</div>
           </div>

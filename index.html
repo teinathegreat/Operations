@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.4.6";
+const APP_VERSION="1.4.9";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -405,7 +405,7 @@ function IntercomDropzone({isAdmin,icFileRef,handleIcFile,toast2,icData}){
           or <span style={{color:"#0d9488",fontWeight:600}}>click to browse</span> &nbsp;·&nbsp; CSV files only &nbsp;·&nbsp; auto-detects report type
         </div>
         <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",fontSize:11,color:"#6b7280"}}>
-          {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate"].map(t=>(
+          {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate","Activity Time"].map(t=>(
             <span key={t} style={{background:"#f3f4f6",borderRadius:4,padding:"2px 8px"}}>{t}</span>
           ))}
         </div>
@@ -2644,14 +2644,22 @@ function App(){
             if(!twData[key])twData[key]={tName,wkN,frs:[],lcs:[]};
             if(!isNaN(adjFr)&&adjFr>0)twData[key].frs.push(adjFr);
             if(!isNaN(adjLc)&&adjLc>0)twData[key].lcs.push(adjLc);
-            // Agent-level (use Closed by, fallback to Assigned to)
-            const rawAgent=(iClosedBy>=0?row[iClosedBy]:"")||(iAssigned>=0?row[iAssigned]:"")||"";const agent=rawAgent?normalizeAgentToRoster(rawAgent,roster):"";
-            if(agent&&agent!==tName){
+            // Agent-level — credit BOTH the assignee and the closer (if different).
+            // Why both: an assignee owns the first-reply time; a closer owns the close time.
+            // Many tickets are handed off mid-flow, so crediting only one loses information.
+            const rawClosedBy=(iClosedBy>=0?row[iClosedBy]:"")||"";
+            const rawAssigned=(iAssigned>=0?row[iAssigned]:"")||"";
+            const closedByAgent=rawClosedBy?normalizeAgentToRoster(rawClosedBy,roster):"";
+            const assignedAgent=rawAssigned?normalizeAgentToRoster(rawAssigned,roster):"";
+            const agentSet=new Set();
+            if(closedByAgent&&closedByAgent!==tName)agentSet.add(closedByAgent);
+            if(assignedAgent&&assignedAgent!==tName)agentSet.add(assignedAgent);
+            agentSet.forEach(agent=>{
               const aKey=agent+"__"+wkN;
               if(!agentData[aKey])agentData[aKey]={agent,team:tName,wkN,frs:[],lcs:[]};
               if(!isNaN(adjFr)&&adjFr>0)agentData[aKey].frs.push(adjFr);
               if(!isNaN(adjLc)&&adjLc>0)agentData[aKey].lcs.push(adjLc);
-            }
+            });
           }
 
           const avgArr=(arr)=>arr.length?arr.reduce((s,v)=>s+v,0)/arr.length:null;
@@ -2810,7 +2818,8 @@ function App(){
 
         // ── TYPE E: Total Calls per person ──────────────────────────────
         else if(firstLine.includes("Total Calls")||firstLine.toLowerCase().includes("ops_total_calls")||
-                (text.includes("Total Calls")&&!text.includes("Conversation ID")&&!text.includes("Replies by"))){
+                (text.includes("Total Calls")&&!text.includes("Conversation ID")&&!text.includes("Replies by"))||
+                (text.includes("Calls Answered")&&!text.includes("Conversation ID")&&!text.includes("Percentage of Calls")&&!text.includes("Replies by"))){
           const rows=text.split(/\r?\n/).filter(l=>l.trim());
           const parseRow3=(line)=>{const vals=[];let cur="";let inq=false;for(const ch of line){if(ch==='"'){inq=!inq;}else if(ch===','&&!inq){vals.push(cur.trim().replace(/^"|"$/g,""));cur="";}else cur+=ch;}vals.push(cur.trim().replace(/^"|"$/g,""));return vals;};
           const hdrs=parseRow3(rows[0]);
@@ -2829,7 +2838,8 @@ function App(){
           // Skip row 0 (header), row 1 might be "Total Calls" sub-header
           let dataStart=1;
           const firstData=parseRow3(rows[1]||"");
-          if((firstData[1]||"").toLowerCase().includes("total calls"))dataStart=2;
+          const _subLbl=(firstData[1]||"").toLowerCase();
+          if(_subLbl.includes("total calls")||_subLbl.includes("calls answered"))dataStart=2;
 
           const newIc={};
           let agentCount=0;
@@ -2894,7 +2904,7 @@ function App(){
               if(Object.keys(upd).length)autoFillKPIs(tname,wkN,upd);
             });
           });
-          toast2(`Total Calls imported: ${agentCount} agents. Call points added to productivity.`);
+          toast2(`Calls imported: ${agentCount} agents. Call points added to productivity.`);
         }
 
         // ── TYPE F: Answer Rate (Guest Support or Owner Support) ─────────
@@ -3152,6 +3162,7 @@ function App(){
                               <td style={{padding:"8px 12px",textAlign:"center",color:stats?.calls?"#111827":"#d1d5db"}}>{stats?.calls??("—")}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",color:stats?.medReply?"#111827":"#d1d5db"}}>{stats?.medReply?Math.round(stats.medReply*100)/100+"h":"—"}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",color:stats?.medClose?"#111827":"#d1d5db"}}>{stats?.medClose?Math.round(stats.medClose*100)/100+"h":"—"}</td>
+                              <td style={{padding:"8px 12px",textAlign:"center",color:stats?.activity?.["Phone Available"]?"#111827":"#d1d5db",fontVariantNumeric:"tabular-nums"}}>{fmtHHMM(stats?.activity?.["Phone Available"])}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",color:hrs?"#111827":"#d1d5db"}}>{hrs?hrs+"h":"—"}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",fontWeight:prodScore?600:400,color:prodScore?"#111827":"#d1d5db"}}>{prodScore??("—")}</td>
                             </tr>
@@ -4509,6 +4520,65 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             </div>}
           </div>
         </div>
+        {/* Activity Time breakdown — daily HH:MM averages */}
+        {(()=>{
+          const act=stats?.activity;
+          if(!act||Object.keys(act).length===0)return null;
+          let workingDays=5;
+          if(pt==="month"){
+            const[mn,yr]=mo.split(" ");
+            const monthIdx=["January","February","March","April","May","June","July","August","September","October","November","December"].indexOf(mn);
+            if(monthIdx>=0&&yr){
+              const lastDay=new Date(parseInt(yr),monthIdx+1,0).getDate();
+              workingDays=0;
+              for(let d=1;d<=lastDay;d++){const day=new Date(parseInt(yr),monthIdx,d).getDay();if(day!==0&&day!==6)workingDays++;}
+            }
+          }
+          const sorted=Object.entries(act).sort((a,b)=>b[1]-a[1]);
+          const totalSecs=sorted.reduce((s,[,v])=>s+v,0);
+          const productive=new Set(["Phone Available","Emails","Workflows","Outbound Calls","Wrapping Up","Re-Q","Project","Meeting","Training"]);
+          const nonProd=new Set(["Break","Lunch","Personal Time"]);
+          const prodSecs=sorted.filter(([k])=>productive.has(k)).reduce((s,[,v])=>s+v,0);
+          const offSecs=sorted.filter(([k])=>nonProd.has(k)).reduce((s,[,v])=>s+v,0);
+          const colors={"Phone Available":"#0d9488","Emails":"#0ea5e9","Workflows":"#6366f1","Outbound Calls":"#8b5cf6","Wrapping Up":"#06b6d4","Meeting":"#a855f7","Training":"#ec4899","Project":"#14b8a6","Re-Q":"#3b82f6","Break":"#f59e0b","Lunch":"#f97316","Personal Time":"#ef4444"};
+          return(
+            <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"18px 20px",marginBottom:24}}>
+              <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14,color:"#111827"}}>Activity Time</div>
+                  <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>Daily averages across {workingDays} working day{workingDays===1?"":"s"} ({lb2})</div>
+                </div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                  <div style={{background:"#f0fdfa",border:"1px solid #99f6e4",borderRadius:8,padding:"6px 12px"}}>
+                    <div style={{fontSize:10,color:"#0f766e",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em"}}>Productive / day</div>
+                    <div style={{fontSize:18,fontWeight:800,color:"#0d9488",fontVariantNumeric:"tabular-nums",marginTop:2}}>{fmtHHMM(prodSecs/workingDays)}</div>
+                  </div>
+                  <div style={{background:"#fefce8",border:"1px solid #fde68a",borderRadius:8,padding:"6px 12px"}}>
+                    <div style={{fontSize:10,color:"#854d0e",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em"}}>Off-phone / day</div>
+                    <div style={{fontSize:18,fontWeight:800,color:"#b45309",fontVariantNumeric:"tabular-nums",marginTop:2}}>{fmtHHMM(offSecs/workingDays)}</div>
+                  </div>
+                </div>
+              </div>
+              <div style={{display:"flex",height:10,borderRadius:5,overflow:"hidden",marginBottom:14,background:"#f3f4f6"}}>
+                {sorted.map(([k,v])=>{const pct=totalSecs?(v/totalSecs*100):0;return<div key={k} style={{width:pct+"%",background:colors[k]||"#9ca3af"}} title={k+": "+fmtHHMM(v/workingDays)+"/day"}/>;})}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:8}}>
+                {sorted.map(([k,v])=>{
+                  const dailyAvg=v/workingDays;
+                  return(
+                    <div key={k} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"#f9fafb",borderRadius:8,border:"1px solid #f3f4f6"}}>
+                      <div style={{width:8,height:8,borderRadius:2,background:colors[k]||"#9ca3af",flexShrink:0}}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:11,color:"#6b7280",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{k}</div>
+                        <div style={{fontSize:14,fontWeight:700,color:"#111827",fontVariantNumeric:"tabular-nums"}}>{fmtHHMM(dailyAvg)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>}
       {profTab==="capabilities"&&(()=>{
         const skills=TEAM_SKILLS[teamName]||[];

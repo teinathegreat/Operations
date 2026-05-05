@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.4.3";
+const APP_VERSION="1.4.4";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -1249,8 +1249,22 @@ function App(){
   const dbSaveConfigAll=async(prefix,obj)=>{
     if(!obj||typeof obj!=="object")return;
     const entries=Object.entries(obj);
-    const rows=entries.map(([k,v])=>{const wrapped={_v:v,_origin:clientIdRef.current,_editedBy:currentUserRef.current?.username||currentUserRef.current?.displayName||"",_editedAt:new Date().toISOString()};return{id:prefix+":"+k,data:wrapped,updated_at:new Date().toISOString()};});
-    if(!rows.length)return;
+    // CRITICAL: Only include keys whose value has actually changed since the last save we observed.
+    // Without this, every state update writes ALL keys, and Realtime broadcasts ALL of them to
+    // every connected client, who then re-render and write back, causing constant flickering
+    // and exhausting Supabase resources.
+    const changed=[];
+    for(const[k,v]of entries){
+      const id=prefix+":"+k;
+      let hash;try{hash=JSON.stringify(v);}catch{hash=null;}
+      if(hash===null){changed.push([k,v]);continue;}
+      const last=lastSavedConfigRef.current.get(id);
+      if(last===hash)continue;
+      lastSavedConfigRef.current.set(id,hash);
+      changed.push([k,v]);
+    }
+    if(!changed.length)return;
+    const rows=changed.map(([k,v])=>{const wrapped={_v:v,_origin:clientIdRef.current,_editedBy:currentUserRef.current?.username||currentUserRef.current?.displayName||"",_editedAt:new Date().toISOString()};return{id:prefix+":"+k,data:wrapped,updated_at:new Date().toISOString()};});
     const url=sbUrlRef.current,k=sbKeyRef.current;if(!url||!k)return;
     for(let i=0;i<rows.length;i+=100){
       const batch=rows.slice(i,i+100);

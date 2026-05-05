@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.4.5";
+const APP_VERSION="1.4.6";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -265,6 +265,26 @@ const TEAM_SKILLS={"Guest Support":[{"section":"General Training","name":"Phone 
 const plbl=(pk)=>pk.startsWith("m__")?pk.slice(3):`FY25 Week ${pk.slice(3)}`;
 
 const NAME_CORRECTIONS={"Gay Barclay":"Gayle Barclay","Loranna De Carvalho":"Lorrana De Carvalho","Ami Bennett - Howden":"Ami Bennett-Howden"};
+/* Normalize an agent name as reported by Intercom to its canonical form in the roster.
+   Intercom CSVs have inconsistencies like "Drew paogofie" (lowercase) or
+   "Ami Bennett - Howden" (extra spaces around hyphen). This matches them
+   to the roster's canonical names so per-agent data buckets line up correctly. */
+const _normName=(s)=>String(s||"").toLowerCase().replace(/\s+/g," ").replace(/\s*-\s*/g,"-").trim();
+const normalizeAgentToRoster=(rawName,roster)=>{
+  if(!rawName)return rawName;
+  const target=_normName(rawName);
+  // Build a flat list of canonical roster names (leads + members)
+  const canonical=[];
+  Object.values(roster||{}).forEach(t=>{
+    if(t?.lead)canonical.push(t.lead);
+    (t?.members||[]).forEach(m=>{if(m?.name)canonical.push(m.name);});
+  });
+  // Exact normalized match
+  for(const c of canonical){if(_normName(c)===target)return c;}
+  // No match — return as-is so we don't lose data; just won't show in roster-driven views
+  return rawName;
+};
+
 const fixRosterNames=(roster)=>{
   if(!roster)return roster;
   const fixed={};
@@ -2625,7 +2645,7 @@ function App(){
             if(!isNaN(adjFr)&&adjFr>0)twData[key].frs.push(adjFr);
             if(!isNaN(adjLc)&&adjLc>0)twData[key].lcs.push(adjLc);
             // Agent-level (use Closed by, fallback to Assigned to)
-            const agent=(iClosedBy>=0?row[iClosedBy]:"")||(iAssigned>=0?row[iAssigned]:"")||"";
+            const rawAgent=(iClosedBy>=0?row[iClosedBy]:"")||(iAssigned>=0?row[iAssigned]:"")||"";const agent=rawAgent?normalizeAgentToRoster(rawAgent,roster):"";
             if(agent&&agent!==tName){
               const aKey=agent+"__"+wkN;
               if(!agentData[aKey])agentData[aKey]={agent,team:tName,wkN,frs:[],lcs:[]};

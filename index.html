@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.6.6";
+const APP_VERSION="1.7.0";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -878,6 +878,18 @@ function App(){
   // Auto-switch to month view when entering Call Reviews (it only works monthly)
   const ptBeforeCR=useRef(null);
   React.useEffect(()=>{if(tab==="call reviews"){ptBeforeCR.current=pt;setPt("month");setFilterAgent("all");if(team!=="All Teams"&&!callReviewTeams.includes(team)&&callReviewTeams.length)setTeam(callReviewTeams[0]);}else if(ptBeforeCR.current){setPt(ptBeforeCR.current);ptBeforeCR.current=null;}},[tab]);
+  // Auto-reveal: when active tab changes, expand the group it lives in
+  React.useEffect(()=>{
+    const TAB_GROUPS={
+      "daily":"tasks","to-do list":"tasks","action list":"tasks","planner":"tasks",
+      "dashboard":"insights","people":"insights","leaderboard":"insights","schedule":"insights","reports":"insights",
+      "call reviews":"quality","owner withdrawals":"quality",
+      "quick references":"more",
+      "settings":"admin","export":"admin","accounts":"admin","audit":"admin","weights":"admin","kpi targets":"admin","capabilities":"admin","daily config":"admin","review criteria":"admin"
+    };
+    const g=TAB_GROUPS[tab];
+    if(g)setSbExpandedGroups(prev=>{if(prev.has(g))return prev;const n=new Set(prev);n.add(g);return n;});
+  },[tab]);
   // Keep Schedule filter in sync with global period selector
   React.useEffect(()=>{setSchedFilter(pt);setSchedWeek(wk);setSchedMonth(mo);},[pt,wk,mo]);
   const darkMode=false;// "avg"=team average "target"=KPI target// {key,teamName,pk,existing}
@@ -971,6 +983,12 @@ function App(){
   const[lbCompareMode,setLbCompareMode]=useState(false);
   const[lbCompareA,setLbCompareA]=useState("");
   const[lbCompareB,setLbCompareB]=useState("");
+  // Sidebar redesign state — collapse/expand sections, persisted to localStorage
+  const[sbCollapsed,setSbCollapsed]=useState(()=>{try{return localStorage.getItem("bc_sb_collapsed")==="1";}catch{return false;}});
+  const[sbExpandedGroups,setSbExpandedGroups]=useState(()=>{try{const s=localStorage.getItem("bc_sb_groups");return s?new Set(JSON.parse(s)):new Set();}catch{return new Set();}});
+  React.useEffect(()=>{try{localStorage.setItem("bc_sb_collapsed",sbCollapsed?"1":"0");}catch{}},[sbCollapsed]);
+  React.useEffect(()=>{try{localStorage.setItem("bc_sb_groups",JSON.stringify([...sbExpandedGroups]));}catch{}},[sbExpandedGroups]);
+  const toggleSbGroup=(g)=>{setSbExpandedGroups(prev=>{const n=new Set(prev);if(n.has(g))n.delete(g);else n.add(g);return n;});};
   const[crViewReview,setCrViewReview]=useState(null);
   const[crEditReview,setCrEditReview]=useState(null);
   const[crExpandedAgent,setCrExpandedAgent]=useState(null);
@@ -5787,48 +5805,106 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
       </div>
 
       {/* ═══ SIDEBAR ═══ */}
-      <div style={{width:220,background:"linear-gradient(180deg,#111827 0%,#0f172a 100%)",display:"flex",flexDirection:"column",flexShrink:0,position:"fixed",top:0,bottom:0,left:0,zIndex:60,borderRight:"1px solid rgba(255,255,255,.06)"}}>
-        {/* Logo */}
-        <div style={{padding:"22px 18px 18px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:34,height:34,borderRadius:10,background:"linear-gradient(135deg,#0d9488,#0e7490)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(13,148,136,.3)"}}><span style={{color:"#fff",fontWeight:800,fontSize:15}}>B</span></div>
-            <div>
+      <div style={{width:sbCollapsed?64:220,background:"linear-gradient(180deg,#111827 0%,#0f172a 100%)",display:"flex",flexDirection:"column",flexShrink:0,position:"fixed",top:0,bottom:0,left:0,zIndex:60,borderRight:"1px solid rgba(255,255,255,.06)",transition:"width .2s ease"}}>
+        {/* Logo + collapse toggle */}
+        <div style={{padding:sbCollapsed?"22px 8px 18px":"22px 18px 18px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,justifyContent:sbCollapsed?"center":"flex-start"}}>
+            <div style={{width:34,height:34,borderRadius:10,background:"linear-gradient(135deg,#0d9488,#0e7490)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(13,148,136,.3)",flexShrink:0,cursor:"pointer"}} onClick={()=>setSbCollapsed(v=>!v)} title={sbCollapsed?"Expand sidebar":"Collapse sidebar"}><span style={{color:"#fff",fontWeight:800,fontSize:15}}>B</span></div>
+            {!sbCollapsed&&<div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:700,fontSize:15,color:"#f3f4f6",letterSpacing:"-.01em"}}>Bachcare</div>
               <div style={{fontSize:10,color:"#4b5563",fontWeight:500,letterSpacing:".04em",textTransform:"uppercase"}}>{"Operations"}<span onClick={()=>{if(currentUser?.username==="Teina"){setVersionEditVal(remoteVersion||APP_VERSION);setVersionEditOpen(true);}}} style={{marginLeft:6,fontSize:9,color:"#22d3ee",fontWeight:700,letterSpacing:0,cursor:currentUser?.username==="Teina"?"pointer":"default"}}>{" v"+(remoteVersion||APP_VERSION)}</span></div>
-            </div>
+            </div>}
+            {!sbCollapsed&&<button onClick={()=>setSbCollapsed(true)} title="Collapse sidebar" style={{background:"transparent",border:"none",color:"#6b7280",cursor:"pointer",padding:6,borderRadius:6,fontSize:14,lineHeight:1}} onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,.06)";e.currentTarget.style.color="#9ca3af";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#6b7280";}}>{"«"}</button>}
           </div>
         </div>
 
         {/* Navigation */}
-        <div className="bc-sidebar-scroll" style={{padding:"12px 10px",flex:1,overflowY:"auto"}}>
-          <div style={{fontSize:10,fontWeight:600,color:"#4b5563",textTransform:"uppercase",letterSpacing:".08em",padding:"4px 16px 8px",marginBottom:2}}>Menu</div>
-          {TABS.filter(t=>!["Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"].includes(t)).filter(t=>{if(isAdmin)return true;return(myPerms.menu||[]).includes(t);}).map(t=>{const icons={"Home":"🏠","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","Call Reviews":"📞","Action List":"📋","To-Do List":"✅","Daily":"📝","Quick References":"📌","Planner":"🗂️","Owner Withdrawals":"⚠️"};const displayNames={"Daily":"Daily Reports"};return(
-            <button key={t} className="bc-sidebar-link" onClick={()=>{setTab(t.toLowerCase());setProfilePerson(null);}}
-              style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 16px",border:"none",
-                background:tab===t.toLowerCase()?"rgba(13,148,136,.12)":"transparent",
-                color:tab===t.toLowerCase()?"#5eead4":"#9ca3af",fontSize:13,fontWeight:tab===t.toLowerCase()?600:500,
-                cursor:"pointer",borderRadius:8,textAlign:"left",transition:"all .12s",fontFamily:"inherit",
-                marginBottom:2,position:"relative",letterSpacing:".01em"}}>
-              {tab===t.toLowerCase()&&<div style={{position:"absolute",left:0,top:"50%",transform:"translateY(-50%)",width:3,height:18,background:"#14b8a6",borderRadius:"0 3px 3px 0"}}/>}
-              <span style={{fontSize:15,width:20,textAlign:"center"}}>{icons[t]||"•"}</span>{displayNames[t]||t}{t==="Action List"&&(()=>{const myT3=isLeader&&currentUser?.team?currentUser.team:(team==="All Teams"?null:team);const openAct=actionItems.filter(a=>(a.status==="open"||(a.status==="snoozed"&&a.snoozeUntil&&new Date(a.snoozeUntil)<=new Date()))&&(myT3?a.teamName===myT3:true)).length;const n90b=new Date();n90b.setDate(n90b.getDate()-90);var alertCt=0;const fTeams=myT3?[myT3]:tNames;const nowB=new Date();fTeams.forEach(tn=>{(roster[tn]?.members||[]).forEach(m=>{const la=assessHistory.filter(h=>h.personName===m.name).sort((a,b)=>b.date.localeCompare(a.date))[0];if(!la||new Date(la.date)<n90b){const snz=alertSnooze["assess_"+m.name];if(!snz||(!snz.dismissed&&(!snz.until||new Date(snz.until)<=nowB)))alertCt++;}});if(callReviewTeams.includes(tn)){const thr=(tc[tn]?.kpis||[]).find(k=>k.key==="call_reviews")?.thresh||2;(roster[tn]?.members||[]).forEach(m=>{const rc=callReviews.filter(r=>r.agentName===m.name&&r.month===mo).length;if(rc<thr){const snz=alertSnooze["review_"+m.name+"_"+mo];if(!snz||(!snz.dismissed&&(!snz.until||new Date(snz.until)<=nowB)))alertCt++;}});}});const total=openAct+alertCt;return total>0?<span style={{background:"#dc2626",color:"#fff",fontSize:9,fontWeight:800,borderRadius:10,padding:"1px 6px",marginLeft:6}}>{total}</span>:null;})()}{t==="To-Do List"&&(()=>{const todayS=todayNZ();const ct=todos.filter(td=>td.owner===currentUser?.username&&td.status!=="done"&&(td.priority==="today"||td.due===todayS)).length;return ct>0?<span style={{background:"#dc2626",color:"#fff",fontSize:9,fontWeight:800,borderRadius:10,padding:"1px 6px",marginLeft:6}}>{ct}</span>:null;})()}
-            </button>);
-          })}
+        <div className="bc-sidebar-scroll" style={{padding:sbCollapsed?"12px 6px":"12px 10px",flex:1,overflowY:"auto"}}>
+          {(()=>{
+            // Tab metadata: icon + which group it belongs to
+            const ICONS={"Home":"🏠","Daily":"📝","To-Do List":"✅","Action List":"📋","Planner":"🗂️","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","Call Reviews":"📞","Owner Withdrawals":"⚠️","Quick References":"📌","Settings":"⚙️","Export":"📤","Accounts":"🔑","Audit":"📜","Weights":"⚖️","KPI Targets":"🎯","Capabilities":"🎓","Daily Config":"📝","Review Criteria":"📋"};
+            const DISPLAY={"Daily":"Daily Reports"};
+            // Group definitions
+            const GROUPS=[
+              {id:"home",label:null,tabs:["Home"]},
+              {id:"tasks",label:"Tasks",tabs:["Daily","To-Do List","Action List","Planner"]},
+              {id:"insights",label:"Insights",tabs:["Dashboard","People","Leaderboard","Schedule","Reports"]},
+              {id:"quality",label:"Quality",tabs:["Call Reviews","Owner Withdrawals"]},
+              {id:"more",label:"More",tabs:["Quick References"]}
+            ];
+            const ADMIN_GROUP={id:"admin",label:"Admin",tabs:["Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"]};
 
-          {/* Settings group */}
-          {!isGuest&&(myPerms.admin||[]).length>0&&<div style={{marginTop:12,paddingTop:10,borderTop:"1px solid #1f2937"}}>
-            <div style={{fontSize:10,fontWeight:600,color:"#4b5563",textTransform:"uppercase",letterSpacing:".08em",padding:"4px 16px 8px",marginBottom:2}}>Admin</div>
-            {TABS.filter(t=>["Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"].includes(t)).filter(t=>{if(isAdmin)return true;return(myPerms.admin||[]).includes(t);}).map(t=>{const icons={"Action List":"📋","Settings":"⚙️","Export":"📤","Accounts":"🔑","Audit":"📜","Weights":"⚖️","KPI Targets":"🎯","Capabilities":"🎓","Daily Config":"📝","Review Criteria":"📋"};return(
-              <button key={t} onClick={()=>{setTab(t.toLowerCase());setProfilePerson(null);}}
-                style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"8px 16px",border:"none",
-                  background:tab===t.toLowerCase()?"rgba(13,148,136,.12)":"transparent",
-                  color:tab===t.toLowerCase()?"#5eead4":"#9ca3af",fontSize:13,fontWeight:tab===t.toLowerCase()?600:500,
-                  cursor:"pointer",borderRadius:8,textAlign:"left",transition:"all .12s",fontFamily:"inherit",
-                  marginBottom:2,position:"relative",letterSpacing:".01em"}}>
-                {tab===t.toLowerCase()&&<div style={{position:"absolute",left:0,top:"50%",transform:"translateY(-50%)",width:3,height:18,background:"#14b8a6",borderRadius:"0 3px 3px 0"}}/>}
-                <span style={{fontSize:15,width:20,textAlign:"center"}}>{icons[t]||"•"}</span>{t}{t==="Action List"&&(()=>{const myT2=isAdmin?team:(Object.entries(roster).find(([tn,r])=>r.lead===currentUser?.displayName)?.[0]||team);const pc2=actionItems.filter(a=>a.teamName===myT2&&a.status==="open").length;return pc2>0?<span style={{background:"#dc2626",color:"#fff",fontSize:9,fontWeight:800,borderRadius:10,padding:"1px 6px",marginLeft:6}}>{pc2}</span>:null;})()}
-              </button>);
-            })}
-          </div>}
+            // Compute action list badge count (open actions + alert count)
+            const actionListBadge=(()=>{const myT3=isLeader&&currentUser?.team?currentUser.team:(team==="All Teams"?null:team);const openAct=actionItems.filter(a=>(a.status==="open"||(a.status==="snoozed"&&a.snoozeUntil&&new Date(a.snoozeUntil)<=new Date()))&&(myT3?a.teamName===myT3:true)).length;const n90b=new Date();n90b.setDate(n90b.getDate()-90);var alertCt=0;const fTeams=myT3?[myT3]:tNames;const nowB=new Date();fTeams.forEach(tn=>{(roster[tn]?.members||[]).forEach(m=>{const la=assessHistory.filter(h=>h.personName===m.name).sort((a,b)=>b.date.localeCompare(a.date))[0];if(!la||new Date(la.date)<n90b){const snz=alertSnooze["assess_"+m.name];if(!snz||(!snz.dismissed&&(!snz.until||new Date(snz.until)<=nowB)))alertCt++;}});if(callReviewTeams.includes(tn)){const thr=(tc[tn]?.kpis||[]).find(k=>k.key==="call_reviews")?.thresh||2;(roster[tn]?.members||[]).forEach(m=>{const rc=callReviews.filter(r=>r.agentName===m.name&&r.month===mo).length;if(rc<thr){const snz=alertSnooze["review_"+m.name+"_"+mo];if(!snz||(!snz.dismissed&&(!snz.until||new Date(snz.until)<=nowB)))alertCt++;}});}});return openAct+alertCt;})();
+            const todoBadge=(()=>{const todayS=todayNZ();return todos.filter(td=>td.owner===currentUser?.username&&td.status!=="done"&&(td.priority==="today"||td.due===todayS)).length;})();
+            const badgeFor=(t)=>{if(t==="Action List")return actionListBadge;if(t==="To-Do List")return todoBadge;return 0;};
+
+            const isAllowed=(t)=>{
+              if(ADMIN_GROUP.tabs.includes(t)){if(isAdmin)return true;return(myPerms.admin||[]).includes(t);}
+              if(isAdmin)return true;
+              return(myPerms.menu||[]).includes(t);
+            };
+
+            const renderItem=(t,isAdminItem)=>{
+              const active=tab===t.toLowerCase();
+              const badge=badgeFor(t);
+              return(
+                <button key={t} className="bc-sidebar-link" onClick={()=>{setTab(t.toLowerCase());setProfilePerson(null);}}
+                  title={sbCollapsed?(DISPLAY[t]||t):""}
+                  style={{display:"flex",alignItems:"center",gap:sbCollapsed?0:10,width:"100%",padding:sbCollapsed?"9px 0":"9px 16px",justifyContent:sbCollapsed?"center":"flex-start",border:"none",
+                    background:active?"rgba(13,148,136,.12)":"transparent",
+                    color:active?"#5eead4":"#9ca3af",fontSize:13,fontWeight:active?600:500,
+                    cursor:"pointer",borderRadius:8,textAlign:"left",transition:"all .12s",fontFamily:"inherit",
+                    marginBottom:2,position:"relative",letterSpacing:".01em"}}>
+                  {active&&<div style={{position:"absolute",left:0,top:"50%",transform:"translateY(-50%)",width:3,height:18,background:"#14b8a6",borderRadius:"0 3px 3px 0"}}/>}
+                  <span style={{fontSize:15,width:20,textAlign:"center",flexShrink:0}}>{ICONS[t]||"•"}</span>
+                  {!sbCollapsed&&<span style={{flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{DISPLAY[t]||t}</span>}
+                  {!sbCollapsed&&badge>0&&<span style={{background:"#dc2626",color:"#fff",fontSize:9,fontWeight:800,borderRadius:10,padding:"1px 6px",flexShrink:0}}>{badge}</span>}
+                  {sbCollapsed&&badge>0&&<span style={{position:"absolute",top:4,right:6,background:"#dc2626",color:"#fff",fontSize:8,fontWeight:800,borderRadius:8,padding:"0 4px",lineHeight:"12px"}}>{badge}</span>}
+                </button>
+              );
+            };
+
+            const renderGroup=(g)=>{
+              const visibleTabs=g.tabs.filter(isAllowed);
+              if(!visibleTabs.length)return null;
+              // Home is special — always shown ungrouped, no header
+              if(g.id==="home"){
+                return <div key={g.id}>{visibleTabs.map(t=>renderItem(t,false))}</div>;
+              }
+              const expanded=sbExpandedGroups.has(g.id);
+              // Compute total badge count for collapsed groups (so users see if there's something needing attention)
+              const groupBadge=visibleTabs.reduce((s,t)=>s+badgeFor(t),0);
+
+              if(sbCollapsed){
+                // In icon-only mode, don't show group headers — just render items inline
+                return <div key={g.id} style={{borderTop:"1px solid #1f2937",marginTop:6,paddingTop:6}}>{visibleTabs.map(t=>renderItem(t,false))}</div>;
+              }
+
+              return(
+                <div key={g.id} style={{marginTop:6}}>
+                  <button onClick={()=>toggleSbGroup(g.id)} style={{
+                    display:"flex",alignItems:"center",gap:6,width:"100%",
+                    padding:"6px 16px",background:"transparent",border:"none",cursor:"pointer",
+                    fontSize:10,fontWeight:700,color:"#4b5563",textTransform:"uppercase",letterSpacing:".08em",
+                    fontFamily:"inherit",borderRadius:6
+                  }} onMouseEnter={e=>e.currentTarget.style.color="#9ca3af"} onMouseLeave={e=>e.currentTarget.style.color="#4b5563"}>
+                    <span style={{fontSize:9,transition:"transform .15s",transform:expanded?"rotate(90deg)":"rotate(0deg)",display:"inline-block",width:9}}>{"▶"}</span>
+                    <span style={{flex:1,textAlign:"left"}}>{g.label}</span>
+                    {!expanded&&groupBadge>0&&<span style={{background:"#dc2626",color:"#fff",fontSize:9,fontWeight:800,borderRadius:10,padding:"1px 6px"}}>{groupBadge}</span>}
+                  </button>
+                  {expanded&&<div style={{paddingLeft:0}}>{visibleTabs.map(t=>renderItem(t,false))}</div>}
+                </div>
+              );
+            };
+
+            return(
+              <>
+                {GROUPS.map(renderGroup)}
+                {!isGuest&&(myPerms.admin||[]).length>0&&renderGroup(ADMIN_GROUP)}
+              </>
+            );
+          })()}
         </div>
 
         {/* Clock & Refresh */}
@@ -5850,7 +5926,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
       </div>
 
       {/* ═══ MAIN CONTENT AREA ═══ */}
-      <div style={{flex:1,marginLeft:220,minHeight:"100vh",display:"flex",flexDirection:"column"}}>
+      <div style={{flex:1,marginLeft:sbCollapsed?64:220,minHeight:"100vh",display:"flex",flexDirection:"column"}}>
         {/* Top selector bar */}
         {tab!=="owner withdrawals"&&<div style={{background:"#fff",borderBottom:"1px solid "+("#e5e7eb"),position:"sticky",top:0,zIndex:40,padding:"0 24px"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",flexWrap:"wrap"}}>

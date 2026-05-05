@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.6.4";
+const APP_VERSION="1.6.5";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -967,6 +967,10 @@ function App(){
   const[iVals,setIVals]=useState({});
   // ‚îÄ‚îÄ PROFILE VIEW ‚îÄ‚îÄ
   const[profilePerson,setProfilePerson]=useState(null);
+  // Lifted Leaderboard comparison state ‚Äî kept at App level so it survives LeaderboardTab re-renders triggered by period changes
+  const[lbCompareMode,setLbCompareMode]=useState(false);
+  const[lbCompareA,setLbCompareA]=useState("");
+  const[lbCompareB,setLbCompareB]=useState("");
   const[crViewReview,setCrViewReview]=useState(null);
   const[crEditReview,setCrEditReview]=useState(null);
   const[crExpandedAgent,setCrExpandedAgent]=useState(null);
@@ -3077,9 +3081,13 @@ function App(){
 
   function LeaderboardTab(){
     const[lbStat,setLbStat]=React.useState("closed");
-    const[compareMode,setCompareMode]=React.useState(false);
-    const[compareA,setCompareA]=React.useState("");
-    const[compareB,setCompareB]=React.useState("");
+    // Use lifted state so comparison persists when period filter changes
+    const compareMode=lbCompareMode;
+    const setCompareMode=setLbCompareMode;
+    const compareA=lbCompareA;
+    const setCompareA=setLbCompareA;
+    const compareB=lbCompareB;
+    const setCompareB=setLbCompareB;
     const STAT_DEFS=[
       {key:"closed",label:"Tickets Closed",icon:"\ud83c\udfab",color:"#0d9488"},
       {key:"emails",label:"Emails",icon:"\u2709\ufe0f",color:"#2563eb"},
@@ -3179,19 +3187,75 @@ function App(){
         {compareMode&&(()=>{
           const ranked=rows;
           const optsList=allPeople.map(p=>p.name).sort();
+          // Compute a value for ANY stat key, mirrors computeValue but parameterized
+          const computeStatValue=(name,team,statKey)=>{
+            const stats=getIcStats(name,icFilter,icWeek,icMonth);
+            const hrs=getSchedHours(name,icFilter,icWeek,icMonth);
+            if(statKey==="hours")return hrs||0;
+            if(statKey==="productivity"){
+              if(!stats||!hrs)return 0;
+              const tw=getW(team);
+              return Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10;
+            }
+            return stats?.[statKey]||0;
+          };
+          const fmtStatVal=(v,statKey)=>{
+            if(statKey==="hours")return v?v+"h":"‚Äî";
+            return v||"‚Äî";
+          };
           const findPerson=(name)=>{
             const r=ranked.find(x=>x.name===name);
             const team=allPeople.find(p=>p.name===name)?.team||"";
-            return{name,team,rank:r?.rank||null,value:r?.value||0};
+            const allStats={};
+            STAT_DEFS.forEach(s=>{allStats[s.key]=computeStatValue(name,team,s.key);});
+            return{name,team,rank:r?.rank||null,value:r?.value||0,allStats};
           };
           const personA=compareA?findPerson(compareA):null;
           const personB=compareB?findPerson(compareB):null;
           const tA=personA?(tc[personA.team]||{color:"#6b7280"}):null;
           const tB=personB?(tc[personB.team]||{color:"#6b7280"}):null;
-          const winner=(personA&&personB&&personA.value!==personB.value)?(personA.value>personB.value?"a":"b"):null;
-          const diffVal=(personA&&personB)?Math.abs(personA.value-personB.value):0;
-          const lowerVal=(personA&&personB)?Math.min(personA.value,personB.value):0;
-          const diffPct=lowerVal>0?Math.round(diffVal/lowerVal*100):null;
+
+          // Compute per-stat winners + total wins
+          let winsA=0,winsB=0;
+          if(personA&&personB){
+            STAT_DEFS.forEach(s=>{
+              const va=personA.allStats[s.key];
+              const vb=personB.allStats[s.key];
+              if(va>vb)winsA++;
+              else if(vb>va)winsB++;
+            });
+          }
+          const overallWinner=(winsA===winsB)?null:(winsA>winsB?"a":"b");
+
+          // Active stat (the rank-by stat) ‚Äî used for leaderboard rank line
+          const activeStat=sd;
+
+          const renderStatRow=(s,person,otherPerson,side)=>{
+            const myVal=person.allStats[s.key];
+            const otherVal=otherPerson.allStats[s.key];
+            const isWinner=myVal>otherVal;
+            const isTie=myVal===otherVal&&myVal>0;
+            return(
+              <div key={s.key} style={{
+                display:"flex",alignItems:"center",justifyContent:"space-between",
+                padding:"9px 12px",borderRadius:8,
+                background:isWinner?(s.color+"14"):"transparent",
+                border:isWinner?"1px solid "+s.color+"33":"1px solid transparent",
+                marginBottom:4
+              }}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
+                  <span style={{fontSize:14}}>{s.icon}</span>
+                  <span style={{fontSize:12,color:"#374151",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.label}</span>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:15,fontWeight:isWinner?800:600,color:isWinner?s.color:(myVal?"#111827":"#d1d5db"),fontVariantNumeric:"tabular-nums"}}>{fmtStatVal(myVal,s.key)}</span>
+                  {isWinner&&<span style={{fontSize:13}}>{"Ì†ºÌøÜ"}</span>}
+                  {isTie&&<span style={{fontSize:10,color:"#9ca3af"}}>=</span>}
+                </div>
+              </div>
+            );
+          };
+
           return(
             <div>
               {/* Person selectors */}
@@ -3210,57 +3274,74 @@ function App(){
                 <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:48,textAlign:"center",color:"#9ca3af"}}>
                   <div style={{fontSize:32,marginBottom:8}}>{"‚öñÔ∏è"}</div>
                   <div style={{fontSize:14,fontWeight:600,color:"#6b7280"}}>Pick two people to compare</div>
-                  <div style={{fontSize:12,marginTop:4}}>Comparing {sd.label.toLowerCase()} for {lb2}</div>
+                  <div style={{fontSize:12,marginTop:4}}>Comparing all 7 stats for {lb2}</div>
                 </div>
               ):(
                 <div>
-                  {/* Side-by-side cards */}
+                  {/* Side-by-side scorecards */}
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
                     {/* Person A */}
                     <div style={{
-                      background:winner==="a"?"linear-gradient(135deg,#f0fdfa,#fff)":"#fff",
-                      border:"2px solid "+(winner==="a"?"#0d9488":"#e5e7eb"),
-                      borderRadius:12,padding:"20px 22px",position:"relative",
-                      boxShadow:winner==="a"?"0 4px 16px rgba(13,148,136,.12)":"0 1px 3px rgba(0,0,0,.04)"
+                      background:overallWinner==="a"?"linear-gradient(180deg,#f0fdfa,#fff)":"#fff",
+                      border:"2px solid "+(overallWinner==="a"?"#0d9488":"#e5e7eb"),
+                      borderRadius:12,padding:"18px 20px",position:"relative",
+                      boxShadow:overallWinner==="a"?"0 4px 16px rgba(13,148,136,.12)":"0 1px 3px rgba(0,0,0,.04)"
                     }}>
-                      {winner==="a"&&<div style={{position:"absolute",top:-12,right:14,background:"#0d9488",color:"#fff",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:10,letterSpacing:".05em",textTransform:"uppercase"}}>{"üèÜ"} Leading</div>}
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                        <div style={{width:8,height:8,borderRadius:50,background:tA.color}}/>
-                        <div style={{fontSize:11,color:"#6b7280",fontWeight:600}}>{personA.team}</div>
+                      {overallWinner==="a"&&<div style={{position:"absolute",top:-12,right:14,background:"#0d9488",color:"#fff",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:10,letterSpacing:".05em",textTransform:"uppercase"}}>{"Ì†ºÌøÜ"} Leading</div>}
+                      {/* Header */}
+                      <div style={{paddingBottom:12,borderBottom:"1px solid #f3f4f6",marginBottom:10}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                          <div style={{width:8,height:8,borderRadius:50,background:tA.color}}/>
+                          <div style={{fontSize:11,color:"#6b7280",fontWeight:600}}>{personA.team}</div>
+                        </div>
+                        <div onClick={()=>setProfilePerson({id:personA.name,name:personA.name,teamName:personA.team})} style={{fontSize:17,fontWeight:800,color:"#111827",cursor:"pointer",letterSpacing:"-.02em"}}>{personA.name}</div>
+                        {personA.rank&&<div style={{fontSize:11,color:"#6b7280",marginTop:3}}>Rank by {activeStat.label.toLowerCase()}: <strong style={{color:"#111827",fontVariantNumeric:"tabular-nums"}}>#{personA.rank}</strong> of {ranked.length}</div>}
                       </div>
-                      <div onClick={()=>setProfilePerson({id:personA.name,name:personA.name,teamName:personA.team})} style={{fontSize:18,fontWeight:800,color:"#111827",cursor:"pointer",letterSpacing:"-.02em",marginBottom:12}}>{personA.name}</div>
-                      <div style={{fontSize:10,color:"#9ca3af",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{sd.label}</div>
-                      <div style={{fontSize:42,fontWeight:800,color:sd.color,letterSpacing:"-.03em",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{fmtVal(personA.value)}</div>
-                      {personA.rank&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f3f4f6",fontSize:12,color:"#6b7280"}}>Leaderboard rank: <strong style={{color:"#111827",fontVariantNumeric:"tabular-nums"}}>#{personA.rank}</strong> of {ranked.length}</div>}
+                      {/* Stat rows */}
+                      <div>
+                        {STAT_DEFS.map(s=>renderStatRow(s,personA,personB,"a"))}
+                      </div>
+                      {/* Wins count */}
+                      <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f3f4f6",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{fontSize:11,color:"#6b7280",fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"}}>Wins</span>
+                        <span style={{fontSize:18,fontWeight:800,color:overallWinner==="a"?"#0d9488":"#111827",fontVariantNumeric:"tabular-nums"}}>{winsA}<span style={{fontSize:13,color:"#9ca3af",fontWeight:500}}> / 7</span></span>
+                      </div>
                     </div>
                     {/* Person B */}
                     <div style={{
-                      background:winner==="b"?"linear-gradient(135deg,#f0fdfa,#fff)":"#fff",
-                      border:"2px solid "+(winner==="b"?"#0d9488":"#e5e7eb"),
-                      borderRadius:12,padding:"20px 22px",position:"relative",
-                      boxShadow:winner==="b"?"0 4px 16px rgba(13,148,136,.12)":"0 1px 3px rgba(0,0,0,.04)"
+                      background:overallWinner==="b"?"linear-gradient(180deg,#f0fdfa,#fff)":"#fff",
+                      border:"2px solid "+(overallWinner==="b"?"#0d9488":"#e5e7eb"),
+                      borderRadius:12,padding:"18px 20px",position:"relative",
+                      boxShadow:overallWinner==="b"?"0 4px 16px rgba(13,148,136,.12)":"0 1px 3px rgba(0,0,0,.04)"
                     }}>
-                      {winner==="b"&&<div style={{position:"absolute",top:-12,right:14,background:"#0d9488",color:"#fff",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:10,letterSpacing:".05em",textTransform:"uppercase"}}>{"üèÜ"} Leading</div>}
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                        <div style={{width:8,height:8,borderRadius:50,background:tB.color}}/>
-                        <div style={{fontSize:11,color:"#6b7280",fontWeight:600}}>{personB.team}</div>
+                      {overallWinner==="b"&&<div style={{position:"absolute",top:-12,right:14,background:"#0d9488",color:"#fff",fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:10,letterSpacing:".05em",textTransform:"uppercase"}}>{"Ì†ºÌøÜ"} Leading</div>}
+                      <div style={{paddingBottom:12,borderBottom:"1px solid #f3f4f6",marginBottom:10}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                          <div style={{width:8,height:8,borderRadius:50,background:tB.color}}/>
+                          <div style={{fontSize:11,color:"#6b7280",fontWeight:600}}>{personB.team}</div>
+                        </div>
+                        <div onClick={()=>setProfilePerson({id:personB.name,name:personB.name,teamName:personB.team})} style={{fontSize:17,fontWeight:800,color:"#111827",cursor:"pointer",letterSpacing:"-.02em"}}>{personB.name}</div>
+                        {personB.rank&&<div style={{fontSize:11,color:"#6b7280",marginTop:3}}>Rank by {activeStat.label.toLowerCase()}: <strong style={{color:"#111827",fontVariantNumeric:"tabular-nums"}}>#{personB.rank}</strong> of {ranked.length}</div>}
                       </div>
-                      <div onClick={()=>setProfilePerson({id:personB.name,name:personB.name,teamName:personB.team})} style={{fontSize:18,fontWeight:800,color:"#111827",cursor:"pointer",letterSpacing:"-.02em",marginBottom:12}}>{personB.name}</div>
-                      <div style={{fontSize:10,color:"#9ca3af",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{sd.label}</div>
-                      <div style={{fontSize:42,fontWeight:800,color:sd.color,letterSpacing:"-.03em",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{fmtVal(personB.value)}</div>
-                      {personB.rank&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f3f4f6",fontSize:12,color:"#6b7280"}}>Leaderboard rank: <strong style={{color:"#111827",fontVariantNumeric:"tabular-nums"}}>#{personB.rank}</strong> of {ranked.length}</div>}
+                      <div>
+                        {STAT_DEFS.map(s=>renderStatRow(s,personB,personA,"b"))}
+                      </div>
+                      <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f3f4f6",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{fontSize:11,color:"#6b7280",fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"}}>Wins</span>
+                        <span style={{fontSize:18,fontWeight:800,color:overallWinner==="b"?"#0d9488":"#111827",fontVariantNumeric:"tabular-nums"}}>{winsB}<span style={{fontSize:13,color:"#9ca3af",fontWeight:500}}> / 7</span></span>
+                      </div>
                     </div>
                   </div>
-                  {/* Difference summary */}
+                  {/* Summary strip */}
                   <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
                     <div style={{fontSize:12,color:"#6b7280"}}>
-                      {winner?(
-                        <span><strong style={{color:"#111827"}}>{(winner==="a"?personA.name:personB.name)}</strong> leads by <strong style={{color:sd.color}}>{fmtVal(diffVal)}</strong>{diffPct!==null&&<span> ({diffPct}% more)</span>}</span>
+                      {overallWinner?(
+                        <span><strong style={{color:"#111827"}}>{(overallWinner==="a"?personA.name:personB.name)}</strong> leads in <strong style={{color:"#0d9488"}}>{Math.max(winsA,winsB)}</strong> of 7 stats</span>
                       ):(
-                        <span>Both have the same {sd.label.toLowerCase()}</span>
+                        <span>Both tied at <strong style={{color:"#111827"}}>{winsA}</strong> wins each</span>
                       )}
                     </div>
-                    {personA.rank&&personB.rank&&<div style={{fontSize:12,color:"#6b7280"}}>Rank difference: <strong style={{color:"#111827"}}>{Math.abs(personA.rank-personB.rank)}</strong> {Math.abs(personA.rank-personB.rank)===1?"position":"positions"}</div>}
+                    {personA.rank&&personB.rank&&<div style={{fontSize:12,color:"#6b7280"}}>Active rank difference: <strong style={{color:"#111827"}}>{Math.abs(personA.rank-personB.rank)}</strong> {Math.abs(personA.rank-personB.rank)===1?"position":"positions"}</div>}
                   </div>
                 </div>
               )}

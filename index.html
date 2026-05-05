@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.6.0";
+const APP_VERSION="1.6.1";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -250,7 +250,11 @@ const WEEKS=[
 // Auto-detect current FY25 week from PC date
 const FY25_START=new Date(2025,9,4);// Oct 4 2025
 const getCurrentFY25Week=()=>{const now=new Date();const diff=Math.floor((now-FY25_START)/(7*24*60*60*1000));const wk=Math.max(1,Math.min(53,diff+1));return wk;};
-const AUTO_WEEK=getCurrentFY25Week();
+/* Default the period filter to the PREVIOUS FY week on login.
+   Showing the current (in-progress) week is misleading because the data is incomplete —
+   metrics like productivity, totals etc. only make sense once the week is complete. */
+const getDefaultFY25Week=()=>{const cur=getCurrentFY25Week();return Math.max(1,cur-1);};
+const AUTO_WEEK=getDefaultFY25Week();
 const isPass=(v,k)=>{if(v===null||v===undefined||v==="")return null;if(k.dir==="bool")return["yes","Yes","1",1,true].includes(v);const n=parseFloat(v);if(isNaN(n))return null;return k.dir==="lt"?n<=k.thresh:n>=k.thresh;};
 const dv=(v,k)=>{if(v===undefined||v===null||v==="")return"—";if(k.dir==="bool")return["yes","Yes","1",1,true].includes(v)?"Yes":"No";return`${v}${k.unit}`;};
 const mg=(a,b)=>{const r={...a};Object.entries(b).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=="")r[k]=v;});return r;};
@@ -1648,7 +1652,7 @@ function App(){
     const acct=liveAccounts.find(a=>a.username===username)||currentUser;
     const stored=permissions[username];
     const isOSLeader=(acct?.team==="Owner Support"&&acct?.role==="leader");
-    if(acct?.role==="admin")return{menu:["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References"],teams:["All Teams"],admin:["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria"]};
+    if(acct?.role==="admin")return{menu:["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References"],teams:["All Teams"],admin:["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria"]};
     if(stored?.menu){
       // If they have stored perms but Owner Withdrawals isn't listed AND they're the OS leader, add it
       // (handles users whose perms were saved before the Owner Withdrawals tab existed)
@@ -1658,7 +1662,7 @@ function App(){
       return stored;
     }
     if(acct?.role==="guest")return{menu:["Home","Daily"],teams:acct?.team?[acct.team]:[],admin:[]};
-    const baseMenu=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Schedule","Reports","Call Reviews","Quick References"];
+    const baseMenu=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Quick References"];
     if(isOSLeader)baseMenu.splice(10,0,"Owner Withdrawals"); // insert before "Quick References"
     return{menu:baseMenu,teams:acct?.team?[acct.team]:[],admin:[]};
   };
@@ -3066,10 +3070,164 @@ function App(){
     );
   }
 
-  const TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References","Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"];
+  const TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References","Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"];
   const ePK=exPt==="month"?`m__${exMo}`:`w__${exWk}`;
 
 
+
+  function LeaderboardTab(){
+    const[lbStat,setLbStat]=React.useState("closed");
+    const STAT_DEFS=[
+      {key:"closed",label:"Tickets Closed",icon:"\ud83c\udfab",color:"#0d9488"},
+      {key:"emails",label:"Emails",icon:"\u2709\ufe0f",color:"#2563eb"},
+      {key:"caseActions",label:"Case Actions",icon:"\ud83d\udccb",color:"#7c3aed"},
+      {key:"wfs",label:"Workflows",icon:"\u26a1",color:"#ea580c"},
+      {key:"calls",label:"Calls",icon:"\ud83d\udcde",color:"#db2777"},
+      {key:"hours",label:"Hrs Worked",icon:"\u23f1\ufe0f",color:"#475569"},
+      {key:"productivity",label:"Productivity",icon:"\ud83d\udcc8",color:"#15803d"}
+    ];
+    const sd=STAT_DEFS.find(s=>s.key===lbStat)||STAT_DEFS[0];
+
+    // Build flat people list filtered by team + person filters (same filters used in Reports)
+    const effectiveTeamF=icTeamF;
+    const allPeople=[];
+    Object.entries(roster).forEach(([teamName,tdata])=>{
+      if(effectiveTeamF!=="all"&&teamName!==effectiveTeamF)return;
+      if(tdata.lead)allPeople.push({name:tdata.lead,team:teamName,isLead:true});
+      (tdata.members||[]).forEach(m=>{
+        if(m.name&&!allPeople.some(p=>p.name===m.name))allPeople.push({name:m.name,team:teamName,isLead:false});
+      });
+    });
+    const filteredPeople=icPersonF.length>0?allPeople.filter(p=>icPersonF.includes(p.name)):allPeople;
+
+    // Compute the value to rank by for each person
+    const computeValue=(name,team)=>{
+      const stats=getIcStats(name,icFilter,icWeek,icMonth);
+      const hrs=getSchedHours(name,icFilter,icWeek,icMonth);
+      if(lbStat==="hours")return hrs||0;
+      if(lbStat==="productivity"){
+        if(!stats||!hrs)return 0;
+        const tw=getW(team);
+        return Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10;
+      }
+      return stats?.[lbStat]||0;
+    };
+
+    const rows=filteredPeople.map(p=>({...p,value:computeValue(p.name,p.team)})).sort((a,b)=>b.value-a.value);
+    // Ties: same rank for ties (1, 2, 2, 4, ...)
+    let lastVal=null,lastRank=0;
+    rows.forEach((r,i)=>{
+      if(r.value!==lastVal){lastRank=i+1;lastVal=r.value;}
+      r.rank=lastRank;
+    });
+    const haveData=rows.filter(r=>r.value>0);
+    const noData=rows.filter(r=>r.value===0);
+
+    const lb2=icFilter==="month"?icMonth:(WEEKS.find(w=>w.w===icWeek)?.l||"W"+icWeek);
+    const fmtVal=(v)=>{
+      if(lbStat==="hours")return v?v+"h":"\u2014";
+      if(lbStat==="productivity")return v||"\u2014";
+      return v||"\u2014";
+    };
+
+    const podiumColors={1:{bg:"linear-gradient(135deg,#fef3c7,#fde68a)",border:"#f59e0b",medal:"\ud83e\udd47"},
+                       2:{bg:"linear-gradient(135deg,#f3f4f6,#e5e7eb)",border:"#9ca3af",medal:"\ud83e\udd48"},
+                       3:{bg:"linear-gradient(135deg,#fed7aa,#fdba74)",border:"#ea580c",medal:"\ud83e\udd49"}};
+
+    return(
+      <div>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:10}}>
+          <div>
+            <div style={{fontSize:22,fontWeight:800,color:"#111827",letterSpacing:"-.02em"}}>\ud83c\udfc6 Leaderboard</div>
+            <div style={{fontSize:12,color:"#6b7280",marginTop:2}}>Ranking {filteredPeople.length} {filteredPeople.length===1?"person":"people"} by {sd.label.toLowerCase()} \u00b7 {lb2}</div>
+          </div>
+        </div>
+
+        {/* Stat selector pills */}
+        <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:14,marginBottom:14}}>
+          <div style={{fontSize:11,color:"#6b7280",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}}>Rank by</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {STAT_DEFS.map(s=>(
+              <button key={s.key} onClick={()=>setLbStat(s.key)} style={{
+                padding:"8px 14px",borderRadius:8,border:"1px solid "+(lbStat===s.key?s.color:"#e5e7eb"),
+                background:lbStat===s.key?s.color:"#fff",color:lbStat===s.key?"#fff":"#374151",
+                fontSize:13,fontWeight:lbStat===s.key?700:500,cursor:"pointer",
+                display:"flex",alignItems:"center",gap:6,transition:"all .15s"
+              }}>
+                <span>{s.icon}</span>
+                <span>{s.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Leaderboard list */}
+        {haveData.length===0?(
+          <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:48,textAlign:"center",color:"#9ca3af"}}>
+            <div style={{fontSize:32,marginBottom:8}}>\ud83d\udcca</div>
+            <div style={{fontSize:14,fontWeight:600,color:"#6b7280"}}>No data for {sd.label.toLowerCase()} in {lb2}</div>
+            <div style={{fontSize:12,marginTop:4}}>Try a different period or stat.</div>
+          </div>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {haveData.map((r,idx)=>{
+              const podium=podiumColors[r.rank];
+              const tdef=tc[r.team]||{color:"#6b7280"};
+              return(
+                <div key={r.name} onClick={()=>setProfilePerson({id:r.name,name:r.name,teamName:r.team})} style={{
+                  background:podium?podium.bg:"#fff",
+                  border:"1px solid "+(podium?podium.border:"#e5e7eb"),
+                  borderRadius:10,padding:"12px 16px",
+                  display:"flex",alignItems:"center",gap:14,
+                  cursor:"pointer",transition:"transform .12s,box-shadow .12s",
+                  boxShadow:podium?"0 2px 8px rgba(0,0,0,.06)":"0 1px 2px rgba(0,0,0,.03)"
+                }} onMouseEnter={e=>{e.currentTarget.style.transform="translateX(2px)";e.currentTarget.style.boxShadow="0 3px 10px rgba(0,0,0,.08)";}} onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow=podium?"0 2px 8px rgba(0,0,0,.06)":"0 1px 2px rgba(0,0,0,.03)";}}>
+                  {/* Rank */}
+                  <div style={{minWidth:48,textAlign:"center"}}>
+                    {podium?(
+                      <div style={{fontSize:28,lineHeight:1}}>{podium.medal}</div>
+                    ):(
+                      <div style={{fontSize:18,fontWeight:800,color:"#6b7280",fontVariantNumeric:"tabular-nums"}}>#{r.rank}</div>
+                    )}
+                  </div>
+                  {/* Name + team */}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:700,color:"#111827",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                      <span>{r.name}</span>
+                      {r.isLead&&<span style={{fontSize:9,background:tdef.color,color:"#fff",borderRadius:3,padding:"1px 5px",fontWeight:600}}>Lead</span>}
+                    </div>
+                    <div style={{fontSize:11,color:"#6b7280",marginTop:2,display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:6,height:6,borderRadius:50,background:tdef.color}}/>
+                      <span>{r.team}</span>
+                    </div>
+                  </div>
+                  {/* Value */}
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:24,fontWeight:800,color:sd.color,letterSpacing:"-.02em",fontVariantNumeric:"tabular-nums",lineHeight:1}}>{fmtVal(r.value)}</div>
+                    <div style={{fontSize:10,color:"#9ca3af",marginTop:3,textTransform:"uppercase",letterSpacing:".05em",fontWeight:600}}>{sd.label}</div>
+                  </div>
+                </div>
+              );
+            })}
+            {noData.length>0&&(
+              <div style={{marginTop:16}}>
+                <div style={{fontSize:11,color:"#9ca3af",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6,paddingLeft:4}}>No data ({noData.length})</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {noData.map(r=>(
+                    <div key={r.name} onClick={()=>setProfilePerson({id:r.name,name:r.name,teamName:r.team})} style={{
+                      background:"#fff",border:"1px solid #f3f4f6",borderRadius:8,padding:"6px 12px",
+                      fontSize:12,color:"#9ca3af",cursor:"pointer"
+                    }}>{r.name}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   function ReportsTab(){
     // Build people list from ROSTER only — not from icData
@@ -4868,7 +5026,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const setLocalAccounts=(updated)=>{setLiveAccounts(updated);saveAccountsToSupabase(updated);};
     const pending=pendingEdits.filter(r=>r.status==="pending");
     const resolved=pendingEdits.filter(r=>r.status!=="pending").slice(0,20);
-    const MENU_TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References"];
+    const MENU_TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References"];
     const ADMIN_TABS=["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria"];
     const ALL_TEAMS=["All Teams",...tNames];
     const getDefPerms=(acct)=>{
@@ -5457,7 +5615,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         {/* Navigation */}
         <div className="bc-sidebar-scroll" style={{padding:"12px 10px",flex:1,overflowY:"auto"}}>
           <div style={{fontSize:10,fontWeight:600,color:"#4b5563",textTransform:"uppercase",letterSpacing:".08em",padding:"4px 16px 8px",marginBottom:2}}>Menu</div>
-          {TABS.filter(t=>!["Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"].includes(t)).filter(t=>{if(isAdmin)return true;return(myPerms.menu||[]).includes(t);}).map(t=>{const icons={"Home":"🏠","Dashboard":"📊","People":"👥","Schedule":"📅","Reports":"📋","Call Reviews":"📞","Action List":"📋","To-Do List":"✅","Daily":"📝","Quick References":"📌","Planner":"🗂️","Owner Withdrawals":"⚠️"};const displayNames={"Daily":"Daily Reports"};return(
+          {TABS.filter(t=>!["Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"].includes(t)).filter(t=>{if(isAdmin)return true;return(myPerms.menu||[]).includes(t);}).map(t=>{const icons={"Home":"🏠","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","Call Reviews":"📞","Action List":"📋","To-Do List":"✅","Daily":"📝","Quick References":"📌","Planner":"🗂️","Owner Withdrawals":"⚠️"};const displayNames={"Daily":"Daily Reports"};return(
             <button key={t} className="bc-sidebar-link" onClick={()=>{setTab(t.toLowerCase());setProfilePerson(null);}}
               style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 16px",border:"none",
                 background:tab===t.toLowerCase()?"rgba(13,148,136,.12)":"transparent",
@@ -5962,6 +6120,8 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         </>}
 
         {tab==="people"&&<PeopleTab/>}
+
+        {tab==="leaderboard"&&<LeaderboardTab/>}
 
         {tab==="schedule"&&<SchedTab/>}
 

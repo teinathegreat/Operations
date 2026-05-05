@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.5.3";
+const APP_VERSION="1.6.0";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -270,30 +270,6 @@ const NAME_CORRECTIONS={"Gay Barclay":"Gayle Barclay","Loranna De Carvalho":"Lor
    "Ami Bennett - Howden" (extra spaces around hyphen). This matches them
    to the roster's canonical names so per-agent data buckets line up correctly. */
 /* Format seconds as HH:MM (e.g. 3725 → "01:02"). Returns "—" for 0/null/undefined. */
-const fmtHHMM=(secs)=>{
-  if(!secs||secs<=0)return "—";
-  const totalMin=Math.round(secs/60);
-  const h=Math.floor(totalMin/60);
-  const m=totalMin%60;
-  return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
-};
-/* Bucket raw activity types into the 5 reportable categories.
-   Phone Available stays alone. Training merges Meeting. Break merges Lunch + Personal Time + everything else not explicitly listed. */
-const ACTIVITY_BUCKETS=["Phone Available","Outbound Calls","Re-Q","Training","Break"];
-const bucketActivity=(actMap)=>{
-  const out={"Phone Available":0,"Outbound Calls":0,"Re-Q":0,"Training":0,"Break":0};
-  if(!actMap||typeof actMap!=="object")return out;
-  Object.entries(actMap).forEach(([k,v])=>{
-    if(typeof v!=="number")return;
-    if(k==="Phone Available")out["Phone Available"]+=v;
-    else if(k==="Outbound Calls")out["Outbound Calls"]+=v;
-    else if(k==="Re-Q")out["Re-Q"]+=v;
-    else if(k==="Training"||k==="Meeting")out["Training"]+=v;
-    else out["Break"]+=v; // Break, Lunch, Personal Time, Emails, Workflows, Wrapping Up, Project, etc.
-  });
-  return out;
-};
-const ACTIVITY_COLORS={"Phone Available":"#0d9488","Outbound Calls":"#8b5cf6","Re-Q":"#3b82f6","Training":"#ec4899","Break":"#f59e0b"};
 
 const _normName=(s)=>String(s||"").toLowerCase().replace(/\s+/g," ").replace(/\s*-\s*/g,"-").trim();
 const normalizeAgentToRoster=(rawName,roster)=>{
@@ -2995,52 +2971,8 @@ function App(){
           toast2(`${teamName} Answer Rate imported: ${Math.round(Object.values(wkRates).flat().reduce((s,v)=>s+v,0)/Object.values(wkRates).flat().length*10000)/100}% avg. Auto-filled for ${filled} week(s).`);
         }
 
-        // ── TYPE H: Activity Time per agent per day ──────────────────────────────
-        else if(text.includes("Total Activity Time")){
-          const rows=text.split(/\r?\n/).filter(l=>l.trim());
-          const parseRowH=(line)=>{const vals=[];let cur="";let inq=false;for(const ch of line){if(ch==='"'){inq=!inq;}else if(ch===","&&!inq){vals.push(cur.trim().replace(/^"|"$/g,""));cur="";}else cur+=ch;}vals.push(cur.trim().replace(/^"|"$/g,""));return vals;};
-          const hdrs=parseRowH(rows[0]);
-          const dateCols=hdrs.slice(2);
-          const dateToWkH=(ds)=>{const clean=ds.replace(/-/g,"/");const parts=clean.split("/");if(parts.length!==3)return null;const iso=`${parts[2]}-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`;return wkFromDateStr(iso);};
-          const byAgentWeek={};
-          let agentCount=0,rowsParsed=0;
-          for(let i=2;i<rows.length;i++){
-            const row=parseRowH(rows[i]);
-            if(row.length<3)continue;
-            const activity=row[0];
-            const rawAgent=row[1];
-            if(!activity||!rawAgent)continue;
-            const agent=normalizeAgentToRoster(rawAgent,roster);
-            if(!byAgentWeek[agent])byAgentWeek[agent]={};
-            for(let j=0;j<dateCols.length;j++){
-              const v=parseFloat(row[j+2]);
-              if(isNaN(v)||v===0)continue;
-              const wkN=dateToWkH(dateCols[j]);
-              if(!wkN)continue;
-              const secs=Math.round(v*3600);
-              if(!byAgentWeek[agent][wkN])byAgentWeek[agent][wkN]={};
-              byAgentWeek[agent][wkN][activity]=(byAgentWeek[agent][wkN][activity]||0)+secs;
-              rowsParsed++;
-            }
-          }
-          agentCount=Object.keys(byAgentWeek).length;
-          if(!agentCount){toast2("No activity data could be parsed.");return;}
-          setIcDataWithMonths(prev=>{
-            const merged={...prev};
-            Object.entries(byAgentWeek).forEach(([name,wks])=>{
-              if(!merged[name])merged[name]={team:"",weeks:{},months:{}};
-              merged[name].weeks=merged[name].weeks||{};
-              Object.entries(wks).forEach(([wkN,actMap])=>{
-                if(!merged[name].weeks[wkN])merged[name].weeks[wkN]={};
-                merged[name].weeks[wkN].activity={...(merged[name].weeks[wkN].activity||{}),...actMap};
-              });
-            });
-            return merged;
-          });
-          toast2(`Activity Time imported: ${agentCount} agents, ${rowsParsed} entries.`);
-        }
         else{
-          toast2("Unrecognised report type. Expected: closed conversations, replies, conversation export, total calls, or activity time CSV.");
+          toast2("Unrecognised report type. Expected: closed conversations, replies, or conversation export CSV.");
         }
       }catch(err){toast2("Error reading file: "+err.message);console.error(err);}
     };
@@ -3140,9 +3072,6 @@ function App(){
 
 
   function ReportsTab(){
-    // Track which agent rows have their activity breakdown expanded
-    const[expandedActivity,setExpandedActivity]=React.useState(new Set());
-    const toggleActivity=(name)=>{setExpandedActivity(prev=>{const n=new Set(prev);if(n.has(name))n.delete(name);else n.add(name);return n;});};
     // Build people list from ROSTER only — not from icData
     const effectiveTeamF=icTeamF;
     const byTeam={};
@@ -3214,7 +3143,7 @@ function App(){
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                       <thead>
                         <tr style={{background:"#f9fafb"}}>
-                          {["Agent","Tickets Closed","Emails","Case Actions","WFs","Calls","Med. First Reply","Med. Close Time","Ph. Available","Hrs Worked","Productivity"].map(h=>(
+                          {["Agent","Tickets Closed","Emails","Case Actions","WFs","Calls","Med. First Reply","Med. Close Time","Hrs Worked","Productivity"].map(h=>(
                             <th key={h} style={{padding:"7px 12px",textAlign:h==="Agent"?"left":"center",fontWeight:600,color:tColor,borderBottom:"2px solid "+tColor,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
                           ))}
                         </tr>
@@ -3226,8 +3155,7 @@ function App(){
                           const hrs=getSchedHours(name,icFilter,icWeek,icMonth);
                           const tw=getW(tname);const prodScore=stats&&hrs?(Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10):null;
                           return(
-                            <React.Fragment key={name}>
-                            <tr style={{background:isLead?tBg:i%2?tBg+"88":"#fff",borderBottom:"1px solid #f3f4f6",borderLeft:isLead?"3px solid "+tColor:"none"}}>
+                            <tr key={name} style={{background:isLead?tBg:i%2?tBg+"88":"#fff",borderBottom:"1px solid #f3f4f6",borderLeft:isLead?"3px solid "+tColor:"none"}}>
                               <td style={{padding:"8px 12px",color:isLead?tColor:"#111827",fontWeight:isLead?700:500,whiteSpace:"nowrap"}}>{name}{isLead&&<span style={{fontSize:10,marginLeft:5,background:tColor,color:"#fff",borderRadius:3,padding:"1px 5px",fontWeight:600,verticalAlign:"middle"}}>Lead</span>}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",fontWeight:600,color:stats?.closed?"#111827":"#d1d5db"}}>{stats?.closed??"—"}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",color:stats?.emails?"#111827":"#d1d5db"}}>{stats?.emails??"—"}</td>
@@ -3236,43 +3164,10 @@ function App(){
                               <td style={{padding:"8px 12px",textAlign:"center",color:stats?.calls?"#111827":"#d1d5db"}}>{stats?.calls??("—")}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",color:stats?.medReply?"#111827":"#d1d5db"}}>{stats?.medReply?Math.round(stats.medReply*100)/100+"h":"—"}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",color:stats?.medClose?"#111827":"#d1d5db"}}>{stats?.medClose?Math.round(stats.medClose*100)/100+"h":"—"}</td>
-                              <td onClick={()=>{if(stats?.activity)toggleActivity(name);}} style={{padding:"8px 12px",textAlign:"center",color:stats?.activity?.["Phone Available"]?"#111827":"#d1d5db",fontVariantNumeric:"tabular-nums",cursor:stats?.activity?"pointer":"default",userSelect:"none",position:"relative"}} title={stats?.activity?"Click to view activity breakdown":""}>{fmtHHMM(stats?.activity?.["Phone Available"])}{stats?.activity&&<span style={{marginLeft:5,fontSize:9,color:"#9ca3af",verticalAlign:"middle"}}>{expandedActivity.has(name)?"▴":"▾"}</span>}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",color:hrs?"#111827":"#d1d5db"}}>{hrs?hrs+"h":"—"}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",fontWeight:prodScore?600:400,color:prodScore?"#111827":"#d1d5db"}}>{prodScore??("—")}</td>
                             </tr>
-                          {expandedActivity.has(name)&&stats?.activity&&(()=>{
-                            const buckets=bucketActivity(stats.activity);
-                            const order=["Phone Available","Outbound Calls","Re-Q","Training","Break"];
-                            const total=order.reduce((s,k)=>s+(buckets[k]||0),0);
-                            return(
-                              <tr key={name+"_act"} style={{background:"#fafbfc",borderBottom:"1px solid #f3f4f6"}}>
-                                <td colSpan={11} style={{padding:"10px 14px"}}>
-                                  <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-                                    <span style={{fontSize:10,color:"#9ca3af",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginRight:4}}>Activity</span>
-                                    {order.map(k=>{
-                                      const v=buckets[k]||0;
-                                      const pct=total?Math.round(v/total*100):0;
-                                      return(
-                                        <div key={k} style={{display:"flex",alignItems:"center",gap:6}}>
-                                          <div style={{width:10,height:10,borderRadius:2,background:ACTIVITY_COLORS[k],opacity:v?1:.3,flexShrink:0}}/>
-                                          <div style={{display:"flex",alignItems:"baseline",gap:4}}>
-                                            <span style={{fontSize:11,color:"#6b7280",fontWeight:500}}>{k}:</span>
-                                            <span style={{fontSize:13,fontWeight:700,color:v?"#111827":"#d1d5db",fontVariantNumeric:"tabular-nums"}}>{fmtHHMM(v)}</span>
-                                            {v>0&&<span style={{fontSize:10,color:"#9ca3af"}}>({pct}%)</span>}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                  {/* Stacked bar */}
-                                  <div style={{display:"flex",height:6,borderRadius:3,overflow:"hidden",marginTop:8,background:"#f3f4f6"}}>
-                                    {order.map(k=>{const v=buckets[k]||0;const pct=total?(v/total*100):0;return pct>0?<div key={k} style={{width:pct+"%",background:ACTIVITY_COLORS[k]}}/>:null;})}
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })()}
-                          </React.Fragment>);
+                          );
                         })}
                       </tbody>
                     </table>
@@ -4626,47 +4521,6 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             </div>}
           </div>
         </div>
-        {/* Activity Time breakdown — bucketed totals */}
-        {(()=>{
-          const act=stats?.activity;
-          if(!act||Object.keys(act).length===0)return null;
-          const buckets=bucketActivity(act);
-          const order=["Phone Available","Outbound Calls","Re-Q","Training","Break"];
-          const total=order.reduce((s,k)=>s+(buckets[k]||0),0);
-          if(total===0)return null;
-          return(
-            <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"18px 20px",marginBottom:24}}>
-              <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
-                <div>
-                  <div style={{fontWeight:700,fontSize:14,color:"#111827"}}>Activity Time</div>
-                  <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>Total time tracked across {lb2}</div>
-                </div>
-                <div style={{background:"#f0fdfa",border:"1px solid #99f6e4",borderRadius:8,padding:"6px 14px"}}>
-                  <div style={{fontSize:10,color:"#0f766e",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em"}}>Phone Available</div>
-                  <div style={{fontSize:20,fontWeight:800,color:"#0d9488",fontVariantNumeric:"tabular-nums",marginTop:2}}>{fmtHHMM(buckets["Phone Available"])}</div>
-                </div>
-              </div>
-              {/* Stacked bar */}
-              <div style={{display:"flex",height:10,borderRadius:5,overflow:"hidden",marginBottom:14,background:"#f3f4f6"}}>
-                {order.map(k=>{const v=buckets[k]||0;const pct=total?(v/total*100):0;return pct>0?<div key={k} style={{width:pct+"%",background:ACTIVITY_COLORS[k]}} title={k+": "+fmtHHMM(v)}/>:null;})}
-              </div>
-              {/* Activity tiles */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8}}>
-                {order.map(k=>{
-                  const v=buckets[k]||0;
-                  const pct=total?Math.round(v/total*100):0;
-                  return(
-                    <div key={k} style={{padding:"10px 12px",background:"#f9fafb",borderRadius:8,border:"1px solid #f3f4f6",borderLeft:"3px solid "+ACTIVITY_COLORS[k]}}>
-                      <div style={{fontSize:10,color:"#6b7280",fontWeight:700,textTransform:"uppercase",letterSpacing:".04em",marginBottom:3}}>{k}</div>
-                      <div style={{fontSize:16,fontWeight:700,color:v?"#111827":"#d1d5db",fontVariantNumeric:"tabular-nums"}}>{fmtHHMM(v)}</div>
-                      {v>0&&<div style={{fontSize:10,color:"#9ca3af",marginTop:1}}>{pct}% of tracked</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })()}
       </div>}
       {profTab==="capabilities"&&(()=>{
         const skills=TEAM_SKILLS[teamName]||[];

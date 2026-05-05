@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.4.4";
+const APP_VERSION="1.4.5";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -358,6 +358,57 @@ class ErrorBoundary extends React.Component{
     return this.props.children;
   }
 }
+function IntercomDropzone({isAdmin,icFileRef,handleIcFile,toast2,icData}){
+  const[dragging,setDragging]=React.useState(false);
+  const[lastFile,setLastFile]=React.useState(null);
+  const handleDrop=(e)=>{
+    e.preventDefault();e.stopPropagation();setDragging(false);
+    const file=e.dataTransfer.files[0];if(!file)return;
+    setLastFile({name:file.name,time:new Date().toLocaleTimeString("en-NZ")});
+    handleIcFile({target:{files:[file],value:""}});
+  };
+  const handleDragOver=(e)=>{e.preventDefault();setDragging(true);};
+  const handleDragLeave=(e)=>{e.preventDefault();setDragging(false);};
+  return(
+    <div style={{marginBottom:14}}>
+      <div
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onClick={()=>{if(!isAdmin)return toast2("Only admins can upload reports.");icFileRef.current.click();}}
+        style={{background:dragging?"#f0fdfa":"#fff",border:`2px dashed ${dragging?"#0d9488":"#d1d5db"}`,borderRadius:12,padding:"32px 24px",textAlign:"center",cursor:"pointer",transition:"all .2s",boxShadow:dragging?"0 0 0 4px rgba(13,148,136,.08)":"none"}}>
+        <div style={{fontSize:38,marginBottom:12}}>{dragging?"📂":"📋"}</div>
+        <div style={{fontWeight:700,fontSize:16,color:"#111827",marginBottom:6}}>
+          {dragging?"Drop your file here":"Drag & drop any Intercom report here"}
+        </div>
+        <div style={{fontSize:13,color:"#9ca3af",marginBottom:14}}>
+          or <span style={{color:"#0d9488",fontWeight:600}}>click to browse</span> &nbsp;·&nbsp; CSV files only &nbsp;·&nbsp; auto-detects report type
+        </div>
+        <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",fontSize:11,color:"#6b7280"}}>
+          {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate"].map(t=>(
+            <span key={t} style={{background:"#f3f4f6",borderRadius:4,padding:"2px 8px"}}>{t}</span>
+          ))}
+        </div>
+      </div>
+      <input ref={icFileRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{
+        const file=e.target.files[0];if(!file)return;
+        setLastFile({name:file.name,time:new Date().toLocaleTimeString("en-NZ")});
+        handleIcFile(e);
+      }}/>
+      {lastFile&&(
+        <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,background:"#f0fdf4",border:"1px solid #a7f3d0",borderRadius:8,padding:"8px 14px"}}>
+          <span style={{fontSize:16}}>✅</span>
+          <div>
+            <div style={{fontSize:13,fontWeight:600,color:"#059669"}}>{lastFile.name}</div>
+            <div style={{fontSize:11,color:"#6b7280"}}>Uploaded at {lastFile.time}</div>
+          </div>
+          {Object.keys(icData).length>0&&<span style={{marginLeft:"auto",fontSize:12,color:"#059669",fontWeight:600}}>{Object.keys(icData).length} agents loaded</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OwnerWithdrawalsTab({data,setData,dbSaveConfigKey,addAudit,toast2,currentUser,callClaudeAPI,isAdmin}){
   const iframeRef=React.useRef(null);
   const dataRef=React.useRef(data);
@@ -3015,59 +3066,7 @@ function App(){
     return(
       <div>
         {/* Drag & drop upload zone */}
-        {(()=>{
-          const[dragging,setDragging]=React.useState(false);
-          const[lastFile,setLastFile]=React.useState(null);
-          const handleDrop=(e)=>{
-            e.preventDefault();e.stopPropagation();setDragging(false);
-            const file=e.dataTransfer.files[0];if(!file)return;
-            setLastFile({name:file.name,time:new Date().toLocaleTimeString("en-NZ")});
-            handleIcFile({target:{files:[file],value:""}});
-          };
-          const handleDragOver=(e)=>{e.preventDefault();setDragging(true);};
-          const handleDragLeave=(e)=>{e.preventDefault();setDragging(false);};
-          return(
-            <div style={{marginBottom:14}}>
-              <div
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onClick={()=>{if(!isAdmin)return toast2("Only admins can upload reports.");icFileRef.current.click();}}
-                style={{background:dragging?"#f0fdfa":"#fff",border:`2px dashed ${dragging?"#0d9488":"#d1d5db"}`,borderRadius:12,padding:"32px 24px",textAlign:"center",cursor:"pointer",transition:"all .2s",boxShadow:dragging?"0 0 0 4px rgba(13,148,136,.08)":"none"}}>
-                <div style={{fontSize:38,marginBottom:12}}>{dragging?"📂":"📋"}</div>
-                <div style={{fontWeight:700,fontSize:16,color:"#111827",marginBottom:6}}>
-                  {dragging?"Drop your file here":"Drag & drop any Intercom report here"}
-                </div>
-                <div style={{fontSize:13,color:"#9ca3af",marginBottom:14}}>
-                  or <span style={{color:"#0d9488",fontWeight:600}}>click to browse</span> &nbsp;·&nbsp; CSV files only &nbsp;·&nbsp; auto-detects report type
-                </div>
-                <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",fontSize:11,color:"#6b7280"}}>
-                  {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate"].map(t=>(
-                    <span key={t} style={{background:"#f3f4f6",borderRadius:4,padding:"2px 8px"}}>{t}</span>
-                  ))}
-                </div>
-              </div>
-              <input ref={icFileRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{
-                const file=e.target.files[0];if(!file)return;
-                setLastFile({name:file.name,time:new Date().toLocaleTimeString("en-NZ")});
-                handleIcFile(e);
-              }}/>
-              {lastFile&&(
-                <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,background:"#f0fdf4",border:"1px solid #a7f3d0",borderRadius:8,padding:"8px 14px"}}>
-                  <span style={{fontSize:16}}>✅</span>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:600,color:"#059669"}}>{lastFile.name}</div>
-                    <div style={{fontSize:11,color:"#6b7280"}}>Uploaded at {lastFile.time}</div>
-                  </div>
-                  {Object.keys(icData).length>0&&<span style={{marginLeft:"auto",fontSize:12,color:"#059669",fontWeight:600}}>{Object.keys(icData).length} agents loaded</span>}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
-
-
+        <IntercomDropzone isAdmin={isAdmin} icFileRef={icFileRef} handleIcFile={handleIcFile} toast2={toast2} icData={icData}/>
         
 
         {Object.keys(byTeam).length===0&&(

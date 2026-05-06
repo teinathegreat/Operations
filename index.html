@@ -450,7 +450,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.1.3";
+const APP_VERSION="2.2.0";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -2051,7 +2051,7 @@ function App(){
     const acct=liveAccounts.find(a=>a.username===username)||currentUser;
     const stored=permissions[username];
     const isOSLeader=(acct?.team==="Owner Support"&&acct?.role==="leader");
-    if(acct?.role==="admin")return{menu:["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References"],teams:["All Teams"],admin:["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria"]};
+    if(acct?.role==="admin")return{menu:["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References","Expectations"],teams:["All Teams"],admin:["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria"]};
     if(stored?.menu){
       // If they have stored perms but Owner Withdrawals isn't listed AND they're the OS leader, add it
       // (handles users whose perms were saved before the Owner Withdrawals tab existed)
@@ -2061,7 +2061,7 @@ function App(){
       return stored;
     }
     if(acct?.role==="guest")return{menu:["Home","Daily"],teams:acct?.team?[acct.team]:[],admin:[]};
-    const baseMenu=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Quick References"];
+    const baseMenu=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Quick References","Expectations"];
     if(isOSLeader)baseMenu.splice(10,0,"Owner Withdrawals"); // insert before "Quick References"
     return{menu:baseMenu,teams:acct?.team?[acct.team]:[],admin:[]};
   };
@@ -5638,7 +5638,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const setLocalAccounts=(updated)=>{setLiveAccounts(updated);saveAccountsToSupabase(updated);};
     const pending=pendingEdits.filter(r=>r.status==="pending");
     const resolved=pendingEdits.filter(r=>r.status!=="pending").slice(0,20);
-    const MENU_TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References"];
+    const MENU_TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References","Expectations"];
     const ADMIN_TABS=["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria"];
     const ALL_TEAMS=["All Teams",...tNames];
     const getDefPerms=(acct)=>{
@@ -6229,7 +6229,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         <div className="bc-sidebar-scroll" style={{padding:sbCollapsed?"12px 6px":"12px 10px",flex:1,overflowY:"auto"}}>
           {(()=>{
             // Tab metadata: icon + which group it belongs to
-            const ICONS={"Home":"🏠","Daily":"📝","To-Do List":"✅","Action List":"📋","Planner":"🗂️","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","Call Reviews":"📞","Owner Withdrawals":"⚠️","Quick References":"📌","Settings":"⚙️","Export":"📤","Accounts":"🔑","Audit":"📜","Weights":"⚖️","KPI Targets":"🎯","Capabilities":"🎓","Daily Config":"📝","Review Criteria":"📋"};
+            const ICONS={"Home":"🏠","Daily":"📝","To-Do List":"✅","Action List":"📋","Planner":"🗂️","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","Call Reviews":"📞","Owner Withdrawals":"⚠️","Quick References":"📌","Expectations":"🎯","Settings":"⚙️","Export":"📤","Accounts":"🔑","Audit":"📜","Weights":"⚖️","KPI Targets":"🎯","Capabilities":"🎓","Daily Config":"📝","Review Criteria":"📋"};
             const DISPLAY={"Daily":"Daily Reports"};
             // Group definitions
             const GROUPS=[
@@ -8421,6 +8421,178 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   <div style={{padding:16}}>{isImage(qrPreview.fileName)?<img src={qrPreview.file} style={{maxWidth:"85vw",maxHeight:"80vh",borderRadius:8}}/>:isPDF(qrPreview.fileName)?<iframe src={qrPreview.file} style={{width:"85vw",height:"80vh",border:"none",borderRadius:8}}/>:<div style={{textAlign:"center",padding:40}}><span style={{fontSize:40}}>📎</span><div style={{fontSize:14,color:"#6b7280",marginTop:8}}>{qrPreview.fileName}</div><button onClick={()=>{const a=document.createElement("a");a.href=qrPreview.file;a.download=qrPreview.fileName;a.click();}} style={{...S.p1,marginTop:12}}>Download File</button></div>}</div>
                 </div>
               </div>}
+            </div>;
+          })()}
+        </div>}
+
+        {tab==="expectations"&&<div style={{maxWidth:900}}>
+          {(()=>{
+
+            const EXPECTATIONS=[
+              {key:"manager",title:"Guest & Owner Relations Manager",icon:"\ud83c\udfaf",
+                targets:[
+                  "Teams achieve 90% of their CSAT targets each month",
+                  "Monthly 'Internal Error' GEL spend attributable to your teams >$200 average per issue and under 0.4% of bookings",
+                  "Team member engagement NPS > +60",
+                  "Support related owner withdrawals >5 per month",
+                  "Over 90% of team members achieve their productivity targets for each month",
+                  "Teams achieve 95% of their response time targets each month",
+                  "Owner and guest support answer rates >95%"
+                ],
+                contributions:[
+                  "Monthly cancellations reviewed against T&C and communicated with the wider team",
+                  "Monthly claims and feedback review summary circulated to the wider team"
+                ]},
+              {key:"gs-sup",title:"Guest Support Supervisor",icon:"\ud83d\udc65",
+                targets:[
+                  "Guest Support Median First Response Time <4 Business Hours",
+                  "Guest Support Median Response Time <8 Business Hours",
+                  "Average weekly personal productivity of >4 per hour",
+                  "Average Team Weekly Productivity >8 per hour",
+                  "95% of Guest Support First Night Case Files resolved in under 8 business hours",
+                  "Overall Guest Support CSAT >70%",
+                  ">8 Team call reviews completed per team member per month",
+                  "Guest call answer rate >95%"
+                ],
+                contributions:[
+                  "Monthly cancellations reviewed against T&C and communicated to the wider team",
+                  "95% of Guest first night issues resolved within 8 business hours"
+                ]},
+              {key:"gs-rep",title:"Guest Support Representative",icon:"\ud83c\udfa7",
+                targets:[
+                  "Guest Support CSAT >70% for case files managed by you",
+                  "Average weekly productivity >8 per hour",
+                  "90% of calls reviewed achieving a 'Pass' rating",
+                  "Guest Support Median First Response Time <4 Business Hours",
+                  "Guest Support Median Response Time <8 Business Hours",
+                  "Maintain 80% L4 and 100% L2 capabilities in your assessments after 3 months"
+                ],
+                contributions:[
+                  "Monthly cancellations reviewed against T&C and communicated to the wider team",
+                  "95% of Guest first night issues resolved within 8 business hours"
+                ]},
+              {key:"os-sup",title:"Owner Support Supervisor",icon:"\ud83d\udc65",
+                targets:[
+                  "Owner Support Median First Response Time <2 Business Hours",
+                  "Owner Support Median Response Time <4 Business Hours",
+                  "Average weekly team productivity >4 per hour",
+                  "Average personal productivity >2 per hour",
+                  "90% of Owner Support CSAT >75%",
+                  ">8 Team call reviews completed per team member per month",
+                  "Owner Call Answer Rate >95%"
+                ],
+                contributions:[
+                  "100% of owner booking first night satisfaction surveys sent",
+                  "Monthly owner withdrawal analysis completed and circulated with the wider team"
+                ]},
+              {key:"os-rep",title:"Owner Support Representative",icon:"\ud83c\udfa7",
+                targets:[
+                  "Owner Support CSAT >75% for case files managed by you",
+                  "Average weekly productivity >4 per hour",
+                  "90% of Owner Complaint Tickets resolved in under 5 working days",
+                  ">90% of calls reviewed achieving a 'pass' rating",
+                  "Owner Support Median First Response Time <2 Business Hours",
+                  "Owner Support Median Response Time <4 Business Hours",
+                  "Maintain 80% L3 and 100% L2 capabilities assessments after 3 months in the role"
+                ],
+                contributions:[
+                  "100% of owner booking first night satisfaction surveys sent",
+                  "Monthly owner withdrawal analysis completed and circulated with the wider team"
+                ]},
+              {key:"rr-sup",title:"Reputation and Resolutions Supervisor",icon:"\ud83d\udc65",
+                targets:[
+                  "Median Response Times <8 Business Hours",
+                  "Team weekly productivity >4 per hour",
+                  "Personal weekly productivity >2 per hour",
+                  "95% of Claims Cleaning case files resolved in under 3 business days",
+                  "90% of Feedback & Review case files resolved in under 3 business days",
+                  "Post damage claim Owner CSAT >65% and Post Feedback Guest CSAT >60%",
+                  ">8 call reviews completed per team member per month",
+                  "95% of Airbnb reviews and negative reviews on all other channels responded to upon random monthly audit within 3 business days"
+                ],
+                contributions:[
+                  "Monthly Claims Summary circulated with the wider team",
+                  "Monthly feedback and review summary circulated with the wider team"
+                ]},
+              {key:"rr-rep",title:"Reputation and Resolutions Representative",icon:"\ud83c\udfa7",
+                targets:[
+                  "Owner CSAT >65% and Guest CSAT >60% for case files assigned to you",
+                  "Average weekly productivity >4 per hour",
+                  "95% of Cleaning Claim and 90% of Feedback and Review case files assigned to you resolved in under 3 business days",
+                  "Reputation and Resolutions email median response time <8 Business Hours",
+                  "90% of call reviews achieving a 'pass' rating",
+                  "95% of damage case files updated within 3 business days upon random monthly audit",
+                  "Maintain 80% L3 and 100% L2 capabilities in your assessments after 3 months in the role"
+                ],
+                contributions:[
+                  "Monthly Claims Summary circulated with the wider team",
+                  "Monthly feedback and review summary circulated with the wider team"
+                ]}
+            ];
+
+            const teamMap={
+              "Guest Support":["Guest Support Supervisor","Guest Support Representative"],
+              "Owner Support":["Owner Support Supervisor","Owner Support Representative"],
+              "Reputation and Resolutions":["Reputation and Resolutions Supervisor","Reputation and Resolutions Representative"]
+            };
+
+            const acct=currentUser;
+            let visible=[];
+            if(acct?.role==="admin"){
+              visible=EXPECTATIONS;
+            } else if(acct?.team){
+              const teamKeys=teamMap[acct.team]||[];
+              if(acct.role==="leader"){
+                visible=EXPECTATIONS.filter(e=>teamKeys.includes(e.title));
+              } else {
+                visible=EXPECTATIONS.filter(e=>e.title.endsWith("Representative")&&teamKeys.includes(e.title));
+              }
+            }
+
+            const isAdmin=acct?.role==="admin";
+            const[expFilter,setExpFilter]=[null,null]; // placeholder if we ever want filtering
+
+            const subtitle=isAdmin
+              ?"Performance standards across all roles. As a manager you have access to view all team expectations."
+              :acct?.role==="leader"
+                ?"Your performance standards as a Team Leader, plus the standards expected of your team members."
+                :"Your performance standards as a member of "+(acct?.team||"your team")+".";
+
+            return<div>
+              <div style={{marginBottom:24}}>
+                <div style={{fontSize:18,fontWeight:700,color:"#111827",marginBottom:4}}>Expectations</div>
+                <div style={{fontSize:13,color:"#9ca3af"}}>{subtitle}</div>
+              </div>
+
+              {visible.length===0&&<div style={{padding:36,background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,textAlign:"center"}}>
+                <div style={{fontSize:36,marginBottom:10}}>\ud83d\udccb</div>
+                <div style={{fontSize:15,fontWeight:600,color:"#374151",marginBottom:4}}>No expectations available yet</div>
+                <div style={{fontSize:13,color:"#9ca3af"}}>{acct?.team==="Managed Services"?"Expectations for the Managed Services team haven't been defined yet.":"Expectations are being prepared for your team."}</div>
+              </div>}
+
+              {visible.map(exp=><div key={exp.key} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,marginBottom:16,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,.03)"}}>
+                <div style={{padding:"16px 22px",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"center",gap:12}}>
+                  <span style={{fontSize:22}}>{exp.icon}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:15,fontWeight:700,color:"#111827"}}>{exp.title}</div>
+                    <div style={{fontSize:11,color:"#9ca3af",marginTop:2}}>{exp.targets.length+" performance target"+(exp.targets.length===1?"":"s")+" \u00b7 "+exp.contributions.length+" FY26 contribution"+(exp.contributions.length===1?"":"s")}</div>
+                  </div>
+                </div>
+                <div style={{padding:"18px 22px"}}>
+                  <div style={{fontSize:11,color:"#6b7280",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:10}}>Performance Targets</div>
+                  <ol style={{margin:0,padding:"0 0 0 20px",fontSize:13,lineHeight:1.7,color:"#374151"}}>
+                    {exp.targets.map((t,i)=><li key={i} style={{marginBottom:5}}>{t}</li>)}
+                  </ol>
+
+                  {exp.contributions.length>0&&<div style={{marginTop:18,padding:"14px 16px",background:"#f0fdfa",borderLeft:"3px solid #0d9488",borderRadius:8}}>
+                    <div style={{fontSize:11,color:"#0d9488",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>FY26 Company Contributions</div>
+                    <div style={{fontSize:12,color:"#0f766e",marginBottom:10,lineHeight:1.5}}>Our targets for FY26 are to grow stock to 1,723 properties and achieve contribution per booking of $207. Here is how your contributions help us get there:</div>
+                    <ol style={{margin:0,padding:"0 0 0 20px",fontSize:13,lineHeight:1.7,color:"#134e4a"}}>
+                      {exp.contributions.map((c,i)=><li key={i} style={{marginBottom:4}}>{c}</li>)}
+                    </ol>
+                  </div>}
+                </div>
+              </div>)}
             </div>;
           })()}
         </div>}

@@ -450,7 +450,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.2.0";
+const APP_VERSION="2.2.1";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -1409,6 +1409,107 @@ function App(){
   const addNotif=(forUser,msg)=>{const n={id:Date.now().toString(36),forUser,msg,read:false,createdAt:new Date().toISOString()};setNotifications(prev=>[n,...prev.slice(0,100)]);dbUpsert("notif_entries",n);};
   const addAdminAlert=(forUser,type,title,detail,createdBy)=>{const a={id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),forUser,type,title,detail,createdBy,createdAt:new Date().toISOString(),dismissed:false};setAdminAlerts(prev=>[a,...prev.slice(0,200)]);dbUpsert("alert_entries",a);};
   const DEFAULT_DAILY_CONFIG={"Guest Support":{morning:[{k:"agents",l:"Total Guest Agents Working",t:"number"},{k:"intercom",l:"Intercom Conversations",t:"number"},{k:"enterprise",l:"Enterprise Inbox",t:"number"},{k:"reservations",l:"Reservation Requests",t:"number"},{k:"airbnb_unread",l:"Airbnb Unread",t:"number"},{k:"workflows",l:"Workflows",t:"number"},{k:"lost_property",l:"Lost Property",t:"number"},{k:"bonds",l:"Bonds Outstanding",t:"number"},{k:"rehouse",l:"Dashboard Rehouse Bookings",t:"number"},{k:"pending_cod",l:"Dashboard Pending COD",t:"number"},{k:"tl_approvals",l:"TL Approvals Outstanding",t:"number"},{k:"meetings_planned",l:"1-on-1 Meetings Planned",t:"members"},{k:"reviews_planned",l:"Call Reviews Planned",t:"number"}],evening:[{k:"intercom",l:"Intercom Conversations",t:"number"},{k:"enterprise",l:"Enterprise Inbox",t:"number"},{k:"reservations",l:"Reservation Requests",t:"number"},{k:"airbnb_unread",l:"Airbnb Unread",t:"number"},{k:"workflows",l:"Workflows",t:"number"},{k:"lost_property",l:"Lost Property",t:"number"},{k:"bonds",l:"Bonds Outstanding",t:"number"},{k:"rehouse",l:"Dashboard Rehouse Bookings",t:"number"},{k:"pending_cod",l:"Dashboard Pending COD",t:"number"},{k:"tl_approvals",l:"TL Approvals Outstanding",t:"number"},{k:"meetings_done",l:"1-on-1 Meetings Completed",t:"members"},{k:"reviews_done",l:"Call Reviews Completed",t:"number"}]},"Owner Support":{morning:[{k:"agents",l:"Total Owner Agents Working",t:"number"},{k:"intercom",l:"Intercom Conversations",t:"number"},{k:"enterprise",l:"Enterprise Inbox",t:"number"},{k:"owner_msgs",l:"Owner Messages",t:"number"},{k:"callbacks",l:"Owner Call Backs Outstanding",t:"number"},{k:"meetings_planned",l:"1-on-1 Meetings Planned",t:"members"},{k:"reviews_planned",l:"Call Reviews Planned",t:"number"},{k:"withdraws",l:"Withdraws Outstanding",t:"number"}],evening:[{k:"intercom",l:"Intercom Conversations",t:"number"},{k:"enterprise",l:"Enterprise Inbox",t:"number"},{k:"owner_msgs",l:"Owner Messages",t:"number"},{k:"callbacks",l:"Owner Call Backs Outstanding",t:"number"},{k:"meetings_done",l:"1-on-1 Meetings Completed",t:"members"},{k:"reviews_done",l:"Call Reviews Completed",t:"number"},{k:"withdraws",l:"Withdraws Outstanding",t:"number"}]},"Reputation and Resolutions":{morning:[{k:"agents",l:"Total R&R Agents Working",t:"number"},{k:"intercom",l:"Intercom Conversations",t:"number"},{k:"enterprise",l:"Enterprise Inbox",t:"number"},{k:"case_files",l:"Total Case Files",t:"number"},{k:"feedback_wfs",l:"Total Feedback Workflows",t:"number"},{k:"bachcare_reviews",l:"Total Bachcare Reviews",t:"number"},{k:"airbnb_reviews",l:"Total Airbnb Reviews",t:"number"},{k:"booking_reviews",l:"Total Booking.com Reviews",t:"number"},{k:"vrbo_reviews",l:"Total VRBO Reviews",t:"number"},{k:"meetings_planned",l:"1-on-1 Meetings Planned",t:"members"},{k:"reviews_planned",l:"Call Reviews Planned",t:"number"}],evening:[{k:"intercom",l:"Intercom Conversations",t:"number"},{k:"enterprise",l:"Enterprise Inbox",t:"number"},{k:"case_files",l:"Total Case Files",t:"number"},{k:"feedback_wfs",l:"Total Feedback Workflows",t:"number"},{k:"bachcare_reviews",l:"Total Bachcare Reviews",t:"number"},{k:"airbnb_reviews",l:"Total Airbnb Reviews",t:"number"},{k:"booking_reviews",l:"Total Booking.com Reviews",t:"number"},{k:"vrbo_reviews",l:"Total VRBO Reviews",t:"number"},{k:"meetings_done",l:"1-on-1 Meetings Completed",t:"members"},{k:"reviews_done",l:"Call Reviews Completed",t:"number"}]}};
+  const DEFAULT_EXPECTATIONS=[
+    {key:"manager",title:"Guest & Owner Relations Manager",icon:"\ud83c\udfaf",
+      targets:[
+        "Teams achieve 90% of their CSAT targets each month",
+        "Monthly 'Internal Error' GEL spend attributable to your teams >$200 average per issue and under 0.4% of bookings",
+        "Team member engagement NPS > +60",
+        "Support related owner withdrawals >5 per month",
+        "Over 90% of team members achieve their productivity targets for each month",
+        "Teams achieve 95% of their response time targets each month",
+        "Owner and guest support answer rates >95%"
+      ],
+      contributions:[
+        "Monthly cancellations reviewed against T&C and communicated with the wider team",
+        "Monthly claims and feedback review summary circulated to the wider team"
+      ]},
+    {key:"gs-sup",title:"Guest Support Supervisor",icon:"\ud83d\udc65",
+      targets:[
+        "Guest Support Median First Response Time <4 Business Hours",
+        "Guest Support Median Response Time <8 Business Hours",
+        "Average weekly personal productivity of >4 per hour",
+        "Average Team Weekly Productivity >8 per hour",
+        "95% of Guest Support First Night Case Files resolved in under 8 business hours",
+        "Overall Guest Support CSAT >70%",
+        ">8 Team call reviews completed per team member per month",
+        "Guest call answer rate >95%"
+      ],
+      contributions:[
+        "Monthly cancellations reviewed against T&C and communicated to the wider team",
+        "95% of Guest first night issues resolved within 8 business hours"
+      ]},
+    {key:"gs-rep",title:"Guest Support Representative",icon:"\ud83c\udfa7",
+      targets:[
+        "Guest Support CSAT >70% for case files managed by you",
+        "Average weekly productivity >8 per hour",
+        "90% of calls reviewed achieving a 'Pass' rating",
+        "Guest Support Median First Response Time <4 Business Hours",
+        "Guest Support Median Response Time <8 Business Hours",
+        "Maintain 80% L4 and 100% L2 capabilities in your assessments after 3 months"
+      ],
+      contributions:[
+        "Monthly cancellations reviewed against T&C and communicated to the wider team",
+        "95% of Guest first night issues resolved within 8 business hours"
+      ]},
+    {key:"os-sup",title:"Owner Support Supervisor",icon:"\ud83d\udc65",
+      targets:[
+        "Owner Support Median First Response Time <2 Business Hours",
+        "Owner Support Median Response Time <4 Business Hours",
+        "Average weekly team productivity >4 per hour",
+        "Average personal productivity >2 per hour",
+        "90% of Owner Support CSAT >75%",
+        ">8 Team call reviews completed per team member per month",
+        "Owner Call Answer Rate >95%"
+      ],
+      contributions:[
+        "100% of owner booking first night satisfaction surveys sent",
+        "Monthly owner withdrawal analysis completed and circulated with the wider team"
+      ]},
+    {key:"os-rep",title:"Owner Support Representative",icon:"\ud83c\udfa7",
+      targets:[
+        "Owner Support CSAT >75% for case files managed by you",
+        "Average weekly productivity >4 per hour",
+        "90% of Owner Complaint Tickets resolved in under 5 working days",
+        ">90% of calls reviewed achieving a 'pass' rating",
+        "Owner Support Median First Response Time <2 Business Hours",
+        "Owner Support Median Response Time <4 Business Hours",
+        "Maintain 80% L3 and 100% L2 capabilities assessments after 3 months in the role"
+      ],
+      contributions:[
+        "100% of owner booking first night satisfaction surveys sent",
+        "Monthly owner withdrawal analysis completed and circulated with the wider team"
+      ]},
+    {key:"rr-sup",title:"Reputation and Resolutions Supervisor",icon:"\ud83d\udc65",
+      targets:[
+        "Median Response Times <8 Business Hours",
+        "Team weekly productivity >4 per hour",
+        "Personal weekly productivity >2 per hour",
+        "95% of Claims Cleaning case files resolved in under 3 business days",
+        "90% of Feedback & Review case files resolved in under 3 business days",
+        "Post damage claim Owner CSAT >65% and Post Feedback Guest CSAT >60%",
+        ">8 call reviews completed per team member per month",
+        "95% of Airbnb reviews and negative reviews on all other channels responded to upon random monthly audit within 3 business days"
+      ],
+      contributions:[
+        "Monthly Claims Summary circulated with the wider team",
+        "Monthly feedback and review summary circulated with the wider team"
+      ]},
+    {key:"rr-rep",title:"Reputation and Resolutions Representative",icon:"\ud83c\udfa7",
+      targets:[
+        "Owner CSAT >65% and Guest CSAT >60% for case files assigned to you",
+        "Average weekly productivity >4 per hour",
+        "95% of Cleaning Claim and 90% of Feedback and Review case files assigned to you resolved in under 3 business days",
+        "Reputation and Resolutions email median response time <8 Business Hours",
+        "90% of call reviews achieving a 'pass' rating",
+        "95% of damage case files updated within 3 business days upon random monthly audit",
+        "Maintain 80% L3 and 100% L2 capabilities in your assessments after 3 months in the role"
+      ],
+      contributions:[
+        "Monthly Claims Summary circulated with the wider team",
+        "Monthly feedback and review summary circulated with the wider team"
+      ]}
+  ];
   const[dailyReports,setDailyReports]=useState(()=>{return[];});
 
   const[dailyConfig,setDailyConfig]=useState(()=>{return null;});
@@ -1420,6 +1521,8 @@ function App(){
 
   const[quickNotes,setQuickNotes]=useState(()=>{return{};});
   const[quickRefs,setQuickRefs]=useState(()=>{return[];});
+  const[expectationsConfig,setExpectationsConfig]=useState(()=>{return null;}); // null=use DEFAULT_EXPECTATIONS
+  const[expConfigOpen,setExpConfigOpen]=useState(null);
   const[updateNotes,setUpdateNotes]=useState(()=>{return[];});
   const[qrForm,setQrForm2]=useState(false);
   const[qrType,setQrType2]=useState("note");
@@ -1787,7 +1890,7 @@ function App(){
     console.log("Migrating system config to config_rows...");
     // First check what already exists in config_rows so we don't overwrite
     const existingSys=await dbLoadConfig("sys")||{};
-    const sysKeys=["app_data","pending_edits","call_review_teams","sync_version","quick_refs","update_notes","api_keys","app_version","accounts"];
+    const sysKeys=["app_data","pending_edits","call_review_teams","sync_version","quick_refs","update_notes","api_keys","app_version","accounts","expectations_config"];
     for(const key of sysKeys){
       if(existingSys[key]){console.log("Skipping sys:"+key+" (already exists)");continue;}
       try{const val=await sbLoad("bc_store",key);
@@ -1921,6 +2024,7 @@ function App(){
       const qr2=sysConf.quick_refs||null;
       const un2=sysConf.update_notes||null;
       const ak2=sysConf.api_keys||null;
+      const exC2=sysConf.expectations_config||null;
       // Owner Withdrawals — saved CSV (single key)
       if(sysConf.owner_withdrawals&&typeof sysConf.owner_withdrawals==="object"){setOwnerWithdrawals(sysConf.owner_withdrawals);}
       if(sysConf.app_version)setRV(sysConf.app_version);
@@ -1949,7 +2053,7 @@ function App(){
       // If config_rows empty, fall back to bc_store for config data
       let f_d=d,f_pe=pe,f_caps=rc_caps,f_cc=rc_cc,f_qn=rc_qn,f_ob=rc_ob,f_pm=rc_pm;
       let f_dc=rc_dc,f_as=rc_as,f_sd=rc_sd,f_id=rc_id,f_ip=rc_ip,f_wt=rc_wt,f_rcc=rc_rcc;
-      let f_crt=crt2,f_sv=sv2,f_qr=qr2,f_un=un2,f_ak=ak2;
+      let f_crt=crt2,f_sv=sv2,f_qr=qr2,f_un=un2,f_ak=ak2,f_exC=exC2;
       if(!configMigrated){
         console.log("Config rows empty — loading from bc_store fallback");
         const[bc_d,bc_pe,bc_caps,bc_cc,bc_qn,bc_ob,bc_pm,bc_dc,bc_as,bc_sd,bc_id,bc_ip,bc_wt,bc_crt,bc_sv,bc_qr,bc_un,bc_rcc,bc_ak]=await Promise.all([
@@ -1991,6 +2095,7 @@ function App(){
       if(f_sv&&typeof f_sv==="number")syncVersion.current=f_sv;
       if(f_qr&&Array.isArray(f_qr))setQuickRefs(f_qr);
       if(f_un&&Array.isArray(f_un))setUpdateNotes(f_un);
+      if(f_exC&&Array.isArray(f_exC))setExpectationsConfig(f_exC);
       if(f_rcc&&typeof f_rcc==="object")setReviewCriteriaConfig(f_rcc);
       if(rc_tgt&&typeof rc_tgt==="object")setTgtOwners(rc_tgt);
       if(f_ak&&typeof f_ak==="object"){if(f_ak.openai){setOpenaiKey(f_ak.openai);try{localStorage.setItem("bc_openai_key",f_ak.openai);}catch{}}if(f_ak.claude){setClaudeKey(f_ak.claude);try{localStorage.setItem("bc_claude_key",f_ak.claude);}catch{}}}
@@ -2051,14 +2156,19 @@ function App(){
     const acct=liveAccounts.find(a=>a.username===username)||currentUser;
     const stored=permissions[username];
     const isOSLeader=(acct?.team==="Owner Support"&&acct?.role==="leader");
-    if(acct?.role==="admin")return{menu:["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References","Expectations"],teams:["All Teams"],admin:["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria"]};
+    if(acct?.role==="admin")return{menu:["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References","Expectations"],teams:["All Teams"],admin:["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria","Expectations Config"]};
     if(stored?.menu){
       // If they have stored perms but Owner Withdrawals isn't listed AND they're the OS leader, add it
       // (handles users whose perms were saved before the Owner Withdrawals tab existed)
-      if(isOSLeader&&!stored.menu.includes("Owner Withdrawals")){
-        return{...stored,menu:[...stored.menu,"Owner Withdrawals"]};
+      let patched=stored;
+      if(isOSLeader&&!patched.menu.includes("Owner Withdrawals")){
+        patched={...patched,menu:[...patched.menu,"Owner Withdrawals"]};
       }
-      return stored;
+      // v2.2.1: auto-add Expectations to anyone whose stored perms predate it
+      if(!patched.menu.includes("Expectations")){
+        patched={...patched,menu:[...patched.menu,"Expectations"]};
+      }
+      return patched;
     }
     if(acct?.role==="guest")return{menu:["Home","Daily"],teams:acct?.team?[acct.team]:[],admin:[]};
     const baseMenu=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Quick References","Expectations"];
@@ -2249,6 +2359,7 @@ function App(){
               try{lastSavedConfigRef.current.set(row.id,JSON.stringify({...rest,_r:storedR,_tc:_tc}));}catch{}
             }
             else if(key==="quick_refs"&&Array.isArray(value))setQuickRefs(value);
+            else if(key==="expectations_config"&&Array.isArray(value))setExpectationsConfig(value);
             else if(key==="update_notes"&&Array.isArray(value))setUpdateNotes(value);
             else if(key==="call_review_teams"&&Array.isArray(value))setCallReviewTeams(value);
             else if(key==="accounts"&&Array.isArray(value))setLiveAccounts(value);
@@ -5639,7 +5750,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const pending=pendingEdits.filter(r=>r.status==="pending");
     const resolved=pendingEdits.filter(r=>r.status!=="pending").slice(0,20);
     const MENU_TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References","Expectations"];
-    const ADMIN_TABS=["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria"];
+    const ADMIN_TABS=["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria","Expectations Config"];
     const ALL_TEAMS=["All Teams",...tNames];
     const getDefPerms=(acct)=>{
       if(acct.role==="admin")return{menu:[...MENU_TABS],teams:["All Teams"],admin:[...ADMIN_TABS]};
@@ -5647,6 +5758,8 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
       // Default leader/user menu: full menu BUT exclude Owner Withdrawals unless they're the Owner Support TL
       const isOSLeader=(acct.team==="Owner Support"&&acct.role==="leader");
       const baseMenu=isOSLeader?[...MENU_TABS]:MENU_TABS.filter(t=>t!=="Owner Withdrawals");
+      // v2.2.1: ensure Expectations always present (handles legacy stored perms)
+      if(!baseMenu.includes("Expectations"))baseMenu.push("Expectations");
       return{menu:baseMenu,teams:acct.team?[acct.team]:[],admin:[]};
     };
     const getPerms=(username)=>{const acct=localAccounts.find(a=>a.username===username);const stored=permissions[username];if(!stored?.menu)return getDefPerms(acct||{role:"guest"});return stored;};
@@ -6229,7 +6342,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         <div className="bc-sidebar-scroll" style={{padding:sbCollapsed?"12px 6px":"12px 10px",flex:1,overflowY:"auto"}}>
           {(()=>{
             // Tab metadata: icon + which group it belongs to
-            const ICONS={"Home":"🏠","Daily":"📝","To-Do List":"✅","Action List":"📋","Planner":"🗂️","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","Call Reviews":"📞","Owner Withdrawals":"⚠️","Quick References":"📌","Expectations":"🎯","Settings":"⚙️","Export":"📤","Accounts":"🔑","Audit":"📜","Weights":"⚖️","KPI Targets":"🎯","Capabilities":"🎓","Daily Config":"📝","Review Criteria":"📋"};
+            const ICONS={"Home":"🏠","Daily":"📝","To-Do List":"✅","Action List":"📋","Planner":"🗂️","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","Call Reviews":"📞","Owner Withdrawals":"⚠️","Quick References":"📌","Expectations":"🎯","Settings":"⚙️","Export":"📤","Accounts":"🔑","Audit":"📜","Weights":"⚖️","KPI Targets":"🎯","Capabilities":"🎓","Daily Config":"📝","Review Criteria":"📋","Expectations Config":"🎯"};
             const DISPLAY={"Daily":"Daily Reports"};
             // Group definitions
             const GROUPS=[
@@ -8428,109 +8541,9 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         {tab==="expectations"&&<div style={{maxWidth:900}}>
           {(()=>{
 
-            const EXPECTATIONS=[
-              {key:"manager",title:"Guest & Owner Relations Manager",icon:"\ud83c\udfaf",
-                targets:[
-                  "Teams achieve 90% of their CSAT targets each month",
-                  "Monthly 'Internal Error' GEL spend attributable to your teams >$200 average per issue and under 0.4% of bookings",
-                  "Team member engagement NPS > +60",
-                  "Support related owner withdrawals >5 per month",
-                  "Over 90% of team members achieve their productivity targets for each month",
-                  "Teams achieve 95% of their response time targets each month",
-                  "Owner and guest support answer rates >95%"
-                ],
-                contributions:[
-                  "Monthly cancellations reviewed against T&C and communicated with the wider team",
-                  "Monthly claims and feedback review summary circulated to the wider team"
-                ]},
-              {key:"gs-sup",title:"Guest Support Supervisor",icon:"\ud83d\udc65",
-                targets:[
-                  "Guest Support Median First Response Time <4 Business Hours",
-                  "Guest Support Median Response Time <8 Business Hours",
-                  "Average weekly personal productivity of >4 per hour",
-                  "Average Team Weekly Productivity >8 per hour",
-                  "95% of Guest Support First Night Case Files resolved in under 8 business hours",
-                  "Overall Guest Support CSAT >70%",
-                  ">8 Team call reviews completed per team member per month",
-                  "Guest call answer rate >95%"
-                ],
-                contributions:[
-                  "Monthly cancellations reviewed against T&C and communicated to the wider team",
-                  "95% of Guest first night issues resolved within 8 business hours"
-                ]},
-              {key:"gs-rep",title:"Guest Support Representative",icon:"\ud83c\udfa7",
-                targets:[
-                  "Guest Support CSAT >70% for case files managed by you",
-                  "Average weekly productivity >8 per hour",
-                  "90% of calls reviewed achieving a 'Pass' rating",
-                  "Guest Support Median First Response Time <4 Business Hours",
-                  "Guest Support Median Response Time <8 Business Hours",
-                  "Maintain 80% L4 and 100% L2 capabilities in your assessments after 3 months"
-                ],
-                contributions:[
-                  "Monthly cancellations reviewed against T&C and communicated to the wider team",
-                  "95% of Guest first night issues resolved within 8 business hours"
-                ]},
-              {key:"os-sup",title:"Owner Support Supervisor",icon:"\ud83d\udc65",
-                targets:[
-                  "Owner Support Median First Response Time <2 Business Hours",
-                  "Owner Support Median Response Time <4 Business Hours",
-                  "Average weekly team productivity >4 per hour",
-                  "Average personal productivity >2 per hour",
-                  "90% of Owner Support CSAT >75%",
-                  ">8 Team call reviews completed per team member per month",
-                  "Owner Call Answer Rate >95%"
-                ],
-                contributions:[
-                  "100% of owner booking first night satisfaction surveys sent",
-                  "Monthly owner withdrawal analysis completed and circulated with the wider team"
-                ]},
-              {key:"os-rep",title:"Owner Support Representative",icon:"\ud83c\udfa7",
-                targets:[
-                  "Owner Support CSAT >75% for case files managed by you",
-                  "Average weekly productivity >4 per hour",
-                  "90% of Owner Complaint Tickets resolved in under 5 working days",
-                  ">90% of calls reviewed achieving a 'pass' rating",
-                  "Owner Support Median First Response Time <2 Business Hours",
-                  "Owner Support Median Response Time <4 Business Hours",
-                  "Maintain 80% L3 and 100% L2 capabilities assessments after 3 months in the role"
-                ],
-                contributions:[
-                  "100% of owner booking first night satisfaction surveys sent",
-                  "Monthly owner withdrawal analysis completed and circulated with the wider team"
-                ]},
-              {key:"rr-sup",title:"Reputation and Resolutions Supervisor",icon:"\ud83d\udc65",
-                targets:[
-                  "Median Response Times <8 Business Hours",
-                  "Team weekly productivity >4 per hour",
-                  "Personal weekly productivity >2 per hour",
-                  "95% of Claims Cleaning case files resolved in under 3 business days",
-                  "90% of Feedback & Review case files resolved in under 3 business days",
-                  "Post damage claim Owner CSAT >65% and Post Feedback Guest CSAT >60%",
-                  ">8 call reviews completed per team member per month",
-                  "95% of Airbnb reviews and negative reviews on all other channels responded to upon random monthly audit within 3 business days"
-                ],
-                contributions:[
-                  "Monthly Claims Summary circulated with the wider team",
-                  "Monthly feedback and review summary circulated with the wider team"
-                ]},
-              {key:"rr-rep",title:"Reputation and Resolutions Representative",icon:"\ud83c\udfa7",
-                targets:[
-                  "Owner CSAT >65% and Guest CSAT >60% for case files assigned to you",
-                  "Average weekly productivity >4 per hour",
-                  "95% of Cleaning Claim and 90% of Feedback and Review case files assigned to you resolved in under 3 business days",
-                  "Reputation and Resolutions email median response time <8 Business Hours",
-                  "90% of call reviews achieving a 'pass' rating",
-                  "95% of damage case files updated within 3 business days upon random monthly audit",
-                  "Maintain 80% L3 and 100% L2 capabilities in your assessments after 3 months in the role"
-                ],
-                contributions:[
-                  "Monthly Claims Summary circulated with the wider team",
-                  "Monthly feedback and review summary circulated with the wider team"
-                ]}
-            ];
+            const EXPECTATIONS=expectationsConfig||DEFAULT_EXPECTATIONS;
 
-            const teamMap={
+const teamMap={
               "Guest Support":["Guest Support Supervisor","Guest Support Representative"],
               "Owner Support":["Owner Support Supervisor","Owner Support Representative"],
               "Reputation and Resolutions":["Reputation and Resolutions Supervisor","Reputation and Resolutions Representative"]
@@ -8593,6 +8606,69 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   </div>}
                 </div>
               </div>)}
+            </div>;
+          })()}
+        </div>}
+
+        {tab==="expectations config"&&(isAdmin||(myPerms.admin||[]).includes("Expectations Config"))&&<div style={{maxWidth:900}}>
+          <div style={{marginBottom:24,display:"flex",alignItems:"center",gap:12}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:18,fontWeight:700,color:"#111827",marginBottom:4}}>Expectations Config</div>
+              <div style={{fontSize:13,color:"#9ca3af"}}>Edit the expectations shown to each role on the Expectations tab. Changes save automatically and sync to all users.</div>
+            </div>
+            <button onClick={()=>{
+              if(!window.confirm("Reset all expectations to the original defaults? Any custom edits will be lost."))return;
+              setExpectationsConfig(null);
+              dbSaveConfigKey("sys","expectations_config",null);
+              addAudit("Expectations Reset","All roles \u2192 defaults");
+              toast2("Reset to defaults.");
+            }} style={{padding:"8px 14px",background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,fontSize:12,fontWeight:600,color:"#6b7280",cursor:"pointer"}}>Reset to defaults</button>
+          </div>
+
+          {(()=>{
+            const ec=expectationsConfig||DEFAULT_EXPECTATIONS;
+            const save=(next)=>{setExpectationsConfig(next);dbSaveConfigKey("sys","expectations_config",next);};
+            const updateRole=(idx,patch)=>{const next=ec.map((r,i)=>i===idx?{...r,...patch}:r);save(next);};
+            const updateList=(idx,field,listIdx,val)=>{const next=ec.map((r,i)=>{if(i!==idx)return r;const list=[...(r[field]||[])];list[listIdx]=val;return{...r,[field]:list};});save(next);};
+            const addItem=(idx,field)=>{const next=ec.map((r,i)=>i===idx?{...r,[field]:[...(r[field]||[]),"New item"]}:r);save(next);};
+            const removeItem=(idx,field,listIdx)=>{if(!window.confirm("Remove this item?"))return;const next=ec.map((r,i)=>{if(i!==idx)return r;const list=(r[field]||[]).filter((_,j)=>j!==listIdx);return{...r,[field]:list};});save(next);};
+
+            return<div>
+              {ec.map((role,idx)=>{
+                const isExpanded=expConfigOpen===role.key;
+                return<div key={role.key} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,marginBottom:12,overflow:"hidden"}}>
+                  <div onClick={()=>setExpConfigOpen(isExpanded?null:role.key)} style={{padding:"14px 18px",borderBottom:isExpanded?"1px solid #f3f4f6":"none",display:"flex",alignItems:"center",gap:12,cursor:"pointer",userSelect:"none"}}>
+                    <span style={{fontSize:20}}>{role.icon}</span>
+                    <div style={{flex:1,fontSize:14,fontWeight:700,color:"#111827"}}>{role.title}</div>
+                    <span style={{fontSize:11,color:"#6b7280",background:"#f3f4f6",padding:"3px 9px",borderRadius:10,fontWeight:600}}>{(role.targets||[]).length+" + "+(role.contributions||[]).length}</span>
+                    <span style={{fontSize:12,color:"#9ca3af",transform:isExpanded?"rotate(180deg)":"rotate(0)",transition:"transform .15s"}}>\u25bc</span>
+                  </div>
+                  {isExpanded&&<div style={{padding:"18px 22px"}}>
+                    <div style={{marginBottom:6,fontSize:11,color:"#6b7280",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em"}}>Title</div>
+                    <input value={role.title} onChange={e=>updateRole(idx,{title:e.target.value})} style={{width:"100%",padding:"8px 10px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:13,marginBottom:18,boxSizing:"border-box"}}/>
+
+                    <div style={{display:"flex",alignItems:"center",marginBottom:8}}>
+                      <div style={{flex:1,fontSize:11,color:"#6b7280",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em"}}>Performance Targets</div>
+                      <button onClick={()=>addItem(idx,"targets")} style={{padding:"4px 10px",background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:6,fontSize:11,fontWeight:600,color:"#2563eb",cursor:"pointer"}}>+ Add target</button>
+                    </div>
+                    {(role.targets||[]).map((t,i)=><div key={i} style={{display:"flex",gap:8,marginBottom:6,alignItems:"flex-start"}}>
+                      <span style={{fontSize:12,color:"#9ca3af",paddingTop:8,minWidth:18}}>{i+1}.</span>
+                      <textarea value={t} onChange={e=>updateList(idx,"targets",i,e.target.value)} rows={1} style={{flex:1,padding:"6px 10px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:13,fontFamily:"inherit",resize:"vertical",minHeight:32,boxSizing:"border-box"}}/>
+                      <button onClick={()=>removeItem(idx,"targets",i)} style={{padding:"4px 8px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,fontSize:11,color:"#dc2626",cursor:"pointer"}}>Remove</button>
+                    </div>)}
+
+                    <div style={{display:"flex",alignItems:"center",marginBottom:8,marginTop:18}}>
+                      <div style={{flex:1,fontSize:11,color:"#0d9488",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em"}}>FY26 Company Contributions</div>
+                      <button onClick={()=>addItem(idx,"contributions")} style={{padding:"4px 10px",background:"#f0fdfa",border:"1px solid #5eead4",borderRadius:6,fontSize:11,fontWeight:600,color:"#0d9488",cursor:"pointer"}}>+ Add contribution</button>
+                    </div>
+                    {(role.contributions||[]).map((c,i)=><div key={i} style={{display:"flex",gap:8,marginBottom:6,alignItems:"flex-start"}}>
+                      <span style={{fontSize:12,color:"#9ca3af",paddingTop:8,minWidth:18}}>{i+1}.</span>
+                      <textarea value={c} onChange={e=>updateList(idx,"contributions",i,e.target.value)} rows={1} style={{flex:1,padding:"6px 10px",border:"1px solid #5eead4",borderRadius:6,fontSize:13,fontFamily:"inherit",resize:"vertical",minHeight:32,background:"#f0fdfa",boxSizing:"border-box"}}/>
+                      <button onClick={()=>removeItem(idx,"contributions",i)} style={{padding:"4px 8px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,fontSize:11,color:"#dc2626",cursor:"pointer"}}>Remove</button>
+                    </div>)}
+                  </div>}
+                </div>;
+              })}
             </div>;
           })()}
         </div>}

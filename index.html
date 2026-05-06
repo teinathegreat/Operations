@@ -59,7 +59,7 @@ table{font-variant-numeric:tabular-nums;}
 @keyframes progressFill{from{width:0;}to{width:var(--target-width,100%);}}
 @keyframes borderGlow{0%,100%{border-color:rgba(13,148,136,.15);}50%{border-color:rgba(13,148,136,.4);}}
 @keyframes subtlePulse{0%,100%{opacity:1;}50%{opacity:.7;}}
-@keyframes pcard-arrive{0%{transform:translateY(-24px);}100%{transform:translateY(0);}}
+@keyframes pcard-arrive{0%{box-shadow:0 0 0 0 rgba(13,148,136,.55),0 1px 3px rgba(0,0,0,.04);}60%{box-shadow:0 0 0 10px rgba(13,148,136,.18),0 1px 3px rgba(0,0,0,.04);}100%{box-shadow:0 0 0 18px rgba(13,148,136,0),0 1px 3px rgba(0,0,0,.04);}}
 @keyframes pcard-leave{0%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(.92);}}
 @keyframes pcol-pulse{0%,100%{outline-color:rgba(13,148,136,.55);}50%{outline-color:rgba(13,148,136,1);}}
 @keyframes pskel-shimmer{0%{background-position:-300px 0;}100%{background-position:300px 0;}}
@@ -67,7 +67,7 @@ table{font-variant-numeric:tabular-nums;}
 @keyframes pcard-new{0%{box-shadow:0 0 0 0 rgba(13,148,136,.55);}100%{box-shadow:0 0 0 12px rgba(13,148,136,0);}}
 .pcard-hover{transition:transform .12s cubic-bezier(.22,1,.36,1),box-shadow .12s cubic-bezier(.22,1,.36,1);}
 .pcard-hover:not([data-dragging="true"]):hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,.08)!important;}
-.pcard-arrive{animation:pcard-arrive .35s cubic-bezier(.16,.84,.44,1) both;will-change:transform;}
+.pcard-arrive{animation:pcard-arrive .55s cubic-bezier(.16,1,.3,1) both;}
 .pcard-leave{animation:pcard-leave .2s cubic-bezier(.4,0,.6,1) forwards;pointer-events:none;}
 .pcard-new{animation:pcard-new 1.4s cubic-bezier(.22,1,.36,1);}
 .pcol-active{outline:2px dashed rgba(13,148,136,.7)!important;outline-offset:-2px;animation:pcol-pulse 1.6s ease-in-out infinite;}
@@ -169,7 +169,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.0.7";
+const APP_VERSION="2.0.8";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -7652,7 +7652,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               return<div key={colName} data-pcol={colName} style={{minWidth:280,maxWidth:320,flex:"0 0 280px",display:"flex",flexDirection:"column",height:"calc(100vh - 220px)",background:"#eef0f3",borderRadius:12,padding:"6px",transition:"background .12s"}}
                 onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect="move";e.currentTarget.style.background="#ecfdf5";e.currentTarget.classList.add("pcol-active");}}
                 onDragLeave={e=>{if(e.currentTarget.contains(e.relatedTarget))return;e.currentTarget.style.background="#eef0f3";e.currentTarget.classList.remove("pcol-active");}}
-                onDrop={e=>{e.preventDefault();e.currentTarget.style.background="#eef0f3";e.currentTarget.classList.remove("pcol-active");const cardId=e.dataTransfer.getData("cardId");if(cardId){setRecentlyMoved(cardId);moveCard(cardId,colName,dragOverCard);setTimeout(()=>setRecentlyMoved(null),500);}setDragOverCard(null);setDragCard(null);}}>
+                onDrop={e=>{e.preventDefault();e.currentTarget.style.background="#eef0f3";e.currentTarget.classList.remove("pcol-active");const cardId=e.dataTransfer.getData("cardId");if(cardId){setRecentlyMoved(cardId);moveCard(cardId,colName,dragOverCard);setTimeout(()=>setRecentlyMoved(null),650);}setDragOverCard(null);setDragCard(null);}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",marginBottom:4}}>
                   <div style={{width:3,height:16,borderRadius:2,background:colColor}}/>
                   <span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>{colName}</span>
@@ -8016,7 +8016,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 <button className="pmenu-item" onClick={()=>{const newC={...c,id:uid(),title:c.title+" (copy)"};setPlannerCards(prev=>[...prev,{...newC,boardId:board.id}]);dbUpsert("planner_cards",{...newC,boardId:board.id});setRecentlyCreated(newC.id);setTimeout(()=>setRecentlyCreated(null),1500);close();}}><span>📋</span><span>Duplicate</span></button>
                 <div className="pmenu-divider"/>
                 <div style={{fontSize:10,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:".05em",padding:"6px 14px 2px"}}>Move to</div>
-                {columns.filter(col=>col!==c.column).map(col=><button key={col} className="pmenu-item" onClick={()=>{moveCard(c.id,col);setRecentlyMoved(c.id);setTimeout(()=>setRecentlyMoved(null),500);close();}}><span>→</span><span>{col}</span></button>)}
+                {columns.filter(col=>col!==c.column).map(col=><button key={col} className="pmenu-item" onClick={()=>{moveCard(c.id,col);setRecentlyMoved(c.id);setTimeout(()=>setRecentlyMoved(null),650);close();}}><span>→</span><span>{col}</span></button>)}
                 <div className="pmenu-divider"/>
                 <button className="pmenu-item" onClick={()=>{const url=window.location.href.split("#")[0]+"#card-"+c.id;navigator.clipboard.writeText(url).then(()=>toast3("Link copied","success"));close();}}><span>🔗</span><span>Copy link</span></button>
                 <button className="pmenu-item pmenu-item-danger" onClick={()=>{const snapshot={...c};const updated={...c,status:"archived"};setPlannerCards(prev=>prev.map(x=>x.id===c.id?updated:x));dbUpsert("planner_cards",updated);showUndo("Card archived",()=>{setPlannerCards(prev=>prev.map(x=>x.id===c.id?snapshot:x));dbUpsert("planner_cards",snapshot);});close();}}><span>🗄</span><span>Archive</span></button>
@@ -8025,7 +8025,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               {selectedCardIds.size>0&&<div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:"#111827",color:"#fff",borderRadius:12,padding:"10px 16px",display:"flex",alignItems:"center",gap:14,boxShadow:"0 12px 32px rgba(0,0,0,.25)",zIndex:600,animation:"toastSlideBR .25s cubic-bezier(.22,1,.36,1)"}}>
                 <span style={{fontSize:13,fontWeight:600}}>{selectedCardIds.size+" selected"}</span>
                 <span style={{width:1,height:18,background:"rgba(255,255,255,.2)"}}/>
-                <select onChange={e=>{if(!e.target.value)return;const col=e.target.value;const ids=[...selectedCardIds];ids.forEach(id=>moveCard(id,col));ids.forEach(id=>{setRecentlyMoved(id);});setTimeout(()=>setRecentlyMoved(null),500);clearSelection();e.target.value="";}} style={{fontSize:12,padding:"5px 10px",borderRadius:6,border:"1px solid #374151",background:"#1f2937",color:"#fff",cursor:"pointer"}}><option value="">Move to...</option>{columns.map(c=><option key={c} value={c}>{c}</option>)}</select>
+                <select onChange={e=>{if(!e.target.value)return;const col=e.target.value;const ids=[...selectedCardIds];ids.forEach(id=>moveCard(id,col));ids.forEach(id=>{setRecentlyMoved(id);});setTimeout(()=>setRecentlyMoved(null),650);clearSelection();e.target.value="";}} style={{fontSize:12,padding:"5px 10px",borderRadius:6,border:"1px solid #374151",background:"#1f2937",color:"#fff",cursor:"pointer"}}><option value="">Move to...</option>{columns.map(c=><option key={c} value={c}>{c}</option>)}</select>
                 <button onClick={()=>{const ids=[...selectedCardIds];const snapshots=boardCards.filter(c=>ids.includes(c.id));ids.forEach(id=>{const c=boardCards.find(x=>x.id===id);if(c){const u={...c,status:"archived"};dbUpsert("planner_cards",u);}});setPlannerCards(prev=>prev.map(c=>ids.includes(c.id)?{...c,status:"archived"}:c));showUndo(ids.length+" cards archived",()=>{snapshots.forEach(s=>dbUpsert("planner_cards",s));setPlannerCards(prev=>prev.map(c=>{const s=snapshots.find(x=>x.id===c.id);return s||c;}));});clearSelection();}} style={{fontSize:12,fontWeight:600,padding:"6px 12px",borderRadius:6,border:"none",background:"#dc2626",color:"#fff",cursor:"pointer"}}>Archive</button>
                 <button onClick={clearSelection} style={{fontSize:12,padding:"6px 10px",borderRadius:6,border:"none",background:"transparent",color:"#9ca3af",cursor:"pointer"}}>✕</button>
               </div>}

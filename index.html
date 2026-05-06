@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.9.1";
+const APP_VERSION="1.9.2";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -1741,13 +1741,33 @@ function App(){
     const prev=_prev.current[prevKey];
     const prevMap=new Map(prev.map(r=>[r.id,r]));
     const currMap=new Map(curr.map(r=>[r.id,r]));
+    // SAFETY: Refuse to mass-delete. If we'd delete more than 5 rows OR delete EVERYTHING,
+    // something has likely gone wrong (state corruption, runtime error, etc.). Don't propagate
+    // the deletion to Supabase — log a warning and just sync the upserts.
+    const wouldDelete=prev.filter(r=>r?.id&&!currMap.has(r.id)).length;
+    const SAFE_DELETE_LIMIT=5;
+    const isSuspiciousDelete=(prev.length>0&&curr.length===0)||(wouldDelete>SAFE_DELETE_LIMIT&&wouldDelete>=prev.length*0.5);
     // Upsert new/changed
     let upserted=0,deleted=0;
     curr.forEach(r=>{if(!r?.id)return;const old=prevMap.get(r.id);if(!old||JSON.stringify(old)!==JSON.stringify(r)){dbUpsert(table,r);upserted++;}});
-    // Delete removed
-    prev.forEach(r=>{if(r?.id&&!currMap.has(r.id)){dbDeleteRow(table,r.id);deleted++;}});
+    // Delete removed (only if not suspicious)
+    if(!isSuspiciousDelete){
+      prev.forEach(r=>{if(r?.id&&!currMap.has(r.id)){dbDeleteRow(table,r.id);deleted++;}});
+    }else{
+      console.warn("[syncRows] BLOCKED suspicious mass-delete on "+table+": prev="+prev.length+" curr="+curr.length+" wouldDelete="+wouldDelete+". Skipping deletion to protect data. If this was intentional, delete items individually.");
+      try{toast2&&toast2("⚠ Blocked unexpected delete on "+table+" — your data is safe");}catch{}
+    }
     if(upserted||deleted)console.log("Sync "+table+": "+upserted+" saved, "+deleted+" deleted");
-    _prev.current[prevKey]=[...curr];
+    // Only update _prev for items we actually kept track of (don't lose track of undeleted items)
+    if(isSuspiciousDelete){
+      // Merge: keep any items from prev that we refused to delete, add curr items
+      const merged=new Map();
+      prev.forEach(r=>{if(r?.id)merged.set(r.id,r);});
+      curr.forEach(r=>{if(r?.id)merged.set(r.id,r);});
+      _prev.current[prevKey]=[...merged.values()];
+    }else{
+      _prev.current[prevKey]=[...curr];
+    }
   };
   useEffect(()=>syncRows("call_reviews",callReviews,"cr"),[callReviews]);
   useEffect(()=>syncRows("action_items",actionItems,"ai"),[actionItems]);
@@ -8375,7 +8395,10 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 })}</tbody>
               </table>
               {Object.keys(kpiEditVals).length>0&&(<div style={{display:"flex",gap:8,padding:"12px 20px",borderTop:"1px solid #e5e7eb",background:"#f9fafb"}}>
-                <button onClick={()=>{const updatedKpis=(tc[kpiTeam]?.kpis||[]).map(k=>{const e2=kpiEditVals[k.key];return e2?{...k,...e2}:k;});const newTc={...tc,[kpiTeam]:{...tc[kpiTeam],kpis:updatedKpis}};setTc(newTc);addAudit("KPI Targets Updated",kpiTeam+": "+Object.keys(kpiEditVals).join(", "));setKpiEditVals({});toast2("KPI targets saved.");}} style={S.p1}>Save Changes</button>
+                <button onClick={()=>{const updatedKpis=(tc[kpiTeam]?.kpis||[]).map(k=>{const e2=kpiEditVals[k.key];return e2?{...k,...e2}:k;});const newTc={...tc,[kpiTeam]:{...tc[kpiTeam],kpis:updatedKpis}};setTc(newTc);
+                  // Explicit save to Supabase — don't wait on the auto-save useEffect, which has hash-dedup that can sometimes skip
+                  dbSaveConfigKey("sys","app_data",{...data,_r:roster,_tc:newTc});
+                  addAudit("KPI Targets Updated",kpiTeam+": "+Object.keys(kpiEditVals).join(", "));setKpiEditVals({});toast2("KPI targets saved.");}} style={S.p1}>Save Changes</button>
                 <button onClick={()=>setKpiEditVals({})} style={S.out}>Discard</button>
               </div>)}
             </div>;

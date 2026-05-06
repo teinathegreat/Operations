@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.9.0";
+const APP_VERSION="1.9.1";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -1023,21 +1023,6 @@ function App(){
   const[dragCard,setDragCard]=useState(null);
   const[dragOverCard,setDragOverCard]=useState(null);
   const dragStartPos=useRef(null);
-  // Global safety net: if a drag ends outside any drop zone, the dragCard state could get stuck.
-  // Listen on the document for any mouseup/dragend and clear it if needed.
-  React.useEffect(()=>{
-    const cleanup=()=>{setDragCard(null);setDragOverCard(null);dragStartPos.current=null;};
-    document.addEventListener("dragend",cleanup);
-    document.addEventListener("drop",cleanup);
-    // Mouseup with no buttons pressed (e.g., released outside any element) should also clear
-    const mouseUp=(e)=>{if(e.buttons===0){dragStartPos.current=null;}};
-    document.addEventListener("mouseup",mouseUp);
-    return()=>{
-      document.removeEventListener("dragend",cleanup);
-      document.removeEventListener("drop",cleanup);
-      document.removeEventListener("mouseup",mouseUp);
-    };
-  },[]);
   const[filterAssignee,setFilterAssignee]=useState("");
   const[plannerView,setPlannerView]=useState("kanban");
   const[plannerSearch,setPlannerSearch]=useState("");
@@ -7625,7 +7610,6 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             // ═══════════════════════════════════════════
             const ListView=()=>{
               const allCards=[...boardCards].filter(c=>!filterAssignee||(c.assignees||[c.assignee]).includes(filterAssignee)).sort((a,b)=>{const order=columns.indexOf(a.column)-columns.indexOf(b.column);if(order!==0)return order;return(a.dueDate||"z").localeCompare(b.dueDate||"z");});
-              // Grid: Expand(28px) | Task(2fr) | Topic(1.2fr) | Status(0.9fr) | Assigned(0.9fr) | Due(0.9fr) | Progress(80px)
               const GRID_COLS="28px 2fr 1.2fr 0.9fr 0.9fr 0.9fr 80px";
               const toggleExpand=(cardId,e)=>{e.stopPropagation();setExpandedListCards(prev=>{const n=new Set(prev);if(n.has(cardId))n.delete(cardId);else n.add(cardId);return n;});};
               const toggleChecklistItem=(card,itemId,e)=>{e.stopPropagation();const cl=(card.checklist||[]).map(x=>x.id===itemId?{...x,done:!x.done}:x);saveCard({...card,checklist:cl});};
@@ -7636,8 +7620,8 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 </div>
                 {allCards.map(card=>{const cp=checkProgress(card.checklist);const isOverdue=card.dueDate&&card.dueDate<todayS&&!card.column?.toLowerCase().match(/done|completed/);const isDone=card.column?.toLowerCase().match(/done|completed/);const assignees=card.assignees||[card.assignee].filter(Boolean);const topic=card.topicId?boardCards.find(c=>c.id===card.topicId):null;const isExp=expandedListCards.has(card.id);const hasChecklist=(card.checklist||[]).length>0;
                 return<React.Fragment key={card.id}>
-                  <div onClick={()=>setViewCard(card)} style={{display:"grid",gridTemplateColumns:GRID_COLS,padding:"10px 16px",borderTop:"1px solid #f3f4f6",cursor:"pointer",opacity:isDone?.5:1,alignItems:"center",background:card.isTopic?"#fffbeb":(card.topicId?"#fffdf5":"#fff")}} onMouseOver={e=>e.currentTarget.style.background=card.isTopic?"#fef3c7":(card.topicId?"#fef9e7":"#f9fafb")} onMouseOut={e=>e.currentTarget.style.background=card.isTopic?"#fffbeb":(card.topicId?"#fffdf5":"#fff")}>
-                    {hasChecklist?<button onClick={e=>toggleExpand(card.id,e)} title={isExp?"Collapse checklist":"Expand checklist"} style={{background:"transparent",border:"none",cursor:"pointer",fontSize:11,color:"#9ca3af",padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:4,transition:"all .15s"}} onMouseEnter={e=>{e.stopPropagation();e.currentTarget.style.background="#f3f4f6";e.currentTarget.style.color="#374151";}} onMouseLeave={e=>{e.stopPropagation();e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9ca3af";}}><span style={{display:"inline-block",transition:"transform .15s",transform:isExp?"rotate(90deg)":"rotate(0deg)"}}>{"▶"}</span></button>:<span></span>}
+                  <div onClick={()=>setViewCard(card)} style={{display:"grid",gridTemplateColumns:GRID_COLS,padding:"10px 16px",borderTop:"1px solid #f3f4f6",cursor:"pointer",opacity:isDone?.5:1,alignItems:"center",background:card.isTopic?"#fffbeb":(card.topicId?"#fffdf5":"#fff")}}>
+                    {hasChecklist?<button onClick={e=>toggleExpand(card.id,e)} title={isExp?"Collapse checklist":"Expand checklist"} style={{background:"transparent",border:"none",cursor:"pointer",fontSize:11,color:"#9ca3af",padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:4}}><span style={{display:"inline-block",transition:"transform .15s",transform:isExp?"rotate(90deg)":"rotate(0deg)"}}>{"▶"}</span></button>:<span></span>}
                     <div style={{minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:card.isTopic?700:600,color:"#111827",textDecoration:isDone?"line-through":"none",display:"flex",alignItems:"center",gap:6}}>{card.isTopic&&<span style={{fontSize:11}}>{"📁"}</span>}<span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{card.title}</span></div>
                       {card.labels?.length>0&&<div style={{display:"flex",gap:3,marginTop:3}}>{card.labels.map((l,i)=>{const lb=LABELS.find(x=>x.l===l);return<span key={i} style={{fontSize:8,color:lb?.c,fontWeight:700}}>{l}</span>})}</div>}

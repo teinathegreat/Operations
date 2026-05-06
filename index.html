@@ -450,7 +450,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.2.1";
+const APP_VERSION="2.2.2";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -6350,9 +6350,9 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               {id:"tasks",label:"Tasks",tabs:["Daily","To-Do List","Action List","Planner"]},
               {id:"insights",label:"Insights",tabs:["Dashboard","People","Leaderboard","Schedule","Reports"]},
               {id:"quality",label:"Quality",tabs:["Call Reviews","Owner Withdrawals"]},
-              {id:"more",label:"More",tabs:["Quick References"]}
+              {id:"more",label:"More",tabs:["Quick References","Expectations"]}
             ];
-            const ADMIN_GROUP={id:"admin",label:"Admin",tabs:["Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"]};
+            const ADMIN_GROUP={id:"admin",label:"Admin",tabs:["Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria","Expectations Config"]};
 
             // Compute action list badge count (open actions + alert count)
             const actionListBadge=(()=>{const myT3=isLeader&&currentUser?.team?currentUser.team:(team==="All Teams"?null:team);const openAct=actionItems.filter(a=>(a.status==="open"||(a.status==="snoozed"&&a.snoozeUntil&&new Date(a.snoozeUntil)<=new Date()))&&(myT3?a.teamName===myT3:true)).length;const n90b=new Date();n90b.setDate(n90b.getDate()-90);var alertCt=0;const fTeams=myT3?[myT3]:tNames;const nowB=new Date();fTeams.forEach(tn=>{(roster[tn]?.members||[]).forEach(m=>{const la=assessHistory.filter(h=>h.personName===m.name).sort((a,b)=>b.date.localeCompare(a.date))[0];if(!la||new Date(la.date)<n90b){const snz=alertSnooze["assess_"+m.name];if(!snz||(!snz.dismissed&&(!snz.until||new Date(snz.until)<=nowB)))alertCt++;}});if(callReviewTeams.includes(tn)){const thr=(tc[tn]?.kpis||[]).find(k=>k.key==="call_reviews")?.thresh||2;(roster[tn]?.members||[]).forEach(m=>{const rc=callReviews.filter(r=>r.agentName===m.name&&r.month===mo).length;if(rc<thr){const snz=alertSnooze["review_"+m.name+"_"+mo];if(!snz||(!snz.dismissed&&(!snz.until||new Date(snz.until)<=nowB)))alertCt++;}});}});return openAct+alertCt;})();

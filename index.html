@@ -67,7 +67,7 @@ table{font-variant-numeric:tabular-nums;}
 @keyframes pcard-new{0%{box-shadow:0 0 0 0 rgba(13,148,136,.55);}100%{box-shadow:0 0 0 12px rgba(13,148,136,0);}}
 .pcard-hover{transition:transform .12s cubic-bezier(.22,1,.36,1),box-shadow .12s cubic-bezier(.22,1,.36,1);}
 .pcard-hover:not([data-dragging="true"]):hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,.08)!important;}
-.pcard-arrive{animation:pcard-arrive .42s cubic-bezier(.34,1.56,.64,1) backwards;}
+.pcard-arrive{animation:pcard-arrive .42s cubic-bezier(.34,1.56,.64,1) both;will-change:transform;}
 .pcard-leave{animation:pcard-leave .2s cubic-bezier(.4,0,.6,1) forwards;pointer-events:none;}
 .pcard-new{animation:pcard-new 1.4s cubic-bezier(.22,1,.36,1);}
 .pcol-active{outline:2px dashed rgba(13,148,136,.7)!important;outline-offset:-2px;animation:pcol-pulse 1.6s ease-in-out infinite;}
@@ -169,7 +169,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.0.3";
+const APP_VERSION="2.0.4";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -7650,7 +7650,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               return<div key={colName} data-pcol={colName} style={{minWidth:280,maxWidth:320,flex:"0 0 280px",display:"flex",flexDirection:"column",height:"calc(100vh - 220px)",background:"#eef0f3",borderRadius:12,padding:"6px",transition:"background .12s"}}
                 onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect="move";e.currentTarget.style.background="#ecfdf5";e.currentTarget.classList.add("pcol-active");}}
                 onDragLeave={e=>{if(e.currentTarget.contains(e.relatedTarget))return;e.currentTarget.style.background="#eef0f3";e.currentTarget.classList.remove("pcol-active");}}
-                onDrop={e=>{e.preventDefault();e.currentTarget.style.background="#eef0f3";e.currentTarget.classList.remove("pcol-active");const cardId=e.dataTransfer.getData("cardId");if(cardId){moveCard(cardId,colName,dragOverCard);setRecentlyMoved(cardId);setTimeout(()=>setRecentlyMoved(null),500);}setDragOverCard(null);setDragCard(null);}}>
+                onDrop={e=>{e.preventDefault();e.currentTarget.style.background="#eef0f3";e.currentTarget.classList.remove("pcol-active");const cardId=e.dataTransfer.getData("cardId");if(cardId){setRecentlyMoved(cardId);moveCard(cardId,colName,dragOverCard);setTimeout(()=>setRecentlyMoved(null),500);}setDragOverCard(null);setDragCard(null);}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",marginBottom:4}}>
                   <div style={{width:3,height:16,borderRadius:2,background:colColor}}/>
                   <span style={{fontWeight:700,fontSize:13,color:"#111827",flex:1}}>{colName}</span>

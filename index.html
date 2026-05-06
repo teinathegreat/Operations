@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.0.4";
+const APP_VERSION="2.0.5";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -7583,7 +7583,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     {/* Drop indicator line */}
                     {dragOverCard===card.id&&dragCard!==card.id&&<div style={{height:3,background:teamColor,borderRadius:2,margin:"2px 0",transition:"all .1s"}}/>}
                     <div draggable
-                    onClick={e=>{if(dragCard)return;setViewCard(card);}}
+                    onClick={e=>{if(dragCard&&dragCard!==card.id){setDragCard(null);setViewCard(card);return;}if(dragCard)return;setViewCard(card);}}
                     onDragStart={e=>{e.dataTransfer.setData("cardId",card.id);e.dataTransfer.effectAllowed="move";setDragCard(card.id);}}
                     onDragEnd={e=>{setDragCard(null);setDragOverCard(null);document.querySelectorAll("[data-pcol]").forEach(el=>{el.style.background="#f8f9fa";el.style.outline="none";});}}
                     onDragOver={e=>{e.preventDefault();e.stopPropagation();if(dragOverCard!==card.id)setDragOverCard(card.id);}}

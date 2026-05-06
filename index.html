@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.0.2";
+const APP_VERSION="2.0.3";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -1023,6 +1023,13 @@ function App(){
   const[dragCard,setDragCard]=useState(null);
   const[dragOverCard,setDragOverCard]=useState(null);
   const dragStartPos=useRef(null);
+  // Document-level dragend listener: drag-cancellations don't always fire onDragEnd on the card itself.
+  // This guarantees the card visual state clears whenever ANY drag ends anywhere.
+  React.useEffect(()=>{
+    const onEnd=()=>{setDragCard(null);setDragOverCard(null);};
+    document.addEventListener("dragend",onEnd);
+    return()=>document.removeEventListener("dragend",onEnd);
+  },[]);
   const[filterAssignee,setFilterAssignee]=useState("");
   const[plannerView,setPlannerView]=useState("kanban");
   const[plannerSearch,setPlannerSearch]=useState("");

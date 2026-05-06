@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.0.9";
+const APP_VERSION="2.1.0";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -5966,7 +5966,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               const onCR=tab==="call reviews";
               const onSet=tab==="home"||tab==="to-do list"||tab==="daily"||tab==="daily config"||tab==="settings"||tab==="export"||tab==="accounts"||tab==="audit"||tab==="weights"||tab==="kpi targets"||tab==="capabilities"||tab==="quick references"||tab==="review criteria";
               const dimAll=onSet;
-              const dimPeriod=onSet||onCR;
+              const onPln=tab==="planner";const dimPeriod=onSet||onCR||onPln;
               const ds=(extra={})=>({...S.sel,fontSize:12,padding:"5px 8px",opacity:dimAll?0.4:1,pointerEvents:dimAll?"none":"auto",...extra});
 
               // Multi-select: styled button + floating panel kept open via React portal-style state
@@ -6056,8 +6056,8 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     ?<select value={schedMonth} onChange={e=>{setSchedMonth(e.target.value);setMo(e.target.value);}} style={ds()}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select>
                     :<select value={schedWeek} onChange={e=>{setSchedWeek(+e.target.value);setWk(+e.target.value);}} style={ds()}>{WEEKS.map(w=><option key={w.w} value={w.w}>{w.l}</option>)}</select>)
                   :(pt==="month"
-                    ?<select value={mo} onChange={e=>setMo(e.target.value)} style={{...ds(),opacity:onSet?0.4:1,pointerEvents:onSet?"none":"auto"}}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select>
-                    :<select value={wk} onChange={e=>setWk(+e.target.value)} style={{...ds(),opacity:onSet?0.4:1,pointerEvents:onSet?"none":"auto"}}>{WEEKS.map(w=><option key={w.w} value={w.w}>{w.l}</option>)}</select>)
+                    ?<select value={mo} onChange={e=>setMo(e.target.value)} style={{...ds(),opacity:(onSet||onPln)?0.4:1,pointerEvents:(onSet||onPln)?"none":"auto"}}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select>
+                    :<select value={wk} onChange={e=>setWk(+e.target.value)} style={{...ds(),opacity:(onSet||onPln)?0.4:1,pointerEvents:(onSet||onPln)?"none":"auto"}}>{WEEKS.map(w=><option key={w.w} value={w.w}>{w.l}</option>)}</select>)
                 }
                 {isLeader&&allowedTeams.length<=1
                   ?<span style={{fontSize:12,fontWeight:600,color:"#6b7280",padding:"5px 8px",background:"#fff",border:"1px solid "+("#e5e7eb"),borderRadius:7,opacity:dimAll?0.4:1}}>{onSched?(schedTeamF.length===0?"All Teams":schedTeamF.length===1?schedTeamF[0]:schedTeamF.length+" Teams"):onRep?icTeamF:team}</span>
@@ -7713,7 +7713,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             return<div style={{height:"calc(100vh - 80px)",display:"flex",flexDirection:"column",minWidth:0,overflow:"hidden"}}>
               {/* Header */}
               <div style={{marginBottom:16}}>
-                {visibleTeams.length>1&&<div style={{display:"flex",gap:2,marginBottom:14}}>{visibleTeams.map(tn=>{const b=plannerBoards.find(x=>x.teamName===tn);const active=b?.id===selBoard;const tColor=tc[tn]?.color||"#6b7280";return<button key={tn} onClick={()=>{if(b)setSelBoard(b.id);setFilterAssignee("");}} style={{padding:"8px 20px",borderRadius:8,border:"none",background:active?tColor:"transparent",color:active?"#fff":"#6b7280",fontWeight:active?700:500,fontSize:13,cursor:"pointer",transition:"all .15s"}}>{tn}</button>})}</div>}
+                {visibleTeams.length>1&&(()=>{const curB=plannerBoards.find(x=>x.id===selBoard);const curTeam=curB?.teamName||visibleTeams[0];const curColor=tc[curTeam]?.color||"#6b7280";return<div style={{marginBottom:14}}><select value={curTeam} onChange={e=>{const b=plannerBoards.find(x=>x.teamName===e.target.value);if(b){setSelBoard(b.id);setFilterAssignee("");}}} style={{padding:"8px 32px 8px 14px",borderRadius:8,border:"1px solid #e5e7eb",background:"#fff",color:"#111827",fontWeight:600,fontSize:13,cursor:"pointer",borderLeft:"4px solid "+curColor,minWidth:200,outline:"none"}}>{visibleTeams.map(tn=><option key={tn} value={tn}>{tn}</option>)}</select></div>;})()}
                 <div style={{display:"flex",alignItems:"center",gap:14}}>
                   <div><div style={{fontSize:20,fontWeight:800,color:"#111827"}}>{currentTeamName}</div>
                   <div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{totalCards+" task"+(totalCards!==1?"s":"")+" · "+doneCards+" done"+(overdueCards?" · "+overdueCards+" overdue":"")}</div></div>

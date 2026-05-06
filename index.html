@@ -67,7 +67,7 @@ table{font-variant-numeric:tabular-nums;}
 @keyframes pcard-new{0%{box-shadow:0 0 0 0 rgba(13,148,136,.55);}100%{box-shadow:0 0 0 12px rgba(13,148,136,0);}}
 .pcard-hover{transition:transform .12s cubic-bezier(.22,1,.36,1),box-shadow .12s cubic-bezier(.22,1,.36,1);}
 .pcard-hover:not([data-dragging="true"]):hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,.08)!important;}
-.pcard-arrive{animation:pcard-arrive .42s cubic-bezier(.34,1.56,.64,1);}
+.pcard-arrive{animation:pcard-arrive .42s cubic-bezier(.34,1.56,.64,1) backwards;}
 .pcard-leave{animation:pcard-leave .2s cubic-bezier(.4,0,.6,1) forwards;pointer-events:none;}
 .pcard-new{animation:pcard-new 1.4s cubic-bezier(.22,1,.36,1);}
 .pcol-active{outline:2px dashed rgba(13,148,136,.7)!important;outline-offset:-2px;animation:pcol-pulse 1.6s ease-in-out infinite;}
@@ -169,7 +169,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.0.2";
+const APP_VERSION="2.0.3";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},

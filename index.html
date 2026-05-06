@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.0.7";
+const APP_VERSION="2.0.8";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -7566,7 +7566,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             // ═══════════════════════════════════════════
             const KanbanView=()=><div style={{display:"flex",gap:14,flex:1,overflowX:"auto",paddingBottom:16,paddingRight:40,alignItems:"flex-start"}}>
               {columns.map(colName=>{const cards=filteredCards(colName);const isDone=colName.toLowerCase().match(/done|completed/);const colColors={"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706","Done":"#059669","Completed":"#059669"};const colColor=colColors[colName]||teamColor;
-              return<div key={colName} data-pcol={colName} style={{minWidth:280,maxWidth:320,flex:"0 0 280px",display:"flex",flexDirection:"column",maxHeight:"calc(100vh - 220px)",background:"#f8f9fa",borderRadius:12,padding:"6px",transition:"background .12s"}}
+              return<div key={colName} data-pcol={colName} style={{minWidth:280,maxWidth:320,flex:"0 0 280px",display:"flex",flexDirection:"column",height:"calc(100vh - 220px)",background:"#f8f9fa",borderRadius:12,padding:"6px",transition:"background .12s"}}
                 onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect="move";e.currentTarget.style.background="#ecfdf5";e.currentTarget.style.outline="2px dashed "+teamColor;e.currentTarget.style.outlineOffset="-2px";}}
                 onDragLeave={e=>{if(e.currentTarget.contains(e.relatedTarget))return;e.currentTarget.style.background="#f8f9fa";e.currentTarget.style.outline="none";}}
                 onDrop={e=>{e.preventDefault();e.currentTarget.style.background="#f8f9fa";e.currentTarget.style.outline="none";const cardId=e.dataTransfer.getData("cardId");if(cardId)moveCard(cardId,colName,dragOverCard);setDragOverCard(null);setDragCard(null);}}>

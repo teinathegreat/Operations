@@ -145,7 +145,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="1.8.1";
+const APP_VERSION="1.9.0";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -1018,10 +1018,26 @@ function App(){
   const[newBoardName,setNewBoardName]=useState("");
   const[addingCard,setAddingCard]=useState(null);
   const[viewCard,setViewCard]=useState(null);
+  const[expandedListCards,setExpandedListCards]=useState(new Set());
   const[editCard,setEditCard]=useState(null);
   const[dragCard,setDragCard]=useState(null);
   const[dragOverCard,setDragOverCard]=useState(null);
   const dragStartPos=useRef(null);
+  // Global safety net: if a drag ends outside any drop zone, the dragCard state could get stuck.
+  // Listen on the document for any mouseup/dragend and clear it if needed.
+  React.useEffect(()=>{
+    const cleanup=()=>{setDragCard(null);setDragOverCard(null);dragStartPos.current=null;};
+    document.addEventListener("dragend",cleanup);
+    document.addEventListener("drop",cleanup);
+    // Mouseup with no buttons pressed (e.g., released outside any element) should also clear
+    const mouseUp=(e)=>{if(e.buttons===0){dragStartPos.current=null;}};
+    document.addEventListener("mouseup",mouseUp);
+    return()=>{
+      document.removeEventListener("dragend",cleanup);
+      document.removeEventListener("drop",cleanup);
+      document.removeEventListener("mouseup",mouseUp);
+    };
+  },[]);
   const[filterAssignee,setFilterAssignee]=useState("");
   const[plannerView,setPlannerView]=useState("kanban");
   const[plannerSearch,setPlannerSearch]=useState("");
@@ -7557,13 +7573,13 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     onDragStart={e=>{e.dataTransfer.setData("cardId",card.id);e.dataTransfer.effectAllowed="move";setDragCard(card.id);dragStartPos.current=null;}}
                     onDragEnd={()=>{setDragCard(null);setDragOverCard(null);}}
                     onDragOver={e=>{e.preventDefault();e.stopPropagation();setDragOverCard(card.id);}}
-                    style={{background:dragCard===card.id?"#f0fdfa":(card.isTopic?"#fffbeb":"#fff"),borderRadius:12,padding:16,cursor:"grab",
-                      border:dragCard===card.id?"2px solid "+teamColor:(card.isTopic?"2px dashed #f59e0b":"1px solid #f0f0f0"),
-                      borderLeft:ac&&dragCard!==card.id&&!card.isTopic?"3px solid "+ac:undefined,
+                    style={{background:dragCard===card.id?"#f0fdfa":(card.isTopic?"#fffbeb":(card.topicId?"#fffdf5":"#fff")),borderRadius:12,padding:16,cursor:"grab",
+                      border:dragCard===card.id?"2px solid "+teamColor:(card.isTopic?"2px dashed #f59e0b":(card.topicId?"1px solid #fde68a":"1px solid #f0f0f0")),
+                      borderLeft:ac&&dragCard!==card.id&&!card.isTopic&&!card.topicId?"3px solid "+ac:(card.topicId&&!card.isTopic&&dragCard!==card.id?"3px solid #f59e0b":undefined),
                       outline:"none",
                       boxShadow:dragCard===card.id?"0 8px 24px rgba(0,0,0,.15)":"0 1px 3px rgba(0,0,0,.04)",
                       opacity:dragCard===card.id?.6:isDone?.5:1,transition:"opacity .15s,box-shadow .15s",
-                      marginBottom:4}}>
+                      marginLeft:2,marginRight:2,marginBottom:4}}>
                     {/* Topic ribbon for topic cards */}
                     {card.isTopic&&(()=>{const childCards=boardCards.filter(c=>c.topicId===card.id);const doneCount=childCards.filter(c=>c.column?.toLowerCase().match(/done|completed/)).length;return<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,paddingBottom:6,borderBottom:"1px dashed #fcd34d"}}><span style={{fontSize:14}}>{"📁"}</span><span style={{fontSize:9,fontWeight:800,color:"#92400e",textTransform:"uppercase",letterSpacing:".06em"}}>Topic</span><div style={{flex:1}}/><span style={{fontSize:10,color:"#92400e",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{childCards.length===0?"No cards yet":doneCount+"/"+childCards.length+" done"}</span></div>;})()}
                     {/* Topic breadcrumb for child cards */}
@@ -7609,21 +7625,44 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             // ═══════════════════════════════════════════
             const ListView=()=>{
               const allCards=[...boardCards].filter(c=>!filterAssignee||(c.assignees||[c.assignee]).includes(filterAssignee)).sort((a,b)=>{const order=columns.indexOf(a.column)-columns.indexOf(b.column);if(order!==0)return order;return(a.dueDate||"z").localeCompare(b.dueDate||"z");});
+              // Grid: Expand(28px) | Task(2fr) | Topic(1.2fr) | Status(0.9fr) | Assigned(0.9fr) | Due(0.9fr) | Progress(80px)
+              const GRID_COLS="28px 2fr 1.2fr 0.9fr 0.9fr 0.9fr 80px";
+              const toggleExpand=(cardId,e)=>{e.stopPropagation();setExpandedListCards(prev=>{const n=new Set(prev);if(n.has(cardId))n.delete(cardId);else n.add(cardId);return n;});};
+              const toggleChecklistItem=(card,itemId,e)=>{e.stopPropagation();const cl=(card.checklist||[]).map(x=>x.id===itemId?{...x,done:!x.done}:x);saveCard({...card,checklist:cl});};
+              const toggleSubItem=(card,itemId,subId,e)=>{e.stopPropagation();const cl=(card.checklist||[]).map(x=>x.id===itemId?{...x,subItems:(x.subItems||[]).map(s=>s.id===subId?{...s,done:!s.done}:s)}:x);saveCard({...card,checklist:cl});};
               return<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
-                <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 80px",padding:"10px 16px",background:"#f9fafb",fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".03em"}}>
-                  <span>Task</span><span>Status</span><span>Assigned</span><span>Due</span><span>Progress</span>
+                <div style={{display:"grid",gridTemplateColumns:GRID_COLS,padding:"10px 16px",background:"#f9fafb",fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".03em",alignItems:"center"}}>
+                  <span></span><span>Task</span><span>Topic</span><span>Status</span><span>Assigned</span><span>Due</span><span>Progress</span>
                 </div>
-                {allCards.map(card=>{const cp=checkProgress(card.checklist);const isOverdue=card.dueDate&&card.dueDate<todayS&&!card.column?.toLowerCase().match(/done|completed/);const isDone=card.column?.toLowerCase().match(/done|completed/);const assignees=card.assignees||[card.assignee].filter(Boolean);
-                return<div key={card.id} onClick={()=>setViewCard(card)} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 80px",padding:"10px 16px",borderTop:"1px solid #f3f4f6",cursor:"pointer",opacity:isDone?.5:1,alignItems:"center"}} onMouseOver={e=>e.currentTarget.style.background="#f9fafb"} onMouseOut={e=>e.currentTarget.style.background="#fff"}>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:600,color:"#111827",textDecoration:isDone?"line-through":"none"}}>{card.title}</div>
-                    {card.labels?.length>0&&<div style={{display:"flex",gap:3,marginTop:3}}>{card.labels.map((l,i)=>{const lb=LABELS.find(x=>x.l===l);return<span key={i} style={{fontSize:8,color:lb?.c,fontWeight:700}}>{l}</span>})}</div>}
+                {allCards.map(card=>{const cp=checkProgress(card.checklist);const isOverdue=card.dueDate&&card.dueDate<todayS&&!card.column?.toLowerCase().match(/done|completed/);const isDone=card.column?.toLowerCase().match(/done|completed/);const assignees=card.assignees||[card.assignee].filter(Boolean);const topic=card.topicId?boardCards.find(c=>c.id===card.topicId):null;const isExp=expandedListCards.has(card.id);const hasChecklist=(card.checklist||[]).length>0;
+                return<React.Fragment key={card.id}>
+                  <div onClick={()=>setViewCard(card)} style={{display:"grid",gridTemplateColumns:GRID_COLS,padding:"10px 16px",borderTop:"1px solid #f3f4f6",cursor:"pointer",opacity:isDone?.5:1,alignItems:"center",background:card.isTopic?"#fffbeb":(card.topicId?"#fffdf5":"#fff")}} onMouseOver={e=>e.currentTarget.style.background=card.isTopic?"#fef3c7":(card.topicId?"#fef9e7":"#f9fafb")} onMouseOut={e=>e.currentTarget.style.background=card.isTopic?"#fffbeb":(card.topicId?"#fffdf5":"#fff")}>
+                    {hasChecklist?<button onClick={e=>toggleExpand(card.id,e)} title={isExp?"Collapse checklist":"Expand checklist"} style={{background:"transparent",border:"none",cursor:"pointer",fontSize:11,color:"#9ca3af",padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",width:20,height:20,borderRadius:4,transition:"all .15s"}} onMouseEnter={e=>{e.stopPropagation();e.currentTarget.style.background="#f3f4f6";e.currentTarget.style.color="#374151";}} onMouseLeave={e=>{e.stopPropagation();e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9ca3af";}}><span style={{display:"inline-block",transition:"transform .15s",transform:isExp?"rotate(90deg)":"rotate(0deg)"}}>{"▶"}</span></button>:<span></span>}
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:card.isTopic?700:600,color:"#111827",textDecoration:isDone?"line-through":"none",display:"flex",alignItems:"center",gap:6}}>{card.isTopic&&<span style={{fontSize:11}}>{"📁"}</span>}<span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{card.title}</span></div>
+                      {card.labels?.length>0&&<div style={{display:"flex",gap:3,marginTop:3}}>{card.labels.map((l,i)=>{const lb=LABELS.find(x=>x.l===l);return<span key={i} style={{fontSize:8,color:lb?.c,fontWeight:700}}>{l}</span>})}</div>}
+                    </div>
+                    <div style={{minWidth:0}}>{topic?<span onClick={e=>{e.stopPropagation();setViewCard(topic);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 8px",background:"#fef3c7",border:"1px solid #fde68a",borderRadius:10,fontSize:10,color:"#92400e",fontWeight:600,cursor:"pointer",maxWidth:"100%"}}><span>{"📁"}</span><span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{topic.title}</span></span>:card.isTopic?<span style={{fontSize:10,color:"#92400e",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em"}}>(Topic)</span>:<span style={{fontSize:11,color:"#d1d5db"}}>—</span>}</div>
+                    <span style={{fontSize:12,color:{"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706","Done":"#059669"}[card.column]||"#6b7280",fontWeight:600}}>{card.column}</span>
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{assignees.slice(0,2).map((n,i)=><span key={i} style={{fontSize:11,color:teamColor}}>{n.split(" ")[0]}</span>)}{assignees.length>2&&<span style={{fontSize:11,color:"#9ca3af"}}>{" +"+(assignees.length-2)}</span>}</div>
+                    <span style={{fontSize:12,color:isOverdue?"#dc2626":"#6b7280",fontWeight:isOverdue?700:400}}>{card.dueDate?fmtNZDate(card.dueDate):"—"}</span>
+                    <div>{cp?<div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,height:4,background:"#e5e7eb",borderRadius:2}}><div style={{width:cp.pct+"%",height:"100%",background:cp.pct===100?"#059669":teamColor,borderRadius:2}}/></div><span style={{fontSize:9,color:"#6b7280"}}>{cp.done+"/"+cp.total}</span></div>:<span style={{fontSize:10,color:"#d1d5db"}}>—</span>}</div>
                   </div>
-                  <span style={{fontSize:12,color:{"To Do":"#6b7280","In Progress":"#2563eb","Review":"#d97706","Done":"#059669"}[card.column]||"#6b7280",fontWeight:600}}>{card.column}</span>
-                  <div style={{display:"flex",gap:2}}>{assignees.slice(0,2).map((n,i)=><span key={i} style={{fontSize:11,color:teamColor}}>{n.split(" ")[0]}</span>)}{assignees.length>2&&<span style={{fontSize:11,color:"#9ca3af"}}>{" +"+(assignees.length-2)}</span>}</div>
-                  <span style={{fontSize:12,color:isOverdue?"#dc2626":"#6b7280",fontWeight:isOverdue?700:400}}>{card.dueDate?fmtNZDate(card.dueDate):"—"}</span>
-                  <div>{cp?<div style={{display:"flex",alignItems:"center",gap:4}}><div style={{flex:1,height:4,background:"#e5e7eb",borderRadius:2}}><div style={{width:cp.pct+"%",height:"100%",background:cp.pct===100?"#059669":teamColor,borderRadius:2}}/></div><span style={{fontSize:9,color:"#6b7280"}}>{cp.done+"/"+cp.total}</span></div>:<span style={{fontSize:10,color:"#d1d5db"}}>—</span>}</div>
-                </div>})}
+                  {isExp&&hasChecklist&&<div style={{padding:"10px 16px 14px 56px",background:"#fafafa",borderTop:"1px solid #f3f4f6"}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}}>{"Checklist ("+(card.checklist||[]).filter(x=>x.done).length+"/"+(card.checklist||[]).length+")"}</div>
+                    {(card.checklist||[]).map(item=>(<div key={item.id} style={{marginBottom:4}}>
+                      <div onClick={e=>toggleChecklistItem(card,item.id,e)} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"3px 0"}}>
+                        <div style={{width:14,height:14,borderRadius:3,border:"2px solid "+(item.done?"#059669":"#d1d5db"),background:item.done?"#059669":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:9,flexShrink:0}}>{item.done?"✓":""}</div>
+                        <span style={{fontSize:12,color:item.done?"#9ca3af":"#111827",textDecoration:item.done?"line-through":"none",flex:1}}>{item.text}</span>
+                        {(item.subItems||[]).length>0&&<span style={{fontSize:9,color:"#6b7280",fontWeight:600}}>{(item.subItems||[]).filter(s=>s.done).length+"/"+(item.subItems||[]).length}</span>}
+                      </div>
+                      {(item.subItems||[]).map(sub=>(<div key={sub.id} onClick={e=>toggleSubItem(card,item.id,sub.id,e)} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"2px 0",marginLeft:24}}>
+                        <div style={{width:12,height:12,borderRadius:3,border:"2px solid "+(sub.done?"#059669":"#d1d5db"),background:sub.done?"#059669":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:8,flexShrink:0}}>{sub.done?"✓":""}</div>
+                        <span style={{fontSize:11,color:sub.done?"#9ca3af":"#374151",textDecoration:sub.done?"line-through":"none"}}>{sub.text}</span>
+                      </div>))}
+                    </div>))}
+                  </div>}
+                </React.Fragment>;})}
                 {allCards.length===0&&<div style={{textAlign:"center",padding:30,color:"#9ca3af",fontSize:13}}>No tasks</div>}
               </div>};
 

@@ -169,7 +169,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.2.1";
+const APP_VERSION="2.2.2";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -7531,10 +7531,12 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const LABELS=[{l:"High Priority",c:"#dc2626",bg:"#fef2f2"},{l:"Medium",c:"#d97706",bg:"#fffbeb"},{l:"Low",c:"#059669",bg:"#ecfdf5"},{l:"Blocked",c:"#7c3aed",bg:"#f5f3ff"},{l:"Bug",c:"#e11d48",bg:"#fff1f2"},{l:"Feature",c:"#0ea5e9",bg:"#f0f9ff"}];
             const myTeamP=isLeader&&currentUser?.team?currentUser.team:null;
             const visibleTeams=isAdmin?tNames:(myTeamP?[myTeamP]:allowedTeams);
-            const activeTeam=selBoard&&plannerBoards.find(b=>b.id===selBoard)?.teamName;
+            // v2.2.2: sync global team selector to planner board
+            const globalTeamMatchesBoard=plannerBoards.some(b=>b.teamName===team);
+            const activeTeam=globalTeamMatchesBoard?team:(selBoard&&plannerBoards.find(b=>b.id===selBoard)?.teamName);
             const currentTeamName=activeTeam||(visibleTeams[0]||tNames[0]);
             const board=plannerBoards.find(b=>b.teamName===currentTeamName);
-            if(!selBoard&&board)setTimeout(()=>setSelBoard(board.id),0);
+            if(board&&selBoard!==board.id)setTimeout(()=>setSelBoard(board.id),0);
             const boardCards=board?plannerCards.filter(c=>c.boardId===board?.id):[];
             const DEFAULT_COLS=["To Do","In Progress","Review","Done"];
             const columns=(()=>{const raw=board?.columns||DEFAULT_COLS;
@@ -7794,10 +7796,10 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               {/* Header */}
               <div style={{marginBottom:16}}>
                 
-                <div style={{display:"flex",alignItems:"center",gap:14}}>
-                  <div><div style={{fontSize:20,fontWeight:800,color:"#111827"}}>{currentTeamName}</div>
+                <div style={{display:"flex",alignItems:"flex-start",gap:14,flexWrap:"wrap"}}>
+                  <div style={{flex:"0 0 auto",minWidth:200,minHeight:48}}><div style={{fontSize:20,fontWeight:800,color:"#111827"}}>{currentTeamName}</div>
                   <div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{totalCards+" task"+(totalCards!==1?"s":"")+" · "+doneCards+" done"+(overdueCards?" · "+overdueCards+" overdue":"")}</div></div>
-                  <div style={{flex:1}}/>
+                  <div style={{flex:1,minWidth:0}}/>
                   {totalCards>0&&<div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:120,height:6,background:"#e5e7eb",borderRadius:3,overflow:"hidden"}}><div className="bc-progress-fill" style={{"--target-width":progressPct+"%",height:"100%",background:teamColor,borderRadius:3}}/></div><span style={{fontSize:12,fontWeight:700,color:teamColor}}>{progressPct+"%"}</span></div>}
                   {/* View toggle */}
                   <div style={{display:"flex",background:"#f3f4f6",borderRadius:9,padding:3}}>

@@ -169,7 +169,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.0.5";
+const APP_VERSION="2.0.6";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -7567,7 +7567,9 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               // Re-index all cards in the target column
               const reindexed=[];let ord=0;colCards.forEach(c=>{if(c.id===beforeCardId){reindexed.push({...updated,order:ord});ord++;}reindexed.push({...c,order:ord});ord++;});
               if(!beforeCardId)reindexed.push({...updated,order:ord});
-              reindexed.forEach(c=>{setPlannerCards(prev=>prev.map(x=>x.id===c.id?c:x));dbUpsert("planner_cards",c);});
+              // v2.0.6: batch all reindex updates into ONE setPlannerCards call to prevent intermediate renders that flash without the .pcard-arrive class
+              setPlannerCards(prev=>{const m=new Map(reindexed.map(c=>[c.id,c]));return prev.map(x=>m.get(x.id)||x);});
+              reindexed.forEach(c=>dbUpsert("planner_cards",c));
               if(!reindexed.find(c=>c.id===cardId)){setPlannerCards(prev=>prev.map(c=>c.id===cardId?updated:c));dbUpsert("planner_cards",updated);}
               if(toCol.toLowerCase().match(/done|completed/)&&card.column!==toCol&&card.recurring)completeRecurring(card);
               setDragOverCard(null);};

@@ -59,7 +59,7 @@ table{font-variant-numeric:tabular-nums;}
 @keyframes progressFill{from{width:0;}to{width:var(--target-width,100%);}}
 @keyframes borderGlow{0%,100%{border-color:rgba(13,148,136,.15);}50%{border-color:rgba(13,148,136,.4);}}
 @keyframes subtlePulse{0%,100%{opacity:1;}50%{opacity:.7;}}
-@keyframes pcard-arrive{0%{opacity:0;transform:scale(.85) translateY(-18px);box-shadow:0 12px 28px rgba(13,148,136,.25);}55%{opacity:1;transform:scale(1.04) translateY(2px);box-shadow:0 6px 18px rgba(13,148,136,.18);}80%{transform:scale(.98) translateY(0);box-shadow:0 3px 10px rgba(13,148,136,.10);}100%{opacity:1;transform:scale(1) translateY(0);box-shadow:0 1px 3px rgba(0,0,0,.04);}}
+@keyframes pcard-arrive{0%{opacity:.5;transform:scale(.88) translateY(-12px);box-shadow:0 12px 28px rgba(13,148,136,.25);}55%{opacity:1;transform:scale(1.04) translateY(2px);box-shadow:0 6px 18px rgba(13,148,136,.18);}80%{transform:scale(.98) translateY(0);box-shadow:0 3px 10px rgba(13,148,136,.10);}100%{opacity:1;transform:scale(1) translateY(0);box-shadow:0 1px 3px rgba(0,0,0,.04);}}
 @keyframes pcard-leave{0%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(.92);}}
 @keyframes pcol-pulse{0%,100%{outline-color:rgba(13,148,136,.55);}50%{outline-color:rgba(13,148,136,1);}}
 @keyframes pskel-shimmer{0%{background-position:-300px 0;}100%{background-position:300px 0;}}
@@ -169,7 +169,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.0";
+const APP_VERSION="2.0.2";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},

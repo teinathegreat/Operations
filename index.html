@@ -450,7 +450,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.2.2";
+const APP_VERSION="2.3.0";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -1518,6 +1518,7 @@ function App(){
   const[assessHistory,setAssessHistory]=useState(()=>{return[];});
 
   const[meetingNotes,setMeetingNotes]=useState(()=>{return[];});
+  const[formalMeetings,setFormalMeetings]=useState(()=>{return[];});
 
   const[quickNotes,setQuickNotes]=useState(()=>{return{};});
   const[quickRefs,setQuickRefs]=useState(()=>{return[];});
@@ -1792,7 +1793,7 @@ function App(){
   };
 
   // Migration: move data from bc_store JSON blobs to row-level tables (one-time)
-  const DB_TABLES={call_reviews:"call_reviews",action_items:"action_items",todos:"todos",daily_reports:"daily_reports",meeting_notes:"meeting_notes",assess_history:"assess_history",goals:"goals",audit_log:"audit_entries",notifications:"notif_entries",admin_alerts:"alert_entries"};
+  const DB_TABLES={call_reviews:"call_reviews",action_items:"action_items",todos:"todos",daily_reports:"daily_reports",meeting_notes:"meeting_notes",assess_history:"assess_history",goals:"goals",audit_log:"audit_entries",notifications:"notif_entries",admin_alerts:"alert_entries",formal_meetings:"formal_meetings"};
   // Config object helpers: each key in an object becomes its own row in config_rows
   // id format: "prefix:key" e.g. "caps:John Smith", "perms:drew"
   const dbLoadConfig=async(prefix)=>{
@@ -1952,6 +1953,7 @@ function App(){
       await dbBulkInsert("todos",todos);
       await dbBulkInsert("daily_reports",dailyReports);
       await dbBulkInsert("meeting_notes",meetingNotes);
+      await dbBulkInsert("formal_meetings",formalMeetings);
       await dbBulkInsert("assess_history",assessHistory);
       await dbBulkInsert("goals",goals);
       await dbBulkInsert("audit_entries",auditLog.slice(-200));
@@ -2005,9 +2007,9 @@ function App(){
     setSbMsg("Loading from Supabase...");
     try{
       // Load row-level tables + config from config_rows
-      const[cr2,ai2,td2,dr2,mn2,ah2,gl2,au2,nf2,aa2,pb2,pc2,ms2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence,rc_tgt]=await Promise.all([
+      const[cr2,ai2,td2,dr2,mn2,fm2,ah2,gl2,au2,nf2,aa2,pb2,pc2,ms2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence,rc_tgt]=await Promise.all([
         dbLoadAll("call_reviews"),dbLoadAll("action_items"),dbLoadAll("todos"),dbLoadAll("daily_reports"),
-        dbLoadAll("meeting_notes"),dbLoadAll("assess_history"),dbLoadAll("goals"),
+        dbLoadAll("meeting_notes"),dbLoadAll("formal_meetings"),dbLoadAll("assess_history"),dbLoadAll("goals"),
         dbLoadAll("audit_entries"),dbLoadAll("notif_entries"),dbLoadAll("alert_entries"),
         dbLoadAll("planner_boards"),dbLoadAll("planner_cards"),dbLoadAll("matrix_snapshots"),
         dbLoadConfig("caps"),dbLoadConfig("capcrit"),dbLoadConfig("notes"),dbLoadConfig("onboard"),
@@ -2034,7 +2036,7 @@ function App(){
       // If row tables empty, fall back to bc_store (pre-migration)
       const useFallback=cr2.length===0&&ai2.length===0&&td2.length===0&&dr2.length===0;
       console.log("Row tables check — cr:"+cr2.length+" ai:"+ai2.length+" td:"+td2.length+" dr:"+dr2.length+" → fallback:"+useFallback);
-      let f_cr=cr2,f_ai=ai2,f_td=td2,f_dr=dr2,f_mn=mn2,f_ah=ah2,f_gl=gl2,f_au=au2,f_nf=nf2,f_aa=aa2;
+      let f_cr=cr2,f_ai=ai2,f_td=td2,f_dr=dr2,f_mn=mn2,f_fm=fm2,f_ah=ah2,f_gl=gl2,f_au=au2,f_nf=nf2,f_aa=aa2;
       if(useFallback){
         console.log("Row tables empty — loading from bc_store fallback");
         const[o_cr,o_ai,o_td,o_dr,o_mn,o_ah,o_gl,o_au,o_nf,o_aa]=await Promise.all([
@@ -2077,7 +2079,7 @@ function App(){
       if(f_d){const{_r,_tc,...rest}=f_d;if(_r){const mr=migrateRoster(fixRosterNames(_r));setRoster(mr);}if(_tc)setTc(_tc);setData(rest);}
       if(f_pe)setPendingEdits(f_pe);
       setCallReviews(f_cr);setActionItems(f_ai);setTodos(f_td);setDailyReports(f_dr);
-      setMeetingNotes(f_mn);setAssessHistory(f_ah);setGoals(f_gl);
+      setMeetingNotes(f_mn);setFormalMeetings(f_fm||[]);setAssessHistory(f_ah);setGoals(f_gl);
       setAuditLog(f_au);setNotifications(f_nf);setAdminAlerts(f_aa);
       setPlannerBoards(pb2);setPlannerCards(pc2);if(Array.isArray(ms2))setMatrixSnapshots(ms2);
       if(f_caps&&typeof f_caps==="object")setCapabilities(f_caps);
@@ -2260,6 +2262,7 @@ function App(){
   useEffect(()=>syncRows("todos",todos,"td"),[todos]);
   useEffect(()=>syncRows("daily_reports",dailyReports,"dr"),[dailyReports]);
   useEffect(()=>syncRows("meeting_notes",meetingNotes,"mn"),[meetingNotes]);
+  useEffect(()=>syncRows("formal_meetings",formalMeetings,"fm"),[formalMeetings]);
   useEffect(()=>syncRows("assess_history",assessHistory,"ah"),[assessHistory]);
   useEffect(()=>syncRows("goals",goals,"gl"),[goals]);
   useEffect(()=>syncRows("audit_entries",auditLog.slice(0,200),"au"),[auditLog]);
@@ -2307,6 +2310,7 @@ function App(){
       .on("postgres_changes",{event:"*",schema:"public",table:"todos"},handle(setTodos,"td"))
       .on("postgres_changes",{event:"*",schema:"public",table:"daily_reports"},handle(setDailyReports,"dr"))
       .on("postgres_changes",{event:"*",schema:"public",table:"meeting_notes"},handle(setMeetingNotes,"mn"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"formal_meetings"},handle(setFormalMeetings,"fm"))
       .on("postgres_changes",{event:"*",schema:"public",table:"assess_history"},handle(setAssessHistory,"ah"))
       .on("postgres_changes",{event:"*",schema:"public",table:"goals"},handle(setGoals,"gl"))
       .on("postgres_changes",{event:"*",schema:"public",table:"notif_entries"},handle(setNotifications,"nf"))
@@ -5323,6 +5327,13 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const[aiPlan,setAiPlan]=React.useState("");
     const[aiDue,setAiDue]=React.useState("");
     const[editAi,setEditAi]=React.useState(null);
+    const[fmShow,setFmShow]=React.useState(false);
+    const[fmEdit,setFmEdit]=React.useState(null);
+    const[fmDate,setFmDate]=React.useState(todayNZ());
+    const[fmType,setFmType]=React.useState("Formal");
+    const[fmAttendees,setFmAttendees]=React.useState([name]);
+    const[fmMinutes,setFmMinutes]=React.useState("");
+    const[fmOther,setFmOther]=React.useState("");
     const stats=getIcStats(name,pt,wk,mo);
     const hrs=getSchedHours(name,pt,wk,mo);
     const prod=stats&&hrs&&hrs>0?Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10:null;
@@ -5370,7 +5381,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
         </div>
       </div>
       <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:"2px solid #e5e7eb"}}>
-        {["overview","reviews","capabilities","meetings","onboarding","history"].map(k=>{const capSkills=TEAM_SKILLS[teamName]||[];const capData=capabilities[name]||{};const l3=capSkills.filter(s=>(capData[s.name]?.level||0)===3).length;return<button key={k} onClick={()=>setProfTab(k)} style={{padding:"10px 18px",border:"none",borderBottom:profTab===k?"2px solid #0d9488":"2px solid transparent",marginBottom:-2,background:"transparent",cursor:"pointer",fontSize:13,fontWeight:profTab===k?700:500,color:profTab===k?"#0d9488":"#6b7280"}}>{k==="overview"?"Overview":k==="reviews"?"Call Reviews ("+pdRevs.length+")":k==="capabilities"?"Capabilities"+(capSkills.length?" ("+l3+"/"+capSkills.length+")":""):k==="meetings"?"1:1 Notes":k==="onboarding"?"Onboarding":"History"}</button>})}
+        {["overview","reviews","capabilities","meetings","meeting-log","onboarding","history"].map(k=>{const capSkills=TEAM_SKILLS[teamName]||[];const capData=capabilities[name]||{};const l3=capSkills.filter(s=>(capData[s.name]?.level||0)===3).length;return<button key={k} onClick={()=>setProfTab(k)} style={{padding:"10px 18px",border:"none",borderBottom:profTab===k?"2px solid #0d9488":"2px solid transparent",marginBottom:-2,background:"transparent",cursor:"pointer",fontSize:13,fontWeight:profTab===k?700:500,color:profTab===k?"#0d9488":"#6b7280"}}>{k==="overview"?"Overview":k==="reviews"?"Call Reviews ("+pdRevs.length+")":k==="capabilities"?"Capabilities"+(capSkills.length?" ("+l3+"/"+capSkills.length+")":""):k==="meetings"?"1:1 Notes":k==="meeting-log"?"Meetings ("+formalMeetings.filter(fm=>(fm.attendees||[]).includes(name)).length+")":k==="onboarding"?"Onboarding":"History"}</button>})}
       </div>
       {profTab==="overview"&&<div>
         <div className="bc-stagger" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
@@ -5725,6 +5736,136 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
       </div>}
 
 
+      {profTab==="meeting-log"&&<div>
+        {(()=>{
+          const personMeetings=formalMeetings.filter(fm=>(fm.attendees||[]).includes(name)).sort((a,b)=>(b.date+(b.createdAt||"")).localeCompare(a.date+(a.createdAt||"")));
+          const teamMems2=[...(roster[teamName]?.members||[]).map(mb=>mb.name)];
+          if(roster[teamName]?.lead&&!teamMems2.includes(roster[teamName].lead))teamMems2.unshift(roster[teamName].lead);
+
+          const fmtMtgDate=(d)=>{if(!d)return"";try{const dt=new Date(d+"T12:00:00");return dt.toLocaleDateString("en-NZ",{weekday:"long",day:"numeric",month:"short",year:"numeric"});}catch(_){return d;}};
+          const fmtMtgDateShort=(d)=>{if(!d)return"";try{const dt=new Date(d+"T12:00:00");return dt.toLocaleDateString("en-NZ",{day:"numeric",month:"short",year:"numeric"});}catch(_){return d;}};
+
+          const resetForm=()=>{setFmShow(false);setFmEdit(null);setFmDate(todayNZ());setFmType("Formal");setFmAttendees([name]);setFmMinutes("");setFmOther("");};
+
+          const saveMtg=()=>{
+            if(!fmDate){toast2("Please pick a date.");return;}
+            if(!fmAttendees.length){toast2("Please add at least one attendee.");return;}
+            if(!fmMinutes.trim()){toast2("Please add meeting minutes.");return;}
+            const ts=new Date().toISOString();
+            if(fmEdit){
+              const updated={...fmEdit,date:fmDate,type:fmType,attendees:[...fmAttendees],minutes:fmMinutes.trim(),updatedAt:ts,updatedBy:currentUser?.displayName||"Admin"};
+              setFormalMeetings(prev=>prev.map(m=>m.id===fmEdit.id?updated:m));
+              dbUpsert("formal_meetings",updated);
+              addAudit("Meeting Updated",fmType+" \u2014 "+fmDate+" \u2014 "+fmAttendees.join(", "));
+              toast2("Updated.");
+            } else {
+              const newM={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),date:fmDate,type:fmType,attendees:[...fmAttendees],minutes:fmMinutes.trim(),teamName:teamName,primaryPerson:name,createdBy:currentUser?.displayName||"Admin",createdAt:ts};
+              setFormalMeetings(prev=>[newM,...prev]);
+              dbUpsert("formal_meetings",newM);
+              addAudit("Meeting Logged",fmType+" \u2014 "+fmDate+" \u2014 "+fmAttendees.join(", "));
+              toast2("Logged.");
+            }
+            resetForm();
+          };
+
+          const startEditMtg=(m)=>{setFmEdit(m);setFmDate(m.date);setFmType(m.type);setFmAttendees([...(m.attendees||[])]);setFmMinutes(m.minutes||"");setFmOther("");setFmShow(true);};
+
+          const delMtg=(m)=>{
+            if(!window.confirm("Delete this meeting log? This cannot be undone."))return;
+            setFormalMeetings(prev=>prev.filter(x=>x.id!==m.id));
+            dbDeleteRow("formal_meetings",m.id);
+            addAudit("Meeting Deleted",m.type+" \u2014 "+m.date);
+            toast2("Deleted.");
+          };
+
+          const toggleAtt=(p)=>setFmAttendees(prev=>prev.includes(p)?prev.filter(x=>x!==p):[...prev,p]);
+          const addOther=()=>{const v=fmOther.trim();if(!v)return;if(!fmAttendees.includes(v))setFmAttendees(prev=>[...prev,v]);setFmOther("");};
+
+          const TYPE_STYLE={Formal:{bg:"#f0fdfa",bd:"#5eead4",c:"#0d9488",ic:"\ud83d\udccb"},Informal:{bg:"#eff6ff",bd:"#bfdbfe",c:"#2563eb",ic:"\u2615"}};
+
+          return<div>
+            <div style={{display:"flex",alignItems:"center",marginBottom:18}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:14,color:"#111827"}}>Meeting Log</div>
+                <div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{personMeetings.length+" "+(personMeetings.length===1?"meeting":"meetings")+" logged for "+name}</div>
+              </div>
+              {!fmShow&&<button onClick={()=>{resetForm();setFmShow(true);}} style={{padding:"8px 14px",background:"#0d9488",border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Log Meeting</button>}
+            </div>
+
+            {fmShow&&<div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"22px 24px",marginBottom:18}}>
+              <div style={{fontWeight:700,fontSize:14,color:"#111827",marginBottom:18}}>{fmEdit?"Edit meeting":"Log a meeting"}</div>
+
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Date</div>
+                  <input type="date" value={fmDate} onChange={e=>setFmDate(e.target.value)} style={{width:"100%",padding:"8px 10px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  {fmDate&&<div style={{fontSize:11,color:"#9ca3af",marginTop:4}}>{fmtMtgDate(fmDate)}</div>}
+                </div>
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Meeting Type</div>
+                  <div style={{display:"flex",gap:8}}>
+                    {["Formal","Informal"].map(t=>{const sel=fmType===t;const st=TYPE_STYLE[t];return<button key={t} onClick={()=>setFmType(t)} style={{flex:1,padding:"8px 12px",border:"1px solid "+(sel?st.bd:"#e5e7eb"),borderRadius:6,background:sel?st.bg:"#fff",color:sel?st.c:"#6b7280",fontSize:13,fontWeight:sel?700:500,cursor:"pointer",fontFamily:"inherit"}}>{st.ic+" "+t}</button>;})}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Attendees ({fmAttendees.length})</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                  {teamMems2.map(p=>{const sel=fmAttendees.includes(p);return<button key={p} onClick={()=>toggleAtt(p)} style={{padding:"5px 10px",border:"1px solid "+(sel?"#5eead4":"#e5e7eb"),borderRadius:14,background:sel?"#f0fdfa":"#fff",color:sel?"#0d9488":"#6b7280",fontSize:12,fontWeight:sel?600:500,cursor:"pointer",fontFamily:"inherit"}}>{(sel?"\u2713 ":"")+p}</button>;})}
+                </div>
+                {fmAttendees.filter(a=>!teamMems2.includes(a)).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                  {fmAttendees.filter(a=>!teamMems2.includes(a)).map(a=><span key={a} style={{padding:"5px 10px",border:"1px solid #c4b5fd",background:"#f5f3ff",color:"#7c3aed",borderRadius:14,fontSize:12,fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}>{a}<button onClick={()=>setFmAttendees(prev=>prev.filter(p=>p!==a))} style={{background:"none",border:"none",color:"#7c3aed",cursor:"pointer",padding:0,marginLeft:2,fontSize:14,lineHeight:1,fontWeight:700}}>\u00d7</button></span>)}
+                </div>}
+                <div style={{display:"flex",gap:6}}>
+                  <input value={fmOther} onChange={e=>setFmOther(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addOther();}}} placeholder="Add other attendee (e.g. someone from another team)" style={{flex:1,padding:"6px 10px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:12,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  <button onClick={addOther} style={{padding:"6px 14px",border:"1px solid #e5e7eb",borderRadius:6,background:"#fff",color:"#6b7280",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Add</button>
+                </div>
+              </div>
+
+              <div style={{marginBottom:18}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Meeting Minutes</div>
+                <textarea value={fmMinutes} onChange={e=>setFmMinutes(e.target.value)} placeholder="Discussion points, decisions made, action items, follow-ups..." rows={6} style={{width:"100%",padding:"10px 12px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:13,fontFamily:"inherit",resize:"vertical",minHeight:120,boxSizing:"border-box",lineHeight:1.5}}/>
+              </div>
+
+              <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                <button onClick={resetForm} style={{padding:"8px 16px",background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,fontSize:13,fontWeight:500,color:"#6b7280",cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                <button onClick={saveMtg} style={{padding:"8px 16px",background:"#0d9488",border:"none",borderRadius:8,fontSize:13,fontWeight:600,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>{fmEdit?"Save changes":"Save meeting"}</button>
+              </div>
+            </div>}
+
+            {personMeetings.length===0&&!fmShow&&<div style={{padding:36,background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,textAlign:"center"}}>
+              <div style={{fontSize:36,marginBottom:10}}>\ud83d\udcc5</div>
+              <div style={{fontSize:14,fontWeight:600,color:"#374151",marginBottom:4}}>No meetings logged yet</div>
+              <div style={{fontSize:12,color:"#9ca3af"}}>Click "+ Log Meeting" above to record a formal or informal meeting.</div>
+            </div>}
+
+            {personMeetings.map(m=>{
+              const st=TYPE_STYLE[m.type]||TYPE_STYLE.Formal;
+              return<div key={m.id} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"18px 22px",marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"flex-start",gap:12,marginBottom:12}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+                      <span style={{fontSize:11,fontWeight:700,color:st.c,background:st.bg,border:"1px solid "+st.bd,padding:"3px 10px",borderRadius:10}}>{st.ic+" "+m.type}</span>
+                      <span style={{fontSize:13,fontWeight:600,color:"#111827"}}>{fmtMtgDate(m.date)}</span>
+                    </div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:5,alignItems:"center"}}>
+                      <span style={{fontSize:11,color:"#9ca3af",fontWeight:600,marginRight:4}}>Attendees:</span>
+                      {(m.attendees||[]).map(a=><span key={a} style={{fontSize:11,color:a===name?"#0d9488":"#374151",background:a===name?"#f0fdfa":"#f3f4f6",border:"1px solid "+(a===name?"#5eead4":"#e5e7eb"),padding:"2px 8px",borderRadius:10,fontWeight:a===name?600:500}}>{a}</span>)}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    <button onClick={()=>startEditMtg(m)} style={{padding:"5px 11px",background:"#fff",border:"1px solid #e5e7eb",borderRadius:6,fontSize:11,fontWeight:600,color:"#6b7280",cursor:"pointer",fontFamily:"inherit"}}>Edit</button>
+                    <button onClick={()=>delMtg(m)} style={{padding:"5px 11px",background:"#fff",border:"1px solid #fecaca",borderRadius:6,fontSize:11,fontWeight:600,color:"#dc2626",cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
+                  </div>
+                </div>
+                <div style={{padding:"12px 14px",background:"#f9fafb",border:"1px solid #f3f4f6",borderRadius:8,fontSize:13,color:"#374151",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{m.minutes}</div>
+                <div style={{fontSize:10,color:"#9ca3af",marginTop:10}}>Logged by {m.createdBy} on {fmtMtgDateShort(m.createdAt?.slice(0,10)||m.date)}{m.updatedAt?" \u00b7 Edited "+fmtMtgDateShort(m.updatedAt.slice(0,10))+" by "+m.updatedBy:""}</div>
+              </div>;
+            })}
+          </div>;
+        })()}
+      </div>}
       {profTab==="onboarding"&&(()=>{
         const ob=onboarding[name]||null;
         if(!ob)return<div style={{background:"#fff",borderRadius:10,border:"1px solid #e5e7eb",padding:32,textAlign:"center",color:"#9ca3af",fontSize:13}}>{"No onboarding tracker. Auto-created when a new member is added."}</div>;

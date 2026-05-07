@@ -147,6 +147,32 @@
   border:1px solid #00ff66 !important;
 }
 
+/* v2.3.4: Strip ALL boxes from sidebar in Hacker theme — keep clean text-only look */
+[data-theme="hacker"] .bc-sidebar-root,
+[data-theme="hacker"] .bc-sidebar-root *{
+  border:none !important;
+  box-shadow:none !important;
+}
+[data-theme="hacker"] .bc-sidebar-root button,
+[data-theme="hacker"] .bc-sidebar-root input,
+[data-theme="hacker"] .bc-sidebar-root select,
+[data-theme="hacker"] .bc-sidebar-root .bc-card,
+[data-theme="hacker"] .bc-sidebar-root .bc-card-raised,
+[data-theme="hacker"] .bc-sidebar-root .bc-card-float,
+[data-theme="hacker"] .bc-sidebar-root .bc-sidebar-item,
+[data-theme="hacker"] .bc-sidebar-root .bc-sidebar-link{
+  background-color:transparent !important;
+  background-image:none !important;
+}
+/* Restore active sidebar item highlight + green stripe */
+[data-theme="hacker"] .bc-sidebar-root .bc-sidebar-item.active{
+  background-color:#001a08 !important;
+}
+[data-theme="hacker"] .bc-sidebar-root .bc-sidebar-item:hover,
+[data-theme="hacker"] .bc-sidebar-root .bc-sidebar-link:hover{
+  background-color:#001a08 !important;
+}
+
 /* === v2.1.3 Dark Theme (Helios-inspired) === */
 /* Charcoal panels, subtle borders, light grey text.
    PRESERVES original light look for: .bc-card, .bc-card-raised, .bc-card-float,
@@ -450,7 +476,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.3.3";
+const APP_VERSION="2.3.4";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -6473,7 +6499,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
       </div>
 
       {/* ═══ SIDEBAR ═══ */}
-      <div style={{width:sbCollapsed?64:220,background:"linear-gradient(180deg,#111827 0%,#0f172a 100%)",display:"flex",flexDirection:"column",flexShrink:0,position:"fixed",top:0,bottom:0,left:0,zIndex:60,borderRight:"1px solid rgba(255,255,255,.06)",transition:"width .2s ease"}}>
+      <div className="bc-sidebar-root" style={{width:sbCollapsed?64:220,background:"linear-gradient(180deg,#111827 0%,#0f172a 100%)",display:"flex",flexDirection:"column",flexShrink:0,position:"fixed",top:0,bottom:0,left:0,zIndex:60,borderRight:"1px solid rgba(255,255,255,.06)",transition:"width .2s ease"}}>
         {/* Logo + collapse toggle */}
         <div style={{padding:sbCollapsed?"22px 8px 18px":"22px 18px 18px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
           <div style={{display:"flex",alignItems:"center",gap:10,justifyContent:sbCollapsed?"center":"flex-start"}}>

@@ -450,7 +450,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.3.0";
+const APP_VERSION="2.3.2";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -4108,12 +4108,19 @@ function App(){
       return b.prod-a.prod;
     });
     const withData=ranked.filter(m=>m.prod!==null);
+    // v2.3.2: highlight in red only those missing the productivity target (was: bottom 3)
+    const prodThresh=tc[team]?.kpis?.find(k=>k.key==="productivity_team")?.thresh;
+    const leadThresh=tc[team]?.kpis?.find(k=>k.key==="productivity_lead")?.thresh;
+    const leadMissing=leadThresh!=null&&leadProd!=null&&leadProd<leadThresh;
     const getRankStyle=(idx)=>{
       if(idx>=withData.length)return{bg:"#fff",border:"#e5e7eb",badge:null};
-      if(idx===0)return{bg:"#fffbeb",border:"#fbbf24",badge:"🥇",badgeBg:"#fef3c7",badgeColor:"#92400e",label:"1st"};
-      if(idx===1)return{bg:"#f9fafb",border:"#9ca3af",badge:"🥈",badgeBg:"#f3f4f6",badgeColor:"#4b5563",label:"2nd"};
-      if(idx===2)return{bg:"#fff7ed",border:"#f97316",badge:"🥉",badgeBg:"#ffedd5",badgeColor:"#9a3412",label:"3rd"};
-      if(idx>=withData.length-3&&withData.length>5)return{bg:"#fef2f2",border:"#fca5a5",badge:null,badgeBg:"#fef2f2",badgeColor:"#dc2626",label:`${idx+1}${idx+1===2?"nd":idx+1===3?"rd":"th"}`,danger:true};
+      const prod=withData[idx]?.prod;
+      const missing=prodThresh!=null&&prod!=null&&prod<prodThresh;
+      const redBorder="#dc2626";
+      if(idx===0)return{bg:"#fffbeb",border:missing?redBorder:"#fbbf24",badge:"🥇",badgeBg:"#fef3c7",badgeColor:"#92400e",label:"1st",danger:missing};
+      if(idx===1)return{bg:"#f9fafb",border:missing?redBorder:"#9ca3af",badge:"🥈",badgeBg:"#f3f4f6",badgeColor:"#4b5563",label:"2nd",danger:missing};
+      if(idx===2)return{bg:"#fff7ed",border:missing?redBorder:"#f97316",badge:"🥉",badgeBg:"#ffedd5",badgeColor:"#9a3412",label:"3rd",danger:missing};
+      if(missing)return{bg:"#fff",border:redBorder,badge:null,badgeBg:"#fef2f2",badgeColor:"#dc2626",label:`${idx+1}${idx+1===2?"nd":idx+1===3?"rd":"th"}`,danger:true};
       return{bg:"#fff",border:"#e5e7eb",badge:null,label:`${idx+1}${idx+1===2?"nd":idx+1===3?"rd":"th"}`};
     };
     return(
@@ -4124,7 +4131,7 @@ function App(){
         {tR.lead&&<div style={{marginBottom:20}}>
           <div style={{fontSize:11,fontWeight:600,color:"#9ca3af",marginBottom:8,textTransform:"uppercase",letterSpacing:".05em"}}>Team Lead</div>
           <div onClick={()=>{setIMember({id:leadId,name:tR.lead,teamName:team});setIEdit(false);}}
-            style={{background:"#fff",border:"2px solid "+tDef.color,borderRadius:12,padding:"16px 20px",cursor:"pointer",
+            style={{background:"#fff",border:"2px solid "+(leadMissing?"#dc2626":tDef.color),borderRadius:12,padding:"16px 20px",cursor:"pointer",
               display:"flex",alignItems:"center",gap:14,transition:"all .15s",boxShadow:"0 1px 2px rgba(0,0,0,.03)",maxWidth:400}}
             onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,.08)";e.currentTarget.style.transform="translateY(-1px)";}}
             onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,.03)";e.currentTarget.style.transform="none";}}>
@@ -5815,7 +5822,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
                   {teamMems2.map(p=>{const sel=fmAttendees.includes(p);return<button key={p} onClick={()=>toggleAtt(p)} style={{padding:"5px 10px",border:"1px solid "+(sel?"#5eead4":"#e5e7eb"),borderRadius:14,background:sel?"#f0fdfa":"#fff",color:sel?"#0d9488":"#6b7280",fontSize:12,fontWeight:sel?600:500,cursor:"pointer",fontFamily:"inherit"}}>{(sel?"\u2713 ":"")+p}</button>;})}
                 </div>
                 {fmAttendees.filter(a=>!teamMems2.includes(a)).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
-                  {fmAttendees.filter(a=>!teamMems2.includes(a)).map(a=><span key={a} style={{padding:"5px 10px",border:"1px solid #c4b5fd",background:"#f5f3ff",color:"#7c3aed",borderRadius:14,fontSize:12,fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}>{a}<button onClick={()=>setFmAttendees(prev=>prev.filter(p=>p!==a))} style={{background:"none",border:"none",color:"#7c3aed",cursor:"pointer",padding:0,marginLeft:2,fontSize:14,lineHeight:1,fontWeight:700}}>\u00d7</button></span>)}
+                  {fmAttendees.filter(a=>!teamMems2.includes(a)).map(a=><span key={a} style={{padding:"5px 10px",border:"1px solid #c4b5fd",background:"#f5f3ff",color:"#7c3aed",borderRadius:14,fontSize:12,fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}>{a}<button onClick={()=>setFmAttendees(prev=>prev.filter(p=>p!==a))} style={{background:"none",border:"none",color:"#7c3aed",cursor:"pointer",padding:0,marginLeft:2,fontSize:14,lineHeight:1,fontWeight:700}}>×</button></span>)}
                 </div>}
                 <div style={{display:"flex",gap:6}}>
                   <input value={fmOther} onChange={e=>setFmOther(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addOther();}}} placeholder="Add other attendee (e.g. someone from another team)" style={{flex:1,padding:"6px 10px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:12,fontFamily:"inherit",boxSizing:"border-box"}}/>
@@ -5835,7 +5842,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             </div>}
 
             {personMeetings.length===0&&!fmShow&&<div style={{padding:36,background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,textAlign:"center"}}>
-              <div style={{fontSize:36,marginBottom:10}}>\ud83d\udcc5</div>
+              <div style={{fontSize:36,marginBottom:10}}>📅</div>
               <div style={{fontSize:14,fontWeight:600,color:"#374151",marginBottom:4}}>No meetings logged yet</div>
               <div style={{fontSize:12,color:"#9ca3af"}}>Click "+ Log Meeting" above to record a formal or informal meeting.</div>
             </div>}
@@ -8719,7 +8726,7 @@ const teamMap={
               </div>
 
               {visible.length===0&&<div style={{padding:36,background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,textAlign:"center"}}>
-                <div style={{fontSize:36,marginBottom:10}}>\ud83d\udccb</div>
+                <div style={{fontSize:36,marginBottom:10}}>📋</div>
                 <div style={{fontSize:15,fontWeight:600,color:"#374151",marginBottom:4}}>No expectations available yet</div>
                 <div style={{fontSize:13,color:"#9ca3af"}}>{acct?.team==="Managed Services"?"Expectations for the Managed Services team haven't been defined yet.":"Expectations are being prepared for your team."}</div>
               </div>}
@@ -8782,7 +8789,7 @@ const teamMap={
                     <span style={{fontSize:20}}>{role.icon}</span>
                     <div style={{flex:1,fontSize:14,fontWeight:700,color:"#111827"}}>{role.title}</div>
                     <span style={{fontSize:11,color:"#6b7280",background:"#f3f4f6",padding:"3px 9px",borderRadius:10,fontWeight:600}}>{(role.targets||[]).length+" + "+(role.contributions||[]).length}</span>
-                    <span style={{fontSize:12,color:"#9ca3af",transform:isExpanded?"rotate(180deg)":"rotate(0)",transition:"transform .15s"}}>\u25bc</span>
+                    <span style={{fontSize:12,color:"#9ca3af",transform:isExpanded?"rotate(180deg)":"rotate(0)",transition:"transform .15s"}}>▼</span>
                   </div>
                   {isExpanded&&<div style={{padding:"18px 22px"}}>
                     <div style={{marginBottom:6,fontSize:11,color:"#6b7280",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em"}}>Title</div>
@@ -8855,8 +8862,8 @@ const teamMap={
                       {crCfgLocked?<span style={{fontSize:12,fontWeight:600,color:"#111827",flex:1}}>{cr.label}</span>
                       :<input value={cr.label} onChange={e=>updateCriterion(cr.id,"label",e.target.value)} style={{flex:1,fontSize:12,fontWeight:600,padding:"6px 10px",border:"1px solid #d1d5db",borderRadius:6}}/>}
                       {!crCfgLocked&&<div style={{display:"flex",gap:3}}>
-                        <button onClick={()=>moveCriterion(cr.id,-1)} disabled={ci===0} style={{fontSize:10,background:"none",border:"1px solid #e5e7eb",borderRadius:4,padding:"2px 6px",cursor:ci===0?"default":"pointer",color:ci===0?"#d1d5db":"#6b7280"}}>\u25b2</button>
-                        <button onClick={()=>moveCriterion(cr.id,1)} disabled={ci===currentCriteria.length-1} style={{fontSize:10,background:"none",border:"1px solid #e5e7eb",borderRadius:4,padding:"2px 6px",cursor:ci===currentCriteria.length-1?"default":"pointer",color:ci===currentCriteria.length-1?"#d1d5db":"#6b7280"}}>\u25bc</button>
+                        <button onClick={()=>moveCriterion(cr.id,-1)} disabled={ci===0} style={{fontSize:10,background:"none",border:"1px solid #e5e7eb",borderRadius:4,padding:"2px 6px",cursor:ci===0?"default":"pointer",color:ci===0?"#d1d5db":"#6b7280"}}>▲</button>
+                        <button onClick={()=>moveCriterion(cr.id,1)} disabled={ci===currentCriteria.length-1} style={{fontSize:10,background:"none",border:"1px solid #e5e7eb",borderRadius:4,padding:"2px 6px",cursor:ci===currentCriteria.length-1?"default":"pointer",color:ci===currentCriteria.length-1?"#d1d5db":"#6b7280"}}>▼</button>
                         <button onClick={()=>removeCriterion(cr.id)} style={{fontSize:10,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:4,padding:"2px 8px",cursor:"pointer",color:"#dc2626"}}>Delete</button>
                       </div>}
                     </div>

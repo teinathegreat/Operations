@@ -476,7 +476,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.3.4";
+const APP_VERSION="2.4.0";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -1244,7 +1244,53 @@ function App(){
   const[avatar,setAvatar]=useState(()=>localStorage.getItem("bc_avatar_"+(currentUser?.username||""))||null);
   const[showProfile,setShowProfile]=useState(false);
   const[theme,setTheme]=useState(()=>{try{return localStorage.getItem("bc_theme")||"default";}catch(_){return "default";}});
+  const matrixCanvasRef=useRef(null);
   React.useEffect(()=>{if(theme&&theme!=="default")document.documentElement.setAttribute("data-theme",theme);else document.documentElement.removeAttribute("data-theme");try{localStorage.setItem("bc_theme",theme);}catch(_){}},[theme]);
+  // v2.4.0: Matrix rain animation on login screen when in Hacker theme
+  React.useEffect(()=>{
+    const canvas=matrixCanvasRef.current;
+    if(!canvas||currentUser||theme!=="hacker")return;
+    const ctx=canvas.getContext("2d");
+    if(!ctx)return;
+    let w=0,h=0,drops=[],fontSize=15,raf=0;
+    const chars="アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFZ$+-*/=%\"'#&_(),.;:?!\\|{}<>[]^~";
+    const resize=()=>{
+      w=canvas.width=canvas.offsetWidth;
+      h=canvas.height=canvas.offsetHeight;
+      const cols=Math.floor(w/fontSize);
+      drops=Array(cols).fill(0).map(()=>Math.random()*-50);
+      // Prime background
+      ctx.fillStyle="#000";
+      ctx.fillRect(0,0,w,h);
+    };
+    resize();
+    window.addEventListener("resize",resize);
+    const draw=()=>{
+      // Slight fade — leaves green trails
+      ctx.fillStyle="rgba(0,0,0,0.06)";
+      ctx.fillRect(0,0,w,h);
+      ctx.font=fontSize+"px ui-monospace,'JetBrains Mono','Fira Code',Consolas,monospace";
+      for(let i=0;i<drops.length;i++){
+        const ch=chars[Math.floor(Math.random()*chars.length)];
+        const x=i*fontSize;
+        const y=drops[i]*fontSize;
+        // Brighter leading character
+        ctx.fillStyle="#ccffcc";
+        ctx.fillText(ch,x,y);
+        // Trail
+        ctx.fillStyle="#00ff66";
+        ctx.fillText(ch,x,y-fontSize);
+        if(y>h&&Math.random()>0.975)drops[i]=0;
+        drops[i]+=0.6;
+      }
+      raf=requestAnimationFrame(draw);
+    };
+    draw();
+    return ()=>{
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize",resize);
+    };
+  },[currentUser,theme]);
   // v2.1.2: sync theme to Owner Withdrawals iframe when it changes
   React.useEffect(()=>{try{iframeRef.current?.contentWindow?.postMessage({type:"bc-ow-theme",theme},"*");}catch(_){}},[theme]);
   const[profilePwVal,setProfilePwVal]=useState("");
@@ -3608,8 +3654,10 @@ function App(){
 
   if(!auth){
     return(
-      <div style={{minHeight:"100vh",background:"#111827",display:"flex",alignItems:"center",justifyContent:"center",padding:20,position:"relative"}}>
-        <div style={{position:"absolute",top:0,left:0,right:0,height:"50vh",background:"linear-gradient(180deg,#0d9488 0%,#111827 100%)",opacity:.15}}/>
+      <div style={{minHeight:"100vh",background:theme==="hacker"?"#000":"#111827",display:"flex",alignItems:"center",justifyContent:"center",padding:20,position:"relative",overflow:"hidden"}}>
+        {theme==="hacker"
+          ?<canvas ref={matrixCanvasRef} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",zIndex:0,pointerEvents:"none"}}/>
+          :<div style={{position:"absolute",top:0,left:0,right:0,height:"50vh",background:"linear-gradient(180deg,#0d9488 0%,#111827 100%)",opacity:.15}}/>}
         <div style={{background:"#fff",borderRadius:16,padding:"44px 40px",width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,.3)",position:"relative",animation:"fadeUp .4s ease"}}>
           <div style={{textAlign:"center",marginBottom:36}}>
             <div style={{width:52,height:52,borderRadius:12,background:"#111827",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:14}}><span style={{color:"#14b8a6",fontWeight:800,fontSize:20}}>B</span></div>

@@ -450,7 +450,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.3.2";
+const APP_VERSION="2.3.3";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -2223,7 +2223,7 @@ function App(){
   // ── ROW-LEVEL SYNC EFFECTS ──────────────────────────────────────────
   // Detect changes to migrated arrays and sync only the differences to row tables.
   // Adds/updates → dbUpsert. Deletes → dbDeleteRow. Only runs after Supabase loaded.
-  const _prev=useRef({cr:[],ai:[],td:[],dr:[],mn:[],ah:[],gl:[],au:[],nf:[],aa:[],pb:[],pc:[],ms:[]});
+  const _prev=useRef({cr:[],ai:[],td:[],dr:[],mn:[],fm:[],ah:[],gl:[],au:[],nf:[],aa:[],pb:[],pc:[],ms:[]});
   const syncRows=(table,curr,prevKey)=>{
     if(!saveEnabled.current)return;
     const prev=_prev.current[prevKey];

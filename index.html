@@ -476,7 +476,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.4.0";
+const APP_VERSION="2.4.1";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -5401,6 +5401,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     React.useLayoutEffect(()=>{if(profScrollRef.current)profScrollRef.current.scrollTop=profScrollPos.current;});
     const tdef=tc[teamName]||{color:"#6b7280",lightBg:"#f3f4f6",kpis:[]};
     const isLead=roster[teamName]?.lead===name;
+    const isMyTeamLead=currentUser?.role==="leader"&&currentUser?.team===teamName;
     const tw=getW(teamName);
     const[aiType,setAiType]=React.useState(null);
     const[aiTitle,setAiTitle]=React.useState("");
@@ -5741,7 +5742,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
               <div style={{padding:"14px 20px",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",flexWrap:"wrap",gap:10}}>
                 <span style={{fontWeight:700,fontSize:14,color:"#111827",flex:1}}>{"Team Matrix — "+teamName+(isReadonly?" — \""+(viewingSnapshot.label||"Snapshot")+"\" ("+fmtNZDate(viewingSnapshot.capturedAt?.slice(0,10))+")":"")}</span>
                 {isReadonly&&<button onClick={()=>setViewingSnapshot(null)} style={{fontSize:11,padding:"6px 12px",background:"#f3f4f6",color:"#374151",border:"1px solid #d1d5db",borderRadius:6,cursor:"pointer",fontWeight:600}}>← Back to live</button>}
-                {!isReadonly&&isAdmin&&<button onClick={saveSnapshot} style={{fontSize:11,padding:"6px 12px",background:"#0d9488",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontWeight:600}}>Save Snapshot</button>}
+                {!isReadonly&&(isAdmin||isMyTeamLead)&&<button onClick={saveSnapshot} style={{fontSize:11,padding:"6px 12px",background:"#0d9488",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontWeight:600}}>Save Snapshot</button>}
                 {teamSnaps.length>0&&<button onClick={()=>setShowSnapshotList(s=>!s)} style={{fontSize:11,padding:"6px 12px",background:showSnapshotList?"#1f2937":"#fff",color:showSnapshotList?"#fff":"#374151",border:"1px solid #d1d5db",borderRadius:6,cursor:"pointer",fontWeight:600}}>{showSnapshotList?"Hide":"View"} History ({teamSnaps.length})</button>}
                 <div style={{display:"flex",gap:8,fontSize:10}}>{[{l:"0",c:"#e5e7eb"},{l:"1",c:"#93c5fd"},{l:"2",c:"#fbbf24"},{l:"3",c:"#34d399"}].map(x=><div key={x.l} style={{display:"flex",alignItems:"center",gap:3}}><div style={{width:14,height:14,borderRadius:3,background:x.c}}/><span style={{color:"#6b7280",fontWeight:600}}>{x.l}</span></div>)}</div>
               </div>
@@ -5765,7 +5766,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
               <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
                 <thead><tr style={{background:"#f9fafb"}}><th style={{padding:"8px 12px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e5e7eb",position:"sticky",left:0,background:"#f9fafb",minWidth:140,zIndex:1}}>Skill</th>{matrixMems.map(mn=><th key={mn} style={{padding:"6px 4px",textAlign:"center",fontWeight:600,borderBottom:"2px solid #e5e7eb",minWidth:36,fontSize:10,writingMode:"vertical-lr",height:80}}>{mn.split(" ")[0]}</th>)}</tr></thead>
                 <tbody>{sections.map(sec=>{const sc=getSC(sec);return<React.Fragment key={sec}><tr><td colSpan={matrixMems.length+1} style={{padding:"8px 12px",fontWeight:800,fontSize:12,color:"#fff",background:sc.bg}}>{sec}</td></tr>
-                  {allSkills.filter(s=>s.section===sec).map(sk=><tr key={sk.name}><td style={{padding:"6px 12px",fontWeight:500,borderBottom:"1px solid #f3f4f6",position:"sticky",left:0,background:"#fff",zIndex:1}}>{sk.name}</td>{matrixMems.map(mn=>{const cellData=matrixCaps[mn]?.[sk.name];const lv2=cellData?.level||0;const bg2=lv2===3?"#34d399":lv2===2?"#fbbf24":lv2===1?"#93c5fd":"#e5e7eb";const isManual=cellData?.manualOverride;const isEditingThis=cellEditor?.memberName===mn&&cellEditor?.skillName===sk.name;const canEdit=isAdmin&&!isReadonly;return<td key={mn} style={{padding:"3px",borderBottom:"1px solid #f3f4f6",textAlign:"center",position:"relative"}}>
+                  {allSkills.filter(s=>s.section===sec).map(sk=><tr key={sk.name}><td style={{padding:"6px 12px",fontWeight:500,borderBottom:"1px solid #f3f4f6",position:"sticky",left:0,background:"#fff",zIndex:1}}>{sk.name}</td>{matrixMems.map(mn=>{const cellData=matrixCaps[mn]?.[sk.name];const lv2=cellData?.level||0;const bg2=lv2===3?"#34d399":lv2===2?"#fbbf24":lv2===1?"#93c5fd":"#e5e7eb";const isManual=cellData?.manualOverride;const isEditingThis=cellEditor?.memberName===mn&&cellEditor?.skillName===sk.name;const canEdit=(isAdmin||isMyTeamLead)&&!isReadonly;return<td key={mn} style={{padding:"3px",borderBottom:"1px solid #f3f4f6",textAlign:"center",position:"relative"}}>
                     <div onClick={()=>{if(canEdit)setCellEditor(isEditingThis?null:{memberName:mn,skillName:sk.name});}} title={isManual?"Manually set by admin":(canEdit?"Click to set level":undefined)} style={{width:24,height:24,borderRadius:5,background:bg2,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"center",color:lv2>=2?"#fff":"#9ca3af",fontSize:10,fontWeight:700,cursor:canEdit?"pointer":"default",border:isManual?"2px solid #7c3aed":"none",boxSizing:"border-box",position:"relative"}}>{lv2||""}{isManual&&<span style={{position:"absolute",top:-4,right:-4,fontSize:8,color:"#7c3aed"}}>✱</span>}</div>
                     {isEditingThis&&<div style={{position:"absolute",top:30,left:"50%",transform:"translateX(-50%)",background:"#fff",border:"1px solid #d1d5db",borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,0.15)",padding:6,zIndex:10,display:"flex",gap:4,whiteSpace:"nowrap"}}>
                       {[0,1,2,3].map(lv=><button key={lv} onClick={()=>setCellLevel(mn,sk.name,lv)} style={{width:30,height:30,borderRadius:5,border:lv===lv2?"2px solid #0d9488":"1px solid #d1d5db",background:lv===3?"#34d399":lv===2?"#fbbf24":lv===1?"#93c5fd":"#f3f4f6",color:lv>=2?"#fff":"#374151",fontSize:11,fontWeight:700,cursor:"pointer"}}>{lv}</button>)}
@@ -5774,7 +5775,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
                   </td>})}</tr>)}
                 </React.Fragment>})}</tbody>
               </table></div>
-              {isAdmin&&!isReadonly&&<div style={{padding:"10px 20px",borderTop:"1px solid #f3f4f6",background:"#fafafa",fontSize:10,color:"#6b7280"}}>✱ = manually set by admin (not from a test). Click any cell to set level 0–3.</div>}
+              {(isAdmin||isMyTeamLead)&&!isReadonly&&<div style={{padding:"10px 20px",borderTop:"1px solid #f3f4f6",background:"#fafafa",fontSize:10,color:"#6b7280"}}>✱ = manually set (not from a test). Click any cell to set level 0–3.</div>}
             </div>
           </div>;
           })()}

@@ -476,7 +476,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.4.1";
+const APP_VERSION="2.4.3";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -1344,6 +1344,11 @@ function App(){
   // from useEffects that iterate every key in a config object.
   // Key: "prefix:key" → JSON.stringify(value)
   const lastSavedConfigRef=useRef(new Map());
+  const appDataLastSavedAt=useRef(0); // v2.4.2: tracks when we last saved app_data, used to protect local tc/roster from being clobbered by stale concurrent writes
+  // v2.4.3: tc and roster now have their own config keys (team_config, team_roster).
+  // These gates prevent saving defaults before initial load completes.
+  const _tcLoaded=useRef(false);
+  const _rosterLoaded=useRef(false);
   const[useEdgeProxy,setUseEdgeProxy]=useState(()=>{try{return localStorage.getItem("bc_use_edge_proxy")==="1";}catch{return false;}});
   useEffect(()=>{try{localStorage.setItem("bc_use_edge_proxy",useEdgeProxy?"1":"0");}catch{}},[useEdgeProxy]);
   // Realtime is always on — no toggle needed. Simplifies onboarding for non-admin users.
@@ -1963,7 +1968,7 @@ function App(){
     console.log("Migrating system config to config_rows...");
     // First check what already exists in config_rows so we don't overwrite
     const existingSys=await dbLoadConfig("sys")||{};
-    const sysKeys=["app_data","pending_edits","call_review_teams","sync_version","quick_refs","update_notes","api_keys","app_version","accounts","expectations_config"];
+    const sysKeys=["app_data","pending_edits","call_review_teams","sync_version","quick_refs","update_notes","api_keys","app_version","accounts","expectations_config","team_config","team_roster"];
     for(const key of sysKeys){
       if(existingSys[key]){console.log("Skipping sys:"+key+" (already exists)");continue;}
       try{const val=await sbLoad("bc_store",key);
@@ -2099,6 +2104,8 @@ function App(){
       const un2=sysConf.update_notes||null;
       const ak2=sysConf.api_keys||null;
       const exC2=sysConf.expectations_config||null;
+      const tcStandalone=sysConf.team_config||null;
+      const rStandalone=sysConf.team_roster||null;
       // Owner Withdrawals — saved CSV (single key)
       if(sysConf.owner_withdrawals&&typeof sysConf.owner_withdrawals==="object"){setOwnerWithdrawals(sysConf.owner_withdrawals);}
       if(sysConf.app_version)setRV(sysConf.app_version);
@@ -2148,7 +2155,21 @@ function App(){
         f_crt=bc_crt||f_crt;f_sv=bc_sv||f_sv;f_qr=bc_qr||f_qr;f_un=bc_un||f_un;f_ak=bc_ak||f_ak;
       }
       // Set all state
-      if(f_d){const{_r,_tc,...rest}=f_d;if(_r){const mr=migrateRoster(fixRosterNames(_r));setRoster(mr);}if(_tc)setTc(_tc);setData(rest);}
+      if(f_d){
+        const{_r,_tc,...rest}=f_d;
+        // v2.4.3: prefer standalone keys; fall back to nested then migrate
+        let resolvedTc=tcStandalone||_tc||null;
+        let resolvedR=rStandalone||_r||null;
+        if(resolvedR){const mr=migrateRoster(fixRosterNames(resolvedR));setRoster(mr);resolvedR=mr;}
+        if(resolvedTc)setTc(resolvedTc);
+        setData(rest);
+        // Mark as loaded so saves can begin
+        _tcLoaded.current=true;
+        _rosterLoaded.current=true;
+        // One-time migration: if we resolved from nested but standalone is missing, save to standalone now
+        if(!tcStandalone&&resolvedTc){console.log("v2.4.3: migrating tc to standalone team_config key");dbSaveConfigKey("sys","team_config",resolvedTc);}
+        if(!rStandalone&&resolvedR){console.log("v2.4.3: migrating roster to standalone team_roster key");dbSaveConfigKey("sys","team_roster",resolvedR);}
+      }
       if(f_pe)setPendingEdits(f_pe);
       setCallReviews(f_cr);setActionItems(f_ai);setTodos(f_td);setDailyReports(f_dr);
       setMeetingNotes(f_mn);setFormalMeetings(f_fm||[]);setAssessHistory(f_ah);setGoals(f_gl);
@@ -2289,7 +2310,23 @@ function App(){
   // Direct fetch for todos, actions, notifications on relevant tabs
   useEffect(()=>{const url=sbUrlRef.current||sbUrl;const key=sbKeyRef.current||sbKey;if(!url||!key)return;const headers={"apikey":key,"Authorization":"Bearer "+key};const directFetch=async(sbKey2,setter)=>{try{const resp=await fetch(url+"/rest/v1/bc_store?key=eq."+sbKey2+"&select=value",{headers});if(!resp.ok)return;const d=await resp.json();if(d&&d[0]&&d[0].value){const parsed=JSON.parse(d[0].value);const prev=saveEnabled.current;saveEnabled.current=false;if(Array.isArray(parsed))setter(parsed);else if(typeof parsed==="object")setter(parsed);setTimeout(()=>{saveEnabled.current=prev;},300);}}catch(e){console.error("Refresh "+sbKey2+" failed:",e);}};const directFetchRows=async(table,setter)=>{const prev=saveEnabled.current;saveEnabled.current=false;const rows=await dbLoadAll(table);if(rows.length>0)setter(rows);setTimeout(()=>{saveEnabled.current=prev;},300);};if(tab==="to-do list"||tab==="home"){directFetchRows("todos",setTodos);directFetchRows("notif_entries",setNotifications);directFetchRows("alert_entries",setAdminAlerts);}if(tab==="action list"||tab==="home"){directFetchRows("action_items",setActionItems);}if(tab==="dashboard"||tab==="people"){
       // Fetch app_data from config_rows (not bc_store)
-      const fetchAppData=async()=>{const prev=saveEnabled.current;saveEnabled.current=false;try{const sysConf=await dbLoadConfig("sys");let d=sysConf?.app_data;if(d&&!Array.isArray(d)&&typeof d==="object"&&"_v" in d&&"_origin" in d)d=d._v;if(d){const{_r,_tc,...rest}=d;if(_r)setRoster(migrateRoster(fixRosterNames(_r)));if(_tc)setTc(_tc);setData(rest);}}catch(e){console.error("Dashboard refresh failed:",e);}setTimeout(()=>{saveEnabled.current=prev;},300);};
+      const fetchAppData=async()=>{
+        const prev=saveEnabled.current;saveEnabled.current=false;
+        try{
+          const sysConf=await dbLoadConfig("sys");
+          // v2.4.3: load app_data, team_config, team_roster from independent keys
+          let d=sysConf?.app_data;
+          if(d&&!Array.isArray(d)&&typeof d==="object"&&"_v" in d&&"_origin" in d)d=d._v;
+          let tcVal=sysConf?.team_config;
+          if(tcVal&&!Array.isArray(tcVal)&&typeof tcVal==="object"&&"_v" in tcVal&&"_origin" in tcVal)tcVal=tcVal._v;
+          let rVal=sysConf?.team_roster;
+          if(rVal&&!Array.isArray(rVal)&&typeof rVal==="object"&&"_v" in rVal&&"_origin" in rVal)rVal=rVal._v;
+          if(d){const{_r,_tc,...rest}=d;setData(rest);}
+          if(tcVal&&typeof tcVal==="object")setTc(tcVal);
+          if(rVal&&typeof rVal==="object")setRoster(migrateRoster(fixRosterNames(rVal)));
+        }catch(e){console.error("Dashboard refresh failed:",e);}
+        setTimeout(()=>{saveEnabled.current=prev;},300);
+      };
       fetchAppData();const directFetchConfig=async(prefix,setter)=>{const prev2=saveEnabled.current;saveEnabled.current=false;const obj=await dbLoadConfig(prefix);if(obj)setter(obj);setTimeout(()=>{saveEnabled.current=prev2;},300);};directFetchConfig("ic",setIcData);directFetchConfig("sched",setSchedData);}},[tab]);
     useEffect(()=>{if(sbUrl&&sbKey)loadFromSupabase();},[]);
   // ── ROW-LEVEL SYNC EFFECTS ──────────────────────────────────────────
@@ -2423,16 +2460,20 @@ function App(){
           else if(prefix==="tgt")objMerge(setTgtOwners);
           else if(prefix==="sys"){
             if(key==="app_data"&&value&&typeof value==="object"){
+              // v2.4.3: app_data is now JUST data (no _tc/_r). Strip them in case an old client wrote them.
               const{_r,_tc,...rest}=value;
-              // migrateRoster + fixRosterNames TRANSFORM the roster, so the auto-save useEffect
-              // will serialize the TRANSFORMED roster, not the raw one we received.
-              // Override the dedup hash so it matches what useEffect will produce — otherwise
-              // every receive triggers a write-back and we get a cross-client feedback loop.
-              let storedR=_r;
-              if(_r){storedR=migrateRoster(fixRosterNames(_r));setRoster(storedR);}
-              if(_tc)setTc(_tc);
               setData(rest);
-              try{lastSavedConfigRef.current.set(row.id,JSON.stringify({...rest,_r:storedR,_tc:_tc}));}catch{}
+              try{lastSavedConfigRef.current.set(row.id,JSON.stringify(rest));}catch{}
+            }
+            else if(key==="team_config"&&value&&typeof value==="object"){
+              // v2.4.3: dedicated tc handler — no more cross-contamination from daily data saves
+              setTc(value);
+              try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}
+            }
+            else if(key==="team_roster"&&value&&typeof value==="object"){
+              const mr=migrateRoster(fixRosterNames(value));
+              setRoster(mr);
+              try{lastSavedConfigRef.current.set(row.id,JSON.stringify(mr));}catch{}
             }
             else if(key==="quick_refs"&&Array.isArray(value))setQuickRefs(value);
             else if(key==="expectations_config"&&Array.isArray(value))setExpectationsConfig(value);
@@ -2476,7 +2517,11 @@ function App(){
   useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigKey("sys","call_review_teams",callReviewTeams);},[callReviewTeams]);
   const _appDataLoaded=useRef(false);
   useEffect(()=>{if(data&&Object.keys(data).length>0&&roster&&Object.keys(roster).length>0)_appDataLoaded.current=true;},[data,roster]);
-  useEffect(()=>{if(!saveEnabled.current)return;if(!_appDataLoaded.current){console.warn("Blocked saving default app_data");return;}dbSaveConfigKey("sys","app_data",{...data,_r:roster,_tc:tc});},[data,roster,tc]);
+  useEffect(()=>{if(!saveEnabled.current)return;if(!_appDataLoaded.current){console.warn("Blocked saving default app_data");return;}appDataLastSavedAt.current=Date.now();dbSaveConfigKey("sys","app_data",data);},[data]);
+  // v2.4.3: Separate autosave for tc (team config / KPIs) — protected from cross-contamination with daily data saves
+  useEffect(()=>{if(!saveEnabled.current)return;if(!_tcLoaded.current)return;dbSaveConfigKey("sys","team_config",tc);},[tc]);
+  // v2.4.3: Separate autosave for roster
+  useEffect(()=>{if(!saveEnabled.current)return;if(!_rosterLoaded.current)return;dbSaveConfigKey("sys","team_roster",roster);},[roster]);
 
 
   // All saves handled by syncToSupabase (3-second debounce after any state change)

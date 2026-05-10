@@ -641,6 +641,40 @@ const migrateTeamColors=(tcIn)=>{
     out["Reputation and Resolutions"]={...out["Reputation and Resolutions"],color:"#059669",lightBg:"#e3f5ef"};
   }
   if(!out["Managed Services"]||!out["Managed Services"].color){out["Managed Services"]={...DEFAULT_TEAMS["Managed Services"],kpis:DEFAULT_TEAMS["Managed Services"].kpis};}
+  // ── v2.4.4: Reconcile KPI keys against DEFAULT_TEAMS ─────────────────────
+  // If a saved KPI matches a DEFAULT entry by LABEL but has a different KEY,
+  // the dashboard reads from the saved key while autoFill writes to the default key
+  // → mismatch, value never displays. Fix by aligning saved key to default key,
+  // preserving any user-edited target/threshold/direction. Also adds any
+  // DEFAULT KPIs that are missing from the saved config (by label).
+  Object.entries(DEFAULT_TEAMS).forEach(([teamName,defTeam])=>{
+    if(!out[teamName])return;
+    const savedKpis=Array.isArray(out[teamName].kpis)?out[teamName].kpis:[];
+    const seenLabels=new Set();
+    const seenKeys=new Set(savedKpis.map(k=>k.key));
+    const reconciled=savedKpis.map(savedKpi=>{
+      seenLabels.add(savedKpi.label);
+      // First try match by KEY — if key matches a default, leave alone (key is correct)
+      const matchByKey=defTeam.kpis.find(dk=>dk.key===savedKpi.key);
+      if(matchByKey)return savedKpi;
+      // No key match — try matching by LABEL. If label matches a default whose
+      // key isn't already used by another saved kpi, fix the key.
+      const matchByLabel=defTeam.kpis.find(dk=>dk.label===savedKpi.label&&!seenKeys.has(dk.key));
+      if(matchByLabel){
+        seenKeys.add(matchByLabel.key);
+        return{...savedKpi,key:matchByLabel.key};
+      }
+      // No match — leave it (custom KPI)
+      return savedKpi;
+    });
+    // Add any DEFAULT KPIs that aren't represented in the saved config (by label)
+    defTeam.kpis.forEach(defKpi=>{
+      if(!seenLabels.has(defKpi.label)&&!reconciled.some(k=>k.key===defKpi.key)){
+        reconciled.push({...defKpi});
+      }
+    });
+    out[teamName]={...out[teamName],kpis:reconciled};
+  });
   return out;
 }
 const migrateRoster=(rosterIn)=>{
@@ -2161,7 +2195,7 @@ function App(){
         let resolvedTc=tcStandalone||_tc||null;
         let resolvedR=rStandalone||_r||null;
         if(resolvedR){const mr=migrateRoster(fixRosterNames(resolvedR));setRoster(mr);resolvedR=mr;}
-        if(resolvedTc)setTc(resolvedTc);
+        if(resolvedTc){const mt=migrateTeamColors(resolvedTc);setTc(mt);resolvedTc=mt;}
         setData(rest);
         // Mark as loaded so saves can begin
         _tcLoaded.current=true;

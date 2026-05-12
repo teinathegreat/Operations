@@ -453,8 +453,146 @@ html{scroll-behavior:smooth;}
 
 
 
+/* ════════════════════════════════════════════════════════════════════════
+   v2.4.5 — Additional themes: Light (warm paper), Midnight (deep navy),
+   Slate (professional gray). All cover sidebar, cards, tables, inputs,
+   buttons, modals, planner, roster, and reports.
+   ════════════════════════════════════════════════════════════════════════ */
 
+/* ── LIGHT THEME (warm paper / soft cream) ─────────────────────────── */
+[data-theme="light"]{background:#fafaf7 !important;}
+[data-theme="light"] body{background:#fafaf7 !important;color:#1c1917 !important;}
+[data-theme="light"] body > div > div[style*="linear-gradient(180deg,#111827"],
+[data-theme="light"] body > div > div[style*="linear-gradient(180deg,#0f172a"]{
+  background:#f1ede4 !important;background-image:none !important;
+  border-right:1px solid #e7e2d5 !important;
+}
+[data-theme="light"] .bc-sidebar-root [style*="color:\"#f3f4f6\""],
+[data-theme="light"] .bc-sidebar-root [style*="color:\"#4b5563\""]{color:#3f3a31 !important;}
+[data-theme="light"] .bc-sidebar-item{color:#6b6357 !important;}
+[data-theme="light"] .bc-sidebar-item:hover,
+[data-theme="light"] .bc-sidebar-link:hover{background:rgba(13,148,136,.08) !important;color:#1c1917 !important;}
+[data-theme="light"] .bc-sidebar-item.active{background:rgba(13,148,136,.14) !important;color:#0d9488 !important;}
+[data-theme="light"] [style*="linear-gradient(180deg,#0d9488"],
+[data-theme="light"] [style*="linear-gradient(135deg,#0d9488"]{
+  background:linear-gradient(180deg,#f1ede4 0%,#fafaf7 100%) !important;color:#1c1917 !important;
+}
+[data-theme="light"] [style*="background:\"#f9fafb\""]:not(.bc-card):not(.bc-card-hover):not(.bc-card-raised):not(.bc-card-float):not(.pcard-hover),
+[data-theme="light"] [style*="background:\"#f3f4f6\""]:not(.bc-card):not(.bc-card-hover):not(.bc-card-raised):not(.bc-card-float):not(.pcard-hover){
+  background-color:#f5f2eb !important;
+}
+[data-theme="light"] .bc-card,
+[data-theme="light"] .bc-card-raised,
+[data-theme="light"] .bc-card-float,
+[data-theme="light"] .bc-card-hover,
+[data-theme="light"] .pcard-hover{background:#ffffff !important;border-color:#e7e2d5 !important;}
+[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+[data-theme="light"] textarea,
+[data-theme="light"] select{background-color:#ffffff !important;color:#1c1917 !important;border-color:#d6d0c2 !important;}
+[data-theme="light"] input::placeholder,[data-theme="light"] textarea::placeholder{color:#a8a29e !important;}
+[data-theme="light"] table,[data-theme="light"] thead,[data-theme="light"] tbody,
+[data-theme="light"] tr,[data-theme="light"] th,[data-theme="light"] td{
+  background-color:initial;color:inherit;border-color:#ebe7dc;
+}
+[data-theme="light"] *::-webkit-scrollbar-thumb{background:#d6d0c2;border-radius:5px;}
 
+/* ── MIDNIGHT THEME (deep navy + cyan) ─────────────────────────────── */
+[data-theme="midnight"]{background:#0a0e27 !important;}
+[data-theme="midnight"] body{background:#0a0e27 !important;color:#cbd5e1 !important;}
+[data-theme="midnight"] body > div > div[style*="linear-gradient(180deg,#111827"],
+[data-theme="midnight"] body > div > div[style*="linear-gradient(180deg,#0f172a"]{
+  background:#141937 !important;background-image:none !important;
+  border-right:1px solid #1e2547 !important;
+}
+[data-theme="midnight"] .bc-sidebar-item{color:#94a3b8 !important;}
+[data-theme="midnight"] .bc-sidebar-item:hover,
+[data-theme="midnight"] .bc-sidebar-link:hover{background:rgba(34,211,238,.08) !important;color:#e0e7ff !important;}
+[data-theme="midnight"] .bc-sidebar-item.active{background:rgba(34,211,238,.14) !important;color:#22d3ee !important;}
+[data-theme="midnight"] .bc-sidebar-item.active::before{background:#22d3ee !important;}
+[data-theme="midnight"] [style*="linear-gradient(180deg,#0d9488"],
+[data-theme="midnight"] [style*="linear-gradient(135deg,#0d9488"]{
+  background:linear-gradient(180deg,#141937 0%,#0a0e27 100%) !important;
+}
+[data-theme="midnight"] [style*="background:\"#f9fafb\""]:not(.bc-card):not(.bc-card-hover):not(.bc-card-raised):not(.bc-card-float):not(.pcard-hover),
+[data-theme="midnight"] [style*="background:\"#f3f4f6\""]:not(.bc-card):not(.bc-card-hover):not(.bc-card-raised):not(.bc-card-float):not(.pcard-hover){
+  background-color:#0a0e27 !important;
+}
+[data-theme="midnight"] .bc-card,
+[data-theme="midnight"] .bc-card-raised,
+[data-theme="midnight"] .bc-card-float,
+[data-theme="midnight"] .bc-card-hover,
+[data-theme="midnight"] .pcard-hover{background:#1a2244 !important;color:#e0e7ff !important;border-color:#2a3563 !important;}
+[data-theme="midnight"] .bc-card *,
+[data-theme="midnight"] .bc-card-raised *,
+[data-theme="midnight"] .bc-card-float *,
+[data-theme="midnight"] .bc-card-hover *,
+[data-theme="midnight"] .pcard-hover *{color:inherit;border-color:inherit;}
+[data-theme="midnight"] input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+[data-theme="midnight"] textarea,
+[data-theme="midnight"] select{background-color:#1a2244 !important;color:#cbd5e1 !important;border-color:#2a3563 !important;}
+[data-theme="midnight"] .bc-card input,[data-theme="midnight"] .bc-card-raised input,
+[data-theme="midnight"] .bc-card-float input,[data-theme="midnight"] .bc-card-hover input,
+[data-theme="midnight"] .pcard-hover input,[data-theme="midnight"] .bc-card textarea,
+[data-theme="midnight"] .bc-card-raised textarea,[data-theme="midnight"] .bc-card-float textarea,
+[data-theme="midnight"] .bc-card-hover textarea,[data-theme="midnight"] .pcard-hover textarea,
+[data-theme="midnight"] .bc-card select,[data-theme="midnight"] .bc-card-raised select,
+[data-theme="midnight"] .bc-card-float select,[data-theme="midnight"] .bc-card-hover select,
+[data-theme="midnight"] .pcard-hover select{background-color:#1a2244 !important;color:#e0e7ff !important;border-color:#2a3563 !important;}
+[data-theme="midnight"] input::placeholder,[data-theme="midnight"] textarea::placeholder{color:#475569 !important;}
+[data-theme="midnight"] input:focus,[data-theme="midnight"] textarea:focus,[data-theme="midnight"] select:focus{
+  border-color:#22d3ee !important;outline:none !important;
+}
+[data-theme="midnight"] button:not(.bc-sidebar-item):not(.bc-sidebar-link){
+  background-color:#1a2244;color:#cbd5e1;border-color:#2a3563;
+}
+[data-theme="midnight"] table,[data-theme="midnight"] thead,[data-theme="midnight"] tbody,
+[data-theme="midnight"] tr,[data-theme="midnight"] th,[data-theme="midnight"] td{
+  background-color:initial;color:inherit;border-color:#2a3563;
+}
+[data-theme="midnight"] [class*="modal"]{background-color:#141937 !important;color:#e0e7ff !important;border-color:#2a3563 !important;}
+[data-theme="midnight"] a{color:#22d3ee !important;}
+[data-theme="midnight"] *::-webkit-scrollbar{width:10px;height:10px;}
+[data-theme="midnight"] *::-webkit-scrollbar-track{background:#0a0e27;}
+[data-theme="midnight"] *::-webkit-scrollbar-thumb{background:#2a3563;border-radius:5px;}
+
+/* ── SLATE THEME (professional neutral gray + indigo) ──────────────── */
+[data-theme="slate"]{background:#f4f4f5 !important;}
+[data-theme="slate"] body{background:#f4f4f5 !important;color:#27272a !important;}
+[data-theme="slate"] body > div > div[style*="linear-gradient(180deg,#111827"],
+[data-theme="slate"] body > div > div[style*="linear-gradient(180deg,#0f172a"]{
+  background:#27272a !important;background-image:none !important;
+  border-right:1px solid #3f3f46 !important;
+}
+[data-theme="slate"] .bc-sidebar-item{color:#a1a1aa !important;}
+[data-theme="slate"] .bc-sidebar-item:hover,
+[data-theme="slate"] .bc-sidebar-link:hover{background:rgba(99,102,241,.10) !important;color:#fafafa !important;}
+[data-theme="slate"] .bc-sidebar-item.active{background:rgba(99,102,241,.16) !important;color:#a5b4fc !important;}
+[data-theme="slate"] .bc-sidebar-item.active::before{background:#6366f1 !important;}
+[data-theme="slate"] [style*="linear-gradient(180deg,#0d9488"],
+[data-theme="slate"] [style*="linear-gradient(135deg,#0d9488"]{
+  background:linear-gradient(180deg,#3f3f46 0%,#27272a 100%) !important;
+}
+[data-theme="slate"] [style*="background:\"#f9fafb\""]:not(.bc-card):not(.bc-card-hover):not(.bc-card-raised):not(.bc-card-float):not(.pcard-hover),
+[data-theme="slate"] [style*="background:\"#f3f4f6\""]:not(.bc-card):not(.bc-card-hover):not(.bc-card-raised):not(.bc-card-float):not(.pcard-hover){
+  background-color:#e7e7ea !important;
+}
+[data-theme="slate"] .bc-card,
+[data-theme="slate"] .bc-card-raised,
+[data-theme="slate"] .bc-card-float,
+[data-theme="slate"] .bc-card-hover,
+[data-theme="slate"] .pcard-hover{background:#ffffff !important;border-color:#d4d4d8 !important;}
+[data-theme="slate"] input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+[data-theme="slate"] textarea,
+[data-theme="slate"] select{background-color:#ffffff !important;color:#27272a !important;border-color:#d4d4d8 !important;}
+[data-theme="slate"] input::placeholder,[data-theme="slate"] textarea::placeholder{color:#a1a1aa !important;}
+[data-theme="slate"] input:focus,[data-theme="slate"] textarea:focus,[data-theme="slate"] select:focus{
+  border-color:#6366f1 !important;outline:none !important;
+}
+[data-theme="slate"] table,[data-theme="slate"] thead,[data-theme="slate"] tbody,
+[data-theme="slate"] tr,[data-theme="slate"] th,[data-theme="slate"] td{
+  background-color:initial;color:inherit;border-color:#e4e4e7;
+}
+[data-theme="slate"] *::-webkit-scrollbar-thumb{background:#a1a1aa;border-radius:5px;}
 
 </style>
 </head>
@@ -1278,6 +1416,9 @@ function App(){
   const[avatar,setAvatar]=useState(()=>localStorage.getItem("bc_avatar_"+(currentUser?.username||""))||null);
   const[showProfile,setShowProfile]=useState(false);
   const[theme,setTheme]=useState(()=>{try{return localStorage.getItem("bc_theme")||"default";}catch(_){return "default";}});
+  // v2.4.5: Sidebar emoji toggle — defaults to ON, can be disabled for a cleaner professional look.
+  const[iconsEnabled,setIconsEnabled]=useState(()=>{try{return localStorage.getItem("bc_icons")!=="off";}catch(_){return true;}});
+  React.useEffect(()=>{try{localStorage.setItem("bc_icons",iconsEnabled?"on":"off");}catch(_){}},[iconsEnabled]);
   const matrixCanvasRef=useRef(null);
   React.useEffect(()=>{if(theme&&theme!=="default")document.documentElement.setAttribute("data-theme",theme);else document.documentElement.removeAttribute("data-theme");try{localStorage.setItem("bc_theme",theme);}catch(_){}},[theme]);
   // v2.4.0: Matrix rain animation on login screen when in Hacker theme
@@ -4471,12 +4612,40 @@ function App(){
           <div style={{marginTop:24,paddingTop:20,borderTop:"1px solid #f3f4f6"}}>
             <div style={{fontWeight:600,fontSize:13,color:"#111827",marginBottom:12}}>Theme</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              {[{k:"default",n:"Default",bg:"linear-gradient(135deg,#fff 50%,#0d9488 50%)"},{k:"hacker",n:"Hacker",bg:"linear-gradient(135deg,#000 50%,#00ff66 50%)"},{k:"dark",n:"Dark",bg:"linear-gradient(135deg,#1a1a1a 50%,#5b9bd5 50%)"}].map(t=>{const active=theme===t.k;return<button key={t.k} onClick={()=>setTheme(t.k)} style={{padding:0,border:active?"2px solid #0d9488":"2px solid #e5e7eb",borderRadius:10,cursor:"pointer",overflow:"hidden",background:"#fff",position:"relative"}}>
+              {[
+                {k:"default",n:"Default",bg:"linear-gradient(135deg,#fff 50%,#0d9488 50%)"},
+                {k:"light",n:"Light",bg:"linear-gradient(135deg,#fafaf7 50%,#d6d0c2 50%)"},
+                {k:"dark",n:"Dark",bg:"linear-gradient(135deg,#1a1a1a 50%,#5b9bd5 50%)"},
+                {k:"midnight",n:"Midnight",bg:"linear-gradient(135deg,#0a0e27 50%,#22d3ee 50%)"},
+                {k:"slate",n:"Slate",bg:"linear-gradient(135deg,#f4f4f5 50%,#6366f1 50%)"},
+                {k:"hacker",n:"Hacker",bg:"linear-gradient(135deg,#000 50%,#00ff66 50%)"}
+              ].map(t=>{const active=theme===t.k;return<button key={t.k} onClick={()=>setTheme(t.k)} style={{padding:0,border:active?"2px solid #0d9488":"2px solid #e5e7eb",borderRadius:10,cursor:"pointer",overflow:"hidden",background:"#fff",position:"relative"}}>
                 <div style={{height:60,background:t.bg}}/>
                 <div style={{padding:"8px 10px",background:"#fff",fontSize:12,fontWeight:600,color:"#111827",textAlign:"left"}}>{t.n}{active&&" ✓"}</div>
               </button>;})}
             </div>
             <div style={{fontSize:10,color:"#9ca3af",marginTop:8}}>Theme applies everywhere and is saved to your browser.</div>
+          </div>
+          {/* v2.4.5: Sidebar emoji toggle (independent of theme) */}
+          <div style={{marginTop:20,paddingTop:20,borderTop:"1px solid #f3f4f6"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:13,color:"#111827"}}>Sidebar icons</div>
+                <div style={{fontSize:11,color:"#9ca3af",marginTop:2}}>Turn off for a cleaner, text-only sidebar look.</div>
+              </div>
+              <button onClick={()=>setIconsEnabled(v=>!v)} title={iconsEnabled?"Hide sidebar icons":"Show sidebar icons"} style={{
+                position:"relative",width:44,height:24,borderRadius:12,
+                background:iconsEnabled?"#0d9488":"#e5e7eb",
+                border:"none",cursor:"pointer",padding:0,flexShrink:0,
+                transition:"background .15s"
+              }}>
+                <div style={{
+                  position:"absolute",top:2,left:iconsEnabled?22:2,
+                  width:20,height:20,borderRadius:"50%",background:"#fff",
+                  boxShadow:"0 1px 3px rgba(0,0,0,.2)",transition:"left .15s"
+                }}/>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -6702,7 +6871,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     cursor:"pointer",borderRadius:8,textAlign:"left",transition:"all .12s",fontFamily:"inherit",
                     marginBottom:2,position:"relative",letterSpacing:".01em"}}>
                   {active&&<div style={{position:"absolute",left:0,top:"50%",transform:"translateY(-50%)",width:3,height:18,background:"#14b8a6",borderRadius:"0 3px 3px 0"}}/>}
-                  <span style={{fontSize:15,width:20,textAlign:"center",flexShrink:0}}>{ICONS[t]||"•"}</span>
+                  <span style={{fontSize:iconsEnabled?15:12,width:20,textAlign:"center",flexShrink:0,fontWeight:iconsEnabled?400:700,letterSpacing:iconsEnabled?0:".02em"}}>{iconsEnabled?(ICONS[t]||"•"):(sbCollapsed?t.charAt(0):"")}</span>
                   {!sbCollapsed&&<span style={{flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{DISPLAY[t]||t}</span>}
                   {!sbCollapsed&&badge>0&&<span style={{background:"#dc2626",color:"#fff",fontSize:9,fontWeight:800,borderRadius:10,padding:"1px 6px",flexShrink:0}}>{badge}</span>}
                   {sbCollapsed&&badge>0&&<span style={{position:"absolute",top:4,right:6,background:"#dc2626",color:"#fff",fontSize:8,fontWeight:800,borderRadius:8,padding:"0 4px",lineHeight:"12px"}}>{badge}</span>}

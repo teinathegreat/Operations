@@ -1373,6 +1373,10 @@ function App(){
   useEffect(()=>{sbUrlRef.current=sbUrl;sbKeyRef.current=sbKey;},[sbUrl,sbKey]);
   // Pro Features: client identity for realtime echo suppression, and feature toggles
   const clientIdRef=useRef(Math.random().toString(36).slice(2,12)+"_"+Date.now().toString(36));
+  // v2.4.4: Tracks config_rows ids that have unsaved local edits in flight.
+  // loadFromSupabase consults this to avoid clobbering an in-progress save with
+  // a stale DB read (root cause of "weights revert" bug).
+  const dirtyConfigRef=useRef(new Set());
   // Tracks the last known hash per config_rows id (saved or received via Realtime).
   // Used to skip redundant writes — both echoes from Realtime AND stale re-saves
   // from useEffects that iterate every key in a config object.
@@ -1926,11 +1930,12 @@ function App(){
       lastSavedConfigRef.current.set(id,hash);
     }
     activeSaves.current++;updateSaveStatus();
+    dirtyConfigRef.current.add(id); // v2.4.4: protect against load races
     // Wrap with origin metadata for Realtime echo suppression. Loader unwraps the _v key.
     const wrapped={_v:value,_origin:clientIdRef.current,_editedBy:currentUserRef.current?.username||currentUserRef.current?.displayName||"",_editedAt:new Date().toISOString()};
     const body={id,data:wrapped,updated_at:new Date().toISOString()};
     try{const resp=await fetch(url+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(body)});
-    if(!resp.ok)addToQueue({type:"config",body});}catch(e){addToQueue({type:"config",body});}
+    if(!resp.ok)addToQueue({type:"config",body});else dirtyConfigRef.current.delete(id);}catch(e){addToQueue({type:"config",body});}
     finally{activeSaves.current--;updateSaveStatus();}
   };
   const dbDeleteConfigKey=async(prefix,key)=>{
@@ -1956,10 +1961,12 @@ function App(){
     }
     if(!changed.length)return;
     const rows=changed.map(([k,v])=>{const wrapped={_v:v,_origin:clientIdRef.current,_editedBy:currentUserRef.current?.username||currentUserRef.current?.displayName||"",_editedAt:new Date().toISOString()};return{id:prefix+":"+k,data:wrapped,updated_at:new Date().toISOString()};});
+    rows.forEach(r=>dirtyConfigRef.current.add(r.id)); // v2.4.4: protect against load races
     const url=sbUrlRef.current,k=sbKeyRef.current;if(!url||!k)return;
     for(let i=0;i<rows.length;i+=100){
       const batch=rows.slice(i,i+100);
-      try{await fetch(url+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(batch)});}catch(e){console.error("dbSaveConfigAll batch error:",e);}
+      try{const resp=await fetch(url+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(batch)});
+      if(resp.ok)batch.forEach(b=>dirtyConfigRef.current.delete(b.id));}catch(e){console.error("dbSaveConfigAll batch error:",e);}
     }
   };
   const migrateToRows=async()=>{
@@ -2219,7 +2226,21 @@ function App(){
       if(f_sd&&typeof f_sd==="object")setSchedData(f_sd);
       if(f_id&&typeof f_id==="object")setIcData(f_id);
       if(f_ip&&typeof f_ip==="object")setIcPPT(f_ip);
-      if(f_wt&&typeof f_wt==="object")setAllWeights(f_wt);
+      if(f_wt&&typeof f_wt==="object"){
+        // v2.4.4: Skip teams whose weights have an unsaved local edit in flight,
+        // otherwise the stale DB read clobbers the user's change and the weight
+        // "reverts" before the save POST lands.
+        const hasDirty=Array.from(dirtyConfigRef.current).some(id=>id.startsWith("weights:"));
+        if(hasDirty){
+          setAllWeights(prev=>{
+            const merged={...prev};
+            Object.entries(f_wt).forEach(([team,val])=>{
+              if(!dirtyConfigRef.current.has("weights:"+team))merged[team]=val;
+            });
+            return merged;
+          });
+        }else setAllWeights(f_wt);
+      }
       if(f_crt&&Array.isArray(f_crt))setCallReviewTeams(f_crt);
       if(f_sv&&typeof f_sv==="number")syncVersion.current=f_sv;
       if(f_qr&&Array.isArray(f_qr))setQuickRefs(f_qr);
@@ -5808,11 +5829,13 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
               if(viewingSnapshot?.id===snapId)setViewingSnapshot(null);
             };
             const setCellLevel=(mn,skName,lv)=>{
-              if(!isAdmin)return;
+              if(!isAdmin&&!isMyTeamLead)return;
+              const actorName=currentUser?.displayName||currentUser?.username||(isAdmin?"Admin":"Team Lead");
+              const actorRole=isAdmin?"admin":"team lead";
               const existing=capabilities[mn]?.[skName]||{history:[]};
-              const updated={...existing,level:lv,manualOverride:true,reason:lv===0?"":"Set manually by admin",updatedAt:new Date().toISOString(),updatedBy:currentUser?.displayName||"Admin",history:[...(existing.history||[]),{level:lv,date:new Date().toISOString(),by:currentUser?.displayName||"Admin",manual:true}]};
+              const updated={...existing,level:lv,manualOverride:true,reason:lv===0?"":"Set manually by "+actorRole,updatedAt:new Date().toISOString(),updatedBy:actorName,history:[...(existing.history||[]),{level:lv,date:new Date().toISOString(),by:actorName,manual:true}]};
               setCapabilities(prev=>{const pd={...(prev[mn]||{})};pd[skName]=updated;const n={...prev,[mn]:pd};dbSaveConfigKey("caps",mn,pd);return n;});
-              addAudit("Capability Manually Set",mn+" — "+skName+" → Level "+lv);
+              addAudit("Capability Manually Set",mn+" — "+skName+" → Level "+lv+" (by "+actorRole+")");
               setCellEditor(null);
             };
 
@@ -9334,7 +9357,7 @@ const teamMap={
                     <div key={key} style={{textAlign:"center"}}>
                       <div style={{fontSize:12,color:"#6b7280",marginBottom:6,fontWeight:500}}>{icon} {label}</div>
                       <input type="number" step="0.1" value={tw[key]??0} disabled={weightsLocked}
-                        onChange={e=>{const v=parseFloat(e.target.value)||0;setAllWeights(prev=>{const p={...prev};const cur=p[wTeam]||{...DEFAULT_WEIGHTS};cur[key]=v;p[wTeam]=cur;return p;});}}
+                        onChange={e=>{const v=parseFloat(e.target.value)||0;setAllWeights(prev=>{const cur={...DEFAULT_WEIGHTS,...(prev[wTeam]||{}),[key]:v};return{...prev,[wTeam]:cur};});}}
                         style={{width:"100%",textAlign:"center",fontSize:16,fontWeight:700,padding:"10px 0",border:weightsLocked?"none":"1px solid #e5e7eb",borderRadius:8,background:weightsLocked?"#f9fafb":"#fff",color:"#111827",outline:"none"}}/>
                     </div>))}
                 </div>

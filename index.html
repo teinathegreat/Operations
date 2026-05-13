@@ -4135,6 +4135,275 @@ body[data-theme="dark"] [style*="background:#fffbeb"][style*="border"][style*="#
   border-color:#3a2e0a !important;
 }
 
+
+/* ════════════════════════════════════════════════════════════════════════
+   v2.5.3 — DARK THEME COMPLETE FIX
+   Targets the EXACT inline colors found in JSX inspection.
+   Specificity: html body[data-theme="dark"] + 2+ attrs = max priority.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ─── 1. HERO BANNER — make REALLY dark with bright white text ───────────
+   JSX line 11116: background:"linear-gradient(135deg,#0d9488 0%,#0e7490 50%,#0c4a6e 100%)"
+   Chrome stores: linear-gradient(135deg, rgb(13, 148, 136) 0%, rgb(14, 116, 144) 50%, rgb(12, 74, 110) 100%) */
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg, #0d9488"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136)"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg, rgb(13, 148, 136)"]{
+  background:linear-gradient(135deg,#010409 0%,#161b22 50%,#010409 100%) !important;
+  background-image:linear-gradient(135deg,#010409 0%,#161b22 50%,#010409 100%) !important;
+  border:1px solid #30363d !important;
+}
+/* Every single text element in the hero → bright white */
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg, #0d9488"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg, rgb(13, 148, 136)"] *{
+  color:#ffffff !important;
+}
+/* KPI tile inner panels — translucent white */
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"] [style*="rgba(255"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg, rgb(13, 148, 136)"] [style*="rgba(255"]{
+  background:rgba(255,255,255,0.06) !important;
+  background-color:rgba(255,255,255,0.06) !important;
+  border:1px solid rgba(255,255,255,0.15) !important;
+}
+
+/* ─── 2. TARGET OWNERSHIP cream (#fefce8) — kill cream entirely ─────────
+   JSX line 11280: background:"#fefce8", borderBottom:"1px solid #fde68a" */
+html body[data-theme="dark"] [style*="background:#fefce8"],
+html body[data-theme="dark"] [style*="background: #fefce8"],
+html body[data-theme="dark"] [style*="background-color:#fefce8"],
+html body[data-theme="dark"] [style*="background:rgb(254, 252, 232)"],
+html body[data-theme="dark"] [style*="background: rgb(254, 252, 232)"]{
+  background:#161b22 !important;
+  background-color:#161b22 !important;
+  background-image:none !important;
+  border-bottom-color:#30363d !important;
+  border-color:#30363d !important;
+}
+html body[data-theme="dark"] [style*="background:#fefce8"] *,
+html body[data-theme="dark"] [style*="background: #fefce8"] *,
+html body[data-theme="dark"] [style*="background-color:#fefce8"] *,
+html body[data-theme="dark"] [style*="background:rgb(254, 252, 232)"] *{
+  color:#e6edf3 !important;
+}
+/* "Target Ownership" amber heading stays amber-toned */
+html body[data-theme="dark"] [style*="background:#fefce8"] [style*="color:#92400e"],
+html body[data-theme="dark"] [style*="background:rgb(254, 252, 232)"] [style*="color:#92400e"]{
+  color:#d29922 !important;
+}
+/* Target row metric values - keep amber for the "Target" number */
+html body[data-theme="dark"] [style*="background:#fefce8"] [style*="color:#92400e"][style*="textAlign"]{
+  color:#fbbf24 !important;
+}
+
+/* ─── 3. SNOOZED inner rows cream (#fffbeb) — kill cream entirely ───────
+   JSX line ~11900: background:"#fffbeb" for each snoozed row inside outer wrap */
+html body[data-theme="dark"] [style*="background:#fffbeb"],
+html body[data-theme="dark"] [style*="background: #fffbeb"],
+html body[data-theme="dark"] [style*="background-color:#fffbeb"],
+html body[data-theme="dark"] [style*="background:rgb(255, 251, 235)"],
+html body[data-theme="dark"] [style*="background: rgb(255, 251, 235)"]{
+  background:#1c2128 !important;
+  background-color:#1c2128 !important;
+  background-image:none !important;
+  border-color:#3a2e0a !important;
+}
+html body[data-theme="dark"] [style*="background:#fffbeb"] *,
+html body[data-theme="dark"] [style*="background: #fffbeb"] *,
+html body[data-theme="dark"] [style*="background:rgb(255, 251, 235)"] *{
+  color:#e6edf3 !important;
+}
+/* Snoozed label colors stay readable */
+html body[data-theme="dark"] [style*="background:#fffbeb"] [style*="color:#92400e"],
+html body[data-theme="dark"] [style*="background:#fffbeb"] [style*="color:#b45309"],
+html body[data-theme="dark"] [style*="background:rgb(255, 251, 235)"] [style*="color:#92400e"]{
+  color:#d29922 !important;
+}
+html body[data-theme="dark"] [style*="background:#fffbeb"] [style*="color:#d97706"],
+html body[data-theme="dark"] [style*="background:rgb(255, 251, 235)"] [style*="color:#d97706"]{
+  color:#fbbf24 !important;
+}
+
+/* ─── 4. SNOOZED outer wrap (background:#fff + border #fde68a) ─────────── */
+html body[data-theme="dark"] [style*="border:1px solid #fde68a"],
+html body[data-theme="dark"] [style*="border: 1px solid #fde68a"],
+html body[data-theme="dark"] [style*="border:1px solid rgb(253, 230, 138)"]{
+  background:#0d1117 !important;
+  background-color:#0d1117 !important;
+  background-image:none !important;
+  border:1px solid #3a2e0a !important;
+  border-color:#3a2e0a !important;
+}
+html body[data-theme="dark"] [style*="border:1px solid #fde68a"] *,
+html body[data-theme="dark"] [style*="border: 1px solid #fde68a"] *,
+html body[data-theme="dark"] [style*="border:1px solid rgb(253, 230, 138)"] *{
+  color:#e6edf3 !important;
+}
+
+/* ─── 5. REPORTS TEAM HEADER BARS ───────────────────────────────────────
+   Each team has a lightBg in tc[]:
+     Owner Support  → #f5f3ff (purple)
+     R&R            → #e3f5ef (green)
+     Managed Svc    → #fef3c7 (amber)
+     Guest Support  → #ecfdf5 (teal) */
+html body[data-theme="dark"] [style*="background:#f5f3ff"],
+html body[data-theme="dark"] [style*="background: #f5f3ff"],
+html body[data-theme="dark"] [style*="background-color:#f5f3ff"],
+html body[data-theme="dark"] [style*="background:rgb(245, 243, 255)"]{
+  background:#1c1934 !important;
+  background-color:#1c1934 !important;
+  background-image:none !important;
+}
+html body[data-theme="dark"] [style*="background:#e3f5ef"],
+html body[data-theme="dark"] [style*="background: #e3f5ef"],
+html body[data-theme="dark"] [style*="background-color:#e3f5ef"],
+html body[data-theme="dark"] [style*="background:rgb(227, 245, 239)"]{
+  background:#0a2e22 !important;
+  background-color:#0a2e22 !important;
+  background-image:none !important;
+}
+html body[data-theme="dark"] [style*="background:#ecfdf5"],
+html body[data-theme="dark"] [style*="background: #ecfdf5"],
+html body[data-theme="dark"] [style*="background-color:#ecfdf5"],
+html body[data-theme="dark"] [style*="background:rgb(236, 253, 245)"]{
+  background:#0a2e22 !important;
+  background-color:#0a2e22 !important;
+  background-image:none !important;
+}
+/* Team-colored TEXT on those bg headers — keep team color but lighter for dark */
+html body[data-theme="dark"] [style*="color:#7c3aed"],
+html body[data-theme="dark"] [style*="color: #7c3aed"],
+html body[data-theme="dark"] [style*="color:rgb(124, 58, 237)"]{
+  color:#a371f7 !important;
+}
+html body[data-theme="dark"] [style*="color:#7c3aab"],
+html body[data-theme="dark"] [style*="color: #7c3aab"]{
+  color:#a371f7 !important;
+}
+html body[data-theme="dark"] [style*="color:#059669"],
+html body[data-theme="dark"] [style*="color: #059669"]{
+  color:#3fb950 !important;
+}
+html body[data-theme="dark"] [style*="color:#0e7a5e"],
+html body[data-theme="dark"] [style*="color: #0e7a5e"]{
+  color:#3fb950 !important;
+}
+html body[data-theme="dark"] [style*="color:#d97706"],
+html body[data-theme="dark"] [style*="color: #d97706"]{
+  color:#fbbf24 !important;
+}
+html body[data-theme="dark"] [style*="color:#b45309"]{
+  color:#d29922 !important;
+}
+html body[data-theme="dark"] [style*="color:#92400e"]{
+  color:#d29922 !important;
+}
+
+/* Schedule rows (transparent variants of lightBg: tBg+"88") — same treatment */
+html body[data-theme="dark"] [style*="background:#f5f3ff88"],
+html body[data-theme="dark"] [style*="background:#e3f5ef88"],
+html body[data-theme="dark"] [style*="background:#fef3c788"],
+html body[data-theme="dark"] [style*="background:#ecfdf588"]{
+  background:#161b22 !important;
+  background-image:none !important;
+}
+
+/* ─── 6. PEOPLE / LEADERBOARD PODIUM ─────────────────────────────────────
+   User wants: dark card body, keep MEDAL RING (border) gold/silver/bronze.
+   JSX podiumColors:
+     1st = bg: linear-gradient(135deg,#fef3c7,#fde68a), border #f59e0b
+     2nd = bg: linear-gradient(135deg,#f3f4f6,#e5e7eb), border #9ca3af  
+     3rd = bg: linear-gradient(135deg,#fed7aa,#fdba74), border #ea580c */
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#fef3c7,#fde68a"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg, #fef3c7, #fde68a"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(254, 243, 199),rgb(253, 230, 138)"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg, rgb(254, 243, 199), rgb(253, 230, 138)"]{
+  background:#161b22 !important;
+  background-image:none !important;
+  border:2px solid #f59e0b !important;
+}
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#f3f4f6,#e5e7eb"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg, #f3f4f6, #e5e7eb"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(243, 244, 246),rgb(229, 231, 235)"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg, rgb(243, 244, 246), rgb(229, 231, 235)"]{
+  background:#161b22 !important;
+  background-image:none !important;
+  border:2px solid #9ca3af !important;
+}
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#fed7aa,#fdba74"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg, #fed7aa, #fdba74"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(254, 215, 170),rgb(253, 186, 116)"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg, rgb(254, 215, 170), rgb(253, 186, 116)"]{
+  background:#161b22 !important;
+  background-image:none !important;
+  border:2px solid #ea580c !important;
+}
+/* Names + stats inside podium cards → light */
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#fef3c7"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg, #fef3c7"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(254, 243, 199)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg, rgb(254, 243, 199)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#f3f4f6"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg, #f3f4f6"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(243, 244, 246)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg, rgb(243, 244, 246)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#fed7aa"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg, #fed7aa"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(254, 215, 170)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg, rgb(254, 215, 170)"] *{
+  color:#e6edf3 !important;
+}
+
+/* ─── 7. CALL REVIEW agent name — currently shows in faint accent blue.
+   Switch teal→#0d9488 inline color (used for agent name/links) to a
+   readable but not glaring blue. */
+html body[data-theme="dark"] [style*="color:#0d9488"],
+html body[data-theme="dark"] [style*="color: #0d9488"],
+html body[data-theme="dark"] [style*="color:rgb(13, 148, 136)"],
+html body[data-theme="dark"] [style*="color: rgb(13, 148, 136)"]{
+  color:#7eb6ff !important;
+}
+html body[data-theme="dark"] [style*="color:#0f766e"]{
+  color:#58a6ff !important;
+}
+
+/* ─── 8. PLANNER topic tag (yellow pill inside card) ─────────────────────
+   JSX uses background:"#fffbeb" or "#fef3c7" + color:"#92400e" — covered by
+   sections 2/3 above. Add one more: explicit border #fde68a yellow topic tag. */
+html body[data-theme="dark"] [style*="background:#fef3c7"][style*="border"][style*="#fde68a"],
+html body[data-theme="dark"] [style*="background:#fffbeb"][style*="border"][style*="#fde68a"]{
+  background:rgba(210,153,34,0.18) !important;
+  background-color:rgba(210,153,34,0.18) !important;
+  background-image:none !important;
+  border-color:#7c5e1a !important;
+}
+
+/* ─── 9. GENERIC SAFETY NET ──────────────────────────────────────────────
+   For any cream pastel I might have missed, force dark + light text. */
+html body[data-theme="dark"] [style*="background:#fef3c7"]:not([data-theme]){
+  background-color:#1c2128 !important;
+  background-image:none !important;
+}
+html body[data-theme="dark"] [style*="background:#fef9c3"]{
+  background-color:#1c2128 !important;
+  background-image:none !important;
+}
+
+/* ─── 10. Dark text overrides at MAX specificity for hero/cream contexts ─
+   When inside any of the overridden containers, even inline color:#111827
+   must yield to light. */
+html body[data-theme="dark"] [style*="color:#111827"]{color:#e6edf3 !important;}
+html body[data-theme="dark"] [style*="color: #111827"]{color:#e6edf3 !important;}
+html body[data-theme="dark"] [style*="color:rgb(17, 24, 39)"]{color:#e6edf3 !important;}
+html body[data-theme="dark"] [style*="color: rgb(17, 24, 39)"]{color:#e6edf3 !important;}
+html body[data-theme="dark"] [style*="color:#1f2937"]{color:#e6edf3 !important;}
+html body[data-theme="dark"] [style*="color: #1f2937"]{color:#e6edf3 !important;}
+html body[data-theme="dark"] [style*="color:#374151"]{color:#c9d1d9 !important;}
+html body[data-theme="dark"] [style*="color:#4b5563"]{color:#7d8590 !important;}
+html body[data-theme="dark"] [style*="color:#6b7280"]{color:#8b949e !important;}
+html body[data-theme="dark"] [style*="color:#9ca3af"]{color:#6e7681 !important;}
+
 </style>
 </head>
 <body>

@@ -5225,7 +5225,7 @@ function App(){
   // ── PROFILE & THEME ─────────────────────────────────────────────────────
   const[avatar,setAvatar]=useState(()=>localStorage.getItem("bc_avatar_"+(currentUser?.username||""))||null);
   const[showProfile,setShowProfile]=useState(false);
-  const[theme,setTheme]=useState(()=>{try{return localStorage.getItem("bc_theme")||"default";}catch(_){return "default";}});
+  const[theme,setTheme]=useState(()=>{try{const t=localStorage.getItem("bc_theme")||"default";if(typeof document!=="undefined"&&t&&t!=="default"){try{document.documentElement.setAttribute("data-theme",t);if(document.body)document.body.setAttribute("data-theme",t);}catch(_){}}return t;}catch(_){return "default";}});
   // v2.4.5: Sidebar emoji toggle — defaults to ON, can be disabled for a cleaner professional look.
   const[iconsEnabled,setIconsEnabled]=useState(()=>{try{return localStorage.getItem("bc_icons")!=="off";}catch(_){return true;}});
   React.useEffect(()=>{try{localStorage.setItem("bc_icons",iconsEnabled?"on":"off");}catch(_){}},[iconsEnabled]);

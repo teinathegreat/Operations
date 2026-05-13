@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Bachcare Operations</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Space+Grotesk:wght@400;500;600;700&family=Quicksand:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Merriweather:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 /* === v2.1.1 Hacker Theme — AGGRESSIVE BLACK/GREEN === */
@@ -173,6 +174,8 @@
   background-color:#001a08 !important;
 }
 
+[data-theme="dark"] .bc-app-root{background:#0d0d0d !important;color:#d0d0d0 !important;}
+[data-theme="dark"] .bc-page-topbar{background:#1a1a1a !important;border-bottom-color:#2a2a2a !important;}
 /* === v2.1.3 Dark Theme (Helios-inspired) === */
 /* Charcoal panels, subtle borders, light grey text.
    PRESERVES original light look for: .bc-card, .bc-card-raised, .bc-card-float,
@@ -465,6 +468,10 @@ html{scroll-behavior:smooth;}
    └────────────────────────────────────────────────────────────────────┘ */
 [data-theme="light"]{background:#fbf8f1 !important;}
 [data-theme="light"] body{background:#fbf8f1 !important;color:#3a2e1f !important;}
+[data-theme="light"] .bc-app-root{background:#fbf8f1 !important;font-family:'Lora', Georgia, serif !important;color:#3a2e1f !important;}
+[data-theme="light"] .bc-page-topbar{background:#fffdf7 !important;border-bottom-color:#e8dcc2 !important;}
+[data-theme="light"] .bc-app-root *{font-family:'Lora', Georgia, serif !important;}
+[data-theme="light"] .bc-app-root > div > div[style*="position:\"sticky\""],[data-theme="light"] .bc-app-root [style*="background:\"#fff\""][style*="position:\"sticky\""]{background:#fbf8f1 !important;border-bottom-color:rgba(0,0,0,.08) !important;}
 [data-theme="light"] .bc-sidebar-root{
   background:linear-gradient(180deg,#e8dcc2 0%,#d9c9a8 100%) !important;
   background-image:linear-gradient(180deg,#e8dcc2 0%,#d9c9a8 100%) !important;
@@ -503,6 +510,10 @@ html{scroll-behavior:smooth;}
    └────────────────────────────────────────────────────────────────────┘ */
 [data-theme="midnight"]{background:#0b0820 !important;}
 [data-theme="midnight"] body{background:#0b0820 !important;color:#e0e7ff !important;}
+[data-theme="midnight"] .bc-app-root{background:#0b0820 !important;font-family:'Space Grotesk', -apple-system, sans-serif !important;color:#e0e7ff !important;}
+[data-theme="midnight"] .bc-page-topbar{background:#1a1252 !important;border-bottom-color:#4338ca !important;}
+[data-theme="midnight"] .bc-app-root *{font-family:'Space Grotesk', -apple-system, sans-serif !important;}
+[data-theme="midnight"] .bc-app-root > div > div[style*="position:\"sticky\""],[data-theme="midnight"] .bc-app-root [style*="background:\"#fff\""][style*="position:\"sticky\""]{background:#0b0820 !important;border-bottom-color:rgba(0,0,0,.08) !important;}
 [data-theme="midnight"] .bc-sidebar-root{
   background:linear-gradient(180deg,#2a1b6b 0%,#1e1259 100%) !important;
   background-image:linear-gradient(180deg,#2a1b6b 0%,#1e1259 100%) !important;
@@ -557,6 +568,10 @@ html{scroll-behavior:smooth;}
    └────────────────────────────────────────────────────────────────────┘ */
 [data-theme="ocean"]{background:#eff6ff !important;}
 [data-theme="ocean"] body{background:#eff6ff !important;color:#0c4a6e !important;}
+[data-theme="ocean"] .bc-app-root{background:#eff6ff !important;font-family:'Space Grotesk', -apple-system, sans-serif !important;color:#0c4a6e !important;}
+[data-theme="ocean"] .bc-page-topbar{background:#fff !important;border-bottom-color:#bae6fd !important;}
+[data-theme="ocean"] .bc-app-root *{font-family:'Space Grotesk', -apple-system, sans-serif !important;}
+[data-theme="ocean"] .bc-app-root > div > div[style*="position:\"sticky\""],[data-theme="ocean"] .bc-app-root [style*="background:\"#fff\""][style*="position:\"sticky\""]{background:#eff6ff !important;border-bottom-color:rgba(0,0,0,.08) !important;}
 [data-theme="ocean"] .bc-sidebar-root{
   background:linear-gradient(180deg,#0c4a6e 0%,#082f49 100%) !important;
   background-image:linear-gradient(180deg,#0c4a6e 0%,#082f49 100%) !important;
@@ -598,6 +613,10 @@ html{scroll-behavior:smooth;}
    └────────────────────────────────────────────────────────────────────┘ */
 [data-theme="forest"]{background:#f0fdf4 !important;}
 [data-theme="forest"] body{background:#f0fdf4 !important;color:#14532d !important;}
+[data-theme="forest"] .bc-app-root{background:#f0fdf4 !important;font-family:'Quicksand', -apple-system, sans-serif !important;color:#14532d !important;}
+[data-theme="forest"] .bc-page-topbar{background:#fff !important;border-bottom-color:#bbf7d0 !important;}
+[data-theme="forest"] .bc-app-root *{font-family:'Quicksand', -apple-system, sans-serif !important;}
+[data-theme="forest"] .bc-app-root > div > div[style*="position:\"sticky\""],[data-theme="forest"] .bc-app-root [style*="background:\"#fff\""][style*="position:\"sticky\""]{background:#f0fdf4 !important;border-bottom-color:rgba(0,0,0,.08) !important;}
 [data-theme="forest"] .bc-sidebar-root{
   background:linear-gradient(180deg,#14532d 0%,#052e16 100%) !important;
   background-image:linear-gradient(180deg,#14532d 0%,#052e16 100%) !important;
@@ -639,6 +658,10 @@ html{scroll-behavior:smooth;}
    └────────────────────────────────────────────────────────────────────┘ */
 [data-theme="sunset"]{background:#fff7ed !important;}
 [data-theme="sunset"] body{background:#fff7ed !important;color:#7c2d12 !important;}
+[data-theme="sunset"] .bc-app-root{background:#fff7ed !important;font-family:'Merriweather', Georgia, serif !important;color:#7c2d12 !important;}
+[data-theme="sunset"] .bc-page-topbar{background:#fffaf3 !important;border-bottom-color:#fed7aa !important;}
+[data-theme="sunset"] .bc-app-root *{font-family:'Merriweather', Georgia, serif !important;}
+[data-theme="sunset"] .bc-app-root > div > div[style*="position:\"sticky\""],[data-theme="sunset"] .bc-app-root [style*="background:\"#fff\""][style*="position:\"sticky\""]{background:#fff7ed !important;border-bottom-color:rgba(0,0,0,.08) !important;}
 [data-theme="sunset"] .bc-sidebar-root{
   background:linear-gradient(180deg,#7f1d1d 0%,#581717 100%) !important;
   background-image:linear-gradient(180deg,#7f1d1d 0%,#581717 100%) !important;
@@ -680,6 +703,10 @@ html{scroll-behavior:smooth;}
    └────────────────────────────────────────────────────────────────────┘ */
 [data-theme="rose"]{background:#fdf2f8 !important;}
 [data-theme="rose"] body{background:#fdf2f8 !important;color:#831843 !important;}
+[data-theme="rose"] .bc-app-root{background:#fdf2f8 !important;font-family:'Cormorant Garamond', Georgia, serif !important;color:#831843 !important;}
+[data-theme="rose"] .bc-page-topbar{background:#fffafc !important;border-bottom-color:#fbcfe8 !important;}
+[data-theme="rose"] .bc-app-root *{font-family:'Cormorant Garamond', Georgia, serif !important;}
+[data-theme="rose"] .bc-app-root > div > div[style*="position:\"sticky\""],[data-theme="rose"] .bc-app-root [style*="background:\"#fff\""][style*="position:\"sticky\""]{background:#fdf2f8 !important;border-bottom-color:rgba(0,0,0,.08) !important;}
 [data-theme="rose"] .bc-sidebar-root{
   background:linear-gradient(180deg,#831843 0%,#500724 100%) !important;
   background-image:linear-gradient(180deg,#831843 0%,#500724 100%) !important;
@@ -6933,7 +6960,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
   }
 
   return(
-    <div style={{fontFamily:"'Plus Jakarta Sans',-apple-system,sans-serif",minHeight:"100vh",display:"flex",background:"#f8f9fb"}}>
+    <div className="bc-app-root" style={{fontFamily:"'Plus Jakarta Sans',-apple-system,sans-serif",minHeight:"100vh",display:"flex",background:"#f8f9fb"}}>
       {/* Enhanced Toasts */}
       <div style={{position:"fixed",top:16,right:16,zIndex:10000,display:"flex",flexDirection:"column",gap:8,pointerEvents:"none"}}>
         {toasts.map(t=><div key={t.id} style={{background:t.type==="success"?"linear-gradient(135deg,#059669,#0d9488)":t.type==="error"||t.type==="warning"?"linear-gradient(135deg,#dc2626,#e11d48)":"linear-gradient(135deg,#111827,#1f2937)",color:"#fff",padding:"12px 20px",borderRadius:12,fontSize:12,boxShadow:"0 8px 32px rgba(0,0,0,.18)",maxWidth:360,fontWeight:500,animation:"toastSlide .35s cubic-bezier(.22,1,.36,1)",pointerEvents:"auto",display:"flex",alignItems:"center",gap:10,backdropFilter:"blur(8px)"}}><span style={{fontSize:16,flexShrink:0}}>{t.type==="success"?"✓":t.type==="error"||t.type==="warning"?"⚠":"ℹ"}</span><span>{t.msg}</span></div>)}
@@ -7067,7 +7094,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
       {/* ═══ MAIN CONTENT AREA ═══ */}
       <div style={{flex:1,marginLeft:sbCollapsed?64:220,minHeight:"100vh",display:"flex",flexDirection:"column"}}>
         {/* Top selector bar */}
-        {tab!=="owner withdrawals"&&<div style={{background:"#fff",borderBottom:"1px solid "+("#e5e7eb"),position:"sticky",top:0,zIndex:40,padding:"0 24px"}}>
+        {tab!=="owner withdrawals"&&<div className="bc-page-topbar" style={{background:"#fff",borderBottom:"1px solid "+("#e5e7eb"),position:"sticky",top:0,zIndex:40,padding:"0 24px"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",flexWrap:"wrap"}}>
             {(()=>{
               const onSched=tab==="schedule";

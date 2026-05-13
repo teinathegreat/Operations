@@ -7796,7 +7796,10 @@ function App(){
       return v||"\u2014";
     };
 
-    const podiumColors={1:{bg:"linear-gradient(135deg,#fef3c7,#fde68a)",border:"#f59e0b",medal:"\ud83e\udd47"},
+    const _isDarkTheme=typeof document!=="undefined"&&(document.documentElement?.dataset?.theme==="dark"||document.body?.dataset?.theme==="dark");
+    const podiumColors=_isDarkTheme?{1:{bg:"#161b22",border:"#f59e0b",medal:"\ud83e\udd47"},
+                       2:{bg:"#161b22",border:"#9ca3af",medal:"\ud83e\udd48"},
+                       3:{bg:"#161b22",border:"#ea580c",medal:"\ud83e\udd49"}}:{1:{bg:"linear-gradient(135deg,#fef3c7,#fde68a)",border:"#f59e0b",medal:"\ud83e\udd47"},
                        2:{bg:"linear-gradient(135deg,#f3f4f6,#e5e7eb)",border:"#9ca3af",medal:"\ud83e\udd48"},
                        3:{bg:"linear-gradient(135deg,#fed7aa,#fdba74)",border:"#ea580c",medal:"\ud83e\udd49"}};
 

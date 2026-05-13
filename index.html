@@ -4561,6 +4561,36 @@ html body[data-theme="dark"] [style*="background-color: rgb(229, 231, 235)"]{
   background-image:none !important;
 }
 
+
+/* ════════════════════════════════════════════════════════════════════════
+   v2.5.8 — Heat map manual-set ring + Call Reviews expand highlight
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* (a) Heat map cells: hide the 2px purple #7c3aed border (manual-set ring).
+   The ✱ asterisk at top-right of the cell still shows the manual status,
+   so dropping the ring removes visual noise without losing information. */
+html body[data-theme="dark"] [style*="border:2px solid #7c3aed"],
+html body[data-theme="dark"] [style*="border: 2px solid #7c3aed"],
+html body[data-theme="dark"] [style*="border:2px solid rgb(124, 58, 237)"],
+html body[data-theme="dark"] [style*="border: 2px solid rgb(124, 58, 237)"]{
+  border-color:transparent !important;
+}
+
+/* (b) Call Reviews "Agent Progress" expanded row highlight (#f0fdfa teal-50).
+   Switch to a dark teal-tinted surface so the agent name stays readable. */
+html body[data-theme="dark"] [style*="background:#f0fdfa"],
+html body[data-theme="dark"] [style*="background: #f0fdfa"],
+html body[data-theme="dark"] [style*="background-color:#f0fdfa"],
+html body[data-theme="dark"] [style*="background-color: #f0fdfa"],
+html body[data-theme="dark"] [style*="background:rgb(240, 253, 250)"],
+html body[data-theme="dark"] [style*="background: rgb(240, 253, 250)"],
+html body[data-theme="dark"] [style*="background-color:rgb(240, 253, 250)"],
+html body[data-theme="dark"] [style*="background-color: rgb(240, 253, 250)"]{
+  background:#0a2a2a !important;
+  background-color:#0a2a2a !important;
+  background-image:none !important;
+}
+
 </style>
 </head>
 <body>

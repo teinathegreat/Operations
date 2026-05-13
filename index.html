@@ -5230,7 +5230,7 @@ function App(){
   const[iconsEnabled,setIconsEnabled]=useState(()=>{try{return localStorage.getItem("bc_icons")!=="off";}catch(_){return true;}});
   React.useEffect(()=>{try{localStorage.setItem("bc_icons",iconsEnabled?"on":"off");}catch(_){}},[iconsEnabled]);
   const matrixCanvasRef=useRef(null);
-  React.useEffect(()=>{if(theme&&theme!=="default")document.documentElement.setAttribute("data-theme",theme);else document.documentElement.removeAttribute("data-theme");try{localStorage.setItem("bc_theme",theme);}catch(_){}},[theme]);
+  React.useEffect(()=>{if(theme&&theme!=="default"){document.documentElement.setAttribute("data-theme",theme);document.body.setAttribute("data-theme",theme);}else{document.documentElement.removeAttribute("data-theme");document.body.removeAttribute("data-theme");}try{localStorage.setItem("bc_theme",theme);}catch(_){}},[theme]);
   // v2.4.0: Matrix rain animation on login screen when in Hacker theme
   React.useEffect(()=>{
     const canvas=matrixCanvasRef.current;

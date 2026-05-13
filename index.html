@@ -4404,6 +4404,66 @@ html body[data-theme="dark"] [style*="color:#4b5563"]{color:#7d8590 !important;}
 html body[data-theme="dark"] [style*="color:#6b7280"]{color:#8b949e !important;}
 html body[data-theme="dark"] [style*="color:#9ca3af"]{color:#6e7681 !important;}
 
+
+/* ════════════════════════════════════════════════════════════════════════
+   v2.5.4 — SCHEDULE PAGE FIXES
+   Targets the specific pastel bgs used in the Hours Summary table.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Managers row alt bg (#eaf0f7 light blue-grey) → dark surface */
+html body[data-theme="dark"] [style*="background:#eaf0f7"],
+html body[data-theme="dark"] [style*="background: #eaf0f7"],
+html body[data-theme="dark"] [style*="background-color:#eaf0f7"],
+html body[data-theme="dark"] [style*="background:rgb(234, 240, 247)"],
+html body[data-theme="dark"] [style*="background: rgb(234, 240, 247)"]{
+  background:#161b22 !important;
+  background-color:#161b22 !important;
+  background-image:none !important;
+}
+html body[data-theme="dark"] [style*="background:#eaf0f7"] *,
+html body[data-theme="dark"] [style*="background: #eaf0f7"] *,
+html body[data-theme="dark"] [style*="background:rgb(234, 240, 247)"] *{
+  color:#e6edf3 !important;
+}
+
+/* Total Hours green pill (#f0fdf4) → translucent green + bright green text */
+html body[data-theme="dark"] [style*="background:#f0fdf4"],
+html body[data-theme="dark"] [style*="background: #f0fdf4"],
+html body[data-theme="dark"] [style*="background-color:#f0fdf4"],
+html body[data-theme="dark"] [style*="background:rgb(240, 253, 244)"],
+html body[data-theme="dark"] [style*="background: rgb(240, 253, 244)"]{
+  background:rgba(46,160,67,0.18) !important;
+  background-color:rgba(46,160,67,0.18) !important;
+  background-image:none !important;
+  border-color:rgba(46,160,67,0.35) !important;
+}
+html body[data-theme="dark"] [style*="background:#f0fdf4"] *,
+html body[data-theme="dark"] [style*="background:rgb(240, 253, 244)"] *{
+  color:#3fb950 !important;
+}
+
+/* Schedule alt-row Team Leaders bg #f3f4f6 — should be caught by generic, but
+   make sure it's dark in this context (combined with name text getting lighter) */
+html body[data-theme="dark"] [style*="background:#f3f4f6"]:not([style*="color:#fff"]){
+  background:#161b22 !important;
+  background-color:#161b22 !important;
+  background-image:none !important;
+}
+
+/* The no-hours pill (h===null) bg = #f3f4f6 with color "#111827" — make
+   the placeholder dash readable */
+html body[data-theme="dark"] [style*="background:#f3f4f6"][style*="color:#111827"]{
+  color:#7d8590 !important;
+}
+
+/* Red "over 40 hrs" pill (#fee2e2 + #dc2626 + #fca5a5 border) — already
+   covered by red pill overrides, but add a Schedule-specific catch for
+   the border #fca5a5 light red */
+html body[data-theme="dark"] [style*="border:1px solid #fca5a5"],
+html body[data-theme="dark"] [style*="border: 1px solid #fca5a5"]{
+  border-color:rgba(248,81,73,0.45) !important;
+}
+
 </style>
 </head>
 <body>

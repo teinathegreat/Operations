@@ -4626,7 +4626,7 @@ const SK="bc_v3";
 try{["bc_v3","bc_sched","bc_quick_notes","bc_notifs","bc_alert_snz","bc_cap_criteria","bc_caps","bc_daily","bc_todos","bc_assess_hist","bc_daily_cfg","bc_ppt","bc_ic","bc_audit","bc_meetings","bc_assess_timer","bc_goals","bc_onboard","bc_weights","bc_pending","bc_reviews","bc_perms","bc_actions","bc_accounts","bc_data"].forEach(k=>localStorage.removeItem(k));}catch{}
 
 const DEFAULT_TEAMS={
-  "Guest Support":{color:"#0d9488",lightBg:"#ecfdf5",kpis:[
+  "Guest Support":{color:"#1e6fcf",lightBg:"#dbeafe",kpis:[
     {key:"avg_first_response",label:"Avg First Response Time",target:"<4 Business Hours",unit:"hrs",dir:"lt",thresh:4},
     {key:"avg_response",label:"Avg Response Time",target:"<8 Business Hours",unit:"hrs",dir:"lt",thresh:8},
     {key:"productivity_team",label:"Productivity – Team",target:">8 Per Hour",unit:"/hr",dir:"gt",thresh:8},
@@ -8061,11 +8061,17 @@ function App(){
           const tB=personB?(tc[personB.team]||{color:"#6b7280"}):null;
 
           // Compute per-stat winners + total wins
-          let winsA=0,winsB=0;
+          // Skip "hours" entirely (no winner/loser for time worked) and skip
+          // any stat where both people have no data — those don't count.
+          const _isDarkTheme=typeof document!=="undefined"&&((document.documentElement&&document.documentElement.getAttribute&&document.documentElement.getAttribute("data-theme")==="dark")||(document.body&&document.body.getAttribute&&document.body.getAttribute("data-theme")==="dark"));
+          let winsA=0,winsB=0,comparedStats=0;
           if(personA&&personB){
             STAT_DEFS.forEach(s=>{
+              if(s.key==="hours")return;
               const va=personA.allStats[s.key];
               const vb=personB.allStats[s.key];
+              if(!va&&!vb)return;
+              comparedStats++;
               if(va>vb)winsA++;
               else if(vb>va)winsB++;
             });
@@ -8076,8 +8082,12 @@ function App(){
           const activeStat=sd;
 
           const renderStatRow=(s,person,otherPerson,side)=>{
+            // Hours has no winner/loser; displayed separately in the header.
+            if(s.key==="hours")return null;
             const myVal=person.allStats[s.key];
             const otherVal=otherPerson.allStats[s.key];
+            // Skip rows where both have no data — nothing meaningful to compare.
+            if(!myVal&&!otherVal)return null;
             const isWinner=myVal>otherVal;
             const isTie=myVal===otherVal&&myVal>0;
             return(
@@ -8127,8 +8137,8 @@ function App(){
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
                     {/* Person A */}
                     <div style={{
-                      background:overallWinner==="a"?"linear-gradient(180deg,#f0fdfa,#fff)":"#fff",
-                      border:"2px solid "+(overallWinner==="a"?"#0d9488":"#e5e7eb"),
+                      background:overallWinner==="a"?(_isDarkTheme?"linear-gradient(180deg,rgba(46,160,67,0.18),#161b22)":"linear-gradient(180deg,#f0fdfa,#fff)"):(_isDarkTheme?"#161b22":"#fff"),
+                      border:"2px solid "+(overallWinner==="a"?"#0d9488":(_isDarkTheme?"#30363d":"#e5e7eb")),
                       borderRadius:12,padding:"18px 20px",position:"relative",
                       boxShadow:overallWinner==="a"?"0 4px 16px rgba(13,148,136,.12)":"0 1px 3px rgba(0,0,0,.04)"
                     }}>
@@ -8137,7 +8147,8 @@ function App(){
                       <div style={{paddingBottom:12,borderBottom:"1px solid #f3f4f6",marginBottom:10}}>
                         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                           <div style={{width:8,height:8,borderRadius:50,background:tA.color}}/>
-                          <div style={{fontSize:11,color:"#6b7280",fontWeight:600}}>{personA.team}</div>
+                          <div style={{fontSize:11,color:"#6b7280",fontWeight:600,flex:1}}>{personA.team}</div>
+                          {personA.allStats.hours>0&&<span style={{fontSize:11,color:"#6b7280",fontWeight:600,display:"inline-flex",alignItems:"center",gap:3}}>⏱ {fmtStatVal(personA.allStats.hours,"hours")}</span>}
                         </div>
                         <div onClick={()=>setProfilePerson({id:personA.name,name:personA.name,teamName:personA.team})} style={{fontSize:17,fontWeight:800,color:"#111827",cursor:"pointer",letterSpacing:"-.02em"}}>{personA.name}</div>
                         {personA.rank&&<div style={{fontSize:11,color:"#6b7280",marginTop:3}}>Rank by {activeStat.label.toLowerCase()}: <strong style={{color:"#111827",fontVariantNumeric:"tabular-nums"}}>#{personA.rank}</strong> of {ranked.length}</div>}
@@ -8149,13 +8160,13 @@ function App(){
                       {/* Wins count */}
                       <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f3f4f6",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                         <span style={{fontSize:11,color:"#6b7280",fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"}}>Wins</span>
-                        <span style={{fontSize:18,fontWeight:800,color:overallWinner==="a"?"#0d9488":"#111827",fontVariantNumeric:"tabular-nums"}}>{winsA}<span style={{fontSize:13,color:"#9ca3af",fontWeight:500}}> / 7</span></span>
+                        <span style={{fontSize:18,fontWeight:800,color:overallWinner==="a"?"#0d9488":"#111827",fontVariantNumeric:"tabular-nums"}}>{winsA}<span style={{fontSize:13,color:"#9ca3af",fontWeight:500}}> / {comparedStats||0}</span></span>
                       </div>
                     </div>
                     {/* Person B */}
                     <div style={{
-                      background:overallWinner==="b"?"linear-gradient(180deg,#f0fdfa,#fff)":"#fff",
-                      border:"2px solid "+(overallWinner==="b"?"#0d9488":"#e5e7eb"),
+                      background:overallWinner==="b"?(_isDarkTheme?"linear-gradient(180deg,rgba(46,160,67,0.18),#161b22)":"linear-gradient(180deg,#f0fdfa,#fff)"):(_isDarkTheme?"#161b22":"#fff"),
+                      border:"2px solid "+(overallWinner==="b"?"#0d9488":(_isDarkTheme?"#30363d":"#e5e7eb")),
                       borderRadius:12,padding:"18px 20px",position:"relative",
                       boxShadow:overallWinner==="b"?"0 4px 16px rgba(13,148,136,.12)":"0 1px 3px rgba(0,0,0,.04)"
                     }}>
@@ -8163,7 +8174,8 @@ function App(){
                       <div style={{paddingBottom:12,borderBottom:"1px solid #f3f4f6",marginBottom:10}}>
                         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                           <div style={{width:8,height:8,borderRadius:50,background:tB.color}}/>
-                          <div style={{fontSize:11,color:"#6b7280",fontWeight:600}}>{personB.team}</div>
+                          <div style={{fontSize:11,color:"#6b7280",fontWeight:600,flex:1}}>{personB.team}</div>
+                          {personB.allStats.hours>0&&<span style={{fontSize:11,color:"#6b7280",fontWeight:600,display:"inline-flex",alignItems:"center",gap:3}}>⏱ {fmtStatVal(personB.allStats.hours,"hours")}</span>}
                         </div>
                         <div onClick={()=>setProfilePerson({id:personB.name,name:personB.name,teamName:personB.team})} style={{fontSize:17,fontWeight:800,color:"#111827",cursor:"pointer",letterSpacing:"-.02em"}}>{personB.name}</div>
                         {personB.rank&&<div style={{fontSize:11,color:"#6b7280",marginTop:3}}>Rank by {activeStat.label.toLowerCase()}: <strong style={{color:"#111827",fontVariantNumeric:"tabular-nums"}}>#{personB.rank}</strong> of {ranked.length}</div>}
@@ -8173,7 +8185,7 @@ function App(){
                       </div>
                       <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f3f4f6",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                         <span style={{fontSize:11,color:"#6b7280",fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"}}>Wins</span>
-                        <span style={{fontSize:18,fontWeight:800,color:overallWinner==="b"?"#0d9488":"#111827",fontVariantNumeric:"tabular-nums"}}>{winsB}<span style={{fontSize:13,color:"#9ca3af",fontWeight:500}}> / 7</span></span>
+                        <span style={{fontSize:18,fontWeight:800,color:overallWinner==="b"?"#0d9488":"#111827",fontVariantNumeric:"tabular-nums"}}>{winsB}<span style={{fontSize:13,color:"#9ca3af",fontWeight:500}}> / {comparedStats||0}</span></span>
                       </div>
                     </div>
                   </div>
@@ -8181,7 +8193,7 @@ function App(){
                   <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
                     <div style={{fontSize:12,color:"#6b7280"}}>
                       {overallWinner?(
-                        <span><strong style={{color:"#111827"}}>{(overallWinner==="a"?personA.name:personB.name)}</strong> leads in <strong style={{color:"#0d9488"}}>{Math.max(winsA,winsB)}</strong> of 7 stats</span>
+                        <span><strong style={{color:"#111827"}}>{(overallWinner==="a"?personA.name:personB.name)}</strong> leads in <strong style={{color:"#0d9488"}}>{Math.max(winsA,winsB)}</strong> of {comparedStats||0} stats</span>
                       ):(
                         <span>Both tied at <strong style={{color:"#111827"}}>{winsA}</strong> wins each</span>
                       )}

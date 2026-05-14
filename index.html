@@ -314,20 +314,12 @@ html{scroll-behavior:smooth;}
 
 
 /* ════════════════════════════════════════════════════════════════════════
-   v2.5.0 — Pro-grade themes. Every theme dramatically changes:
-     • Page background + font
-     • Sidebar gradient + accent bar
-     • The "Good morning" hero banner gradient
-     • All white cards → themed surface
-     • All teal accents → theme accent (buttons, pills, badges)
-     • Status pills (green/red/amber) → theme-tuned variants
-     • Text colors with both hex AND rgb() selector variants
-     • Inputs, borders, scrollbars
-   The legacy Dark theme has been replaced with a GitHub-inspired professional
-   dark mode.
+   v2.5.0 — Pro-grade Dark theme. Rebuilt from scratch May 14, 2026 after
+   regex damage in earlier theme-removal script. Every selector variant
+   present (hex no-space, hex with-space, rgb no-space, rgb with-space).
    ════════════════════════════════════════════════════════════════════════ */
 
-/* Font smoothing for all custom themes */
+/* Font smoothing */
 [data-theme="dark"]{
   -webkit-font-smoothing:antialiased;
   -moz-osx-font-smoothing:grayscale;
@@ -335,12 +327,12 @@ html{scroll-behavior:smooth;}
 }
 
 /* ┌────────────────────────────────────────────────────────────────────┐
-   │  DARK  (DARK)
+   │  DARK  (GitHub-inspired)
    └────────────────────────────────────────────────────────────────────┘ */
 [data-theme="dark"]{background:#0d1117 !important;}
 [data-theme="dark"] body{background:#0d1117 !important;color:#e6edf3 !important;}
 
-/* App root: page bg + font + base text */
+/* App root */
 [data-theme="dark"] .bc-app-root{
   background:#0d1117 !important;
   font-family:'Inter', -apple-system, sans-serif !important;
@@ -381,19 +373,15 @@ html{scroll-behavior:smooth;}
   box-shadow:0 1px 3px rgba(0,0,0,0.4) !important;
 }
 
-/* Hero gradient (Good morning / Good afternoon banner) */
-[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"],
-[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"],
-[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(13, 148, 136)"],
-[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(13, 148, 136)"],
-[data-theme="dark"] [style*="linear-gradient(180deg,
-#0d9488"],
-[data-theme="dark"] [style*="linear-gradient(180deg,
-rgb(13, 148, 136)"]{background:linear-gradient(135deg,#1f6feb 0%,#a371f7 50%,#1158c7 100%) !important;}
+/* Hero gradient (Good morning banner) */
+[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"],
+[data-theme="dark"] [style*="linear-gradient(135deg, #0d9488"],
+[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136)"],
+[data-theme="dark"] [style*="linear-gradient(135deg, rgb(13, 148, 136)"],
+[data-theme="dark"] [style*="linear-gradient(180deg,#0d9488"],
+[data-theme="dark"] [style*="linear-gradient(180deg, #0d9488"],
+[data-theme="dark"] [style*="linear-gradient(180deg,rgb(13, 148, 136)"],
+[data-theme="dark"] [style*="linear-gradient(180deg, rgb(13, 148, 136)"]{background:linear-gradient(135deg,#1f6feb 0%,#a371f7 50%,#1158c7 100%) !important;}
 
 
 /* Teal accent overrides */
@@ -502,14 +490,26 @@ rgb(13, 148, 136)"]{background:linear-gradient(135deg,#1f6feb 0%,#a371f7 50%,#11
 [data-theme="dark"] [style*="color: #1f2937"],
 [data-theme="dark"] [style*="color:rgb(31, 41, 55)"],
 [data-theme="dark"] [style*="color: rgb(31, 41, 55)"]{color:#e6edf3 !important;}
+[data-theme="dark"] [style*="color:#0a0a0a"],
+[data-theme="dark"] [style*="color: #0a0a0a"],
+[data-theme="dark"] [style*="color:rgb(10, 10, 10)"],
+[data-theme="dark"] [style*="color: rgb(10, 10, 10)"]{color:#e6edf3 !important;}
+[data-theme="dark"] [style*="color:#171717"],
+[data-theme="dark"] [style*="color: #171717"],
+[data-theme="dark"] [style*="color:rgb(23, 23, 23)"],
+[data-theme="dark"] [style*="color: rgb(23, 23, 23)"]{color:#e6edf3 !important;}
 [data-theme="dark"] [style*="color:#374151"],
 [data-theme="dark"] [style*="color: #374151"],
 [data-theme="dark"] [style*="color:rgb(55, 65, 81)"],
-[data-theme="dark"] [style*="color: rgb(55, 65, 81)"]{color:#e6edf3 !important;}
+[data-theme="dark"] [style*="color: rgb(55, 65, 81)"]{color:#7d8590 !important;}
 [data-theme="dark"] [style*="color:#4b5563"],
 [data-theme="dark"] [style*="color: #4b5563"],
 [data-theme="dark"] [style*="color:rgb(75, 85, 99)"],
 [data-theme="dark"] [style*="color: rgb(75, 85, 99)"]{color:#7d8590 !important;}
+[data-theme="dark"] [style*="color:#525252"],
+[data-theme="dark"] [style*="color: #525252"],
+[data-theme="dark"] [style*="color:rgb(82, 82, 82)"],
+[data-theme="dark"] [style*="color: rgb(82, 82, 82)"]{color:#7d8590 !important;}
 [data-theme="dark"] [style*="color:#6b7280"],
 [data-theme="dark"] [style*="color: #6b7280"],
 [data-theme="dark"] [style*="color:rgb(107, 114, 128)"],
@@ -517,7 +517,11 @@ rgb(13, 148, 136)"]{background:linear-gradient(135deg,#1f6feb 0%,#a371f7 50%,#11
 [data-theme="dark"] [style*="color:#9ca3af"],
 [data-theme="dark"] [style*="color: #9ca3af"],
 [data-theme="dark"] [style*="color:rgb(156, 163, 175)"],
-[data-theme="dark"] [style*="color: rgb(156, 163, 175)"]{color:#7d8590 !important;opacity:.85;}
+[data-theme="dark"] [style*="color: rgb(156, 163, 175)"]{color:#7d8590 !important;}
+[data-theme="dark"] [style*="color:#737373"],
+[data-theme="dark"] [style*="color: #737373"],
+[data-theme="dark"] [style*="color:rgb(115, 115, 115)"],
+[data-theme="dark"] [style*="color: rgb(115, 115, 115)"]{color:#7d8590 !important;}
 
 
 /* Background overrides */
@@ -532,8 +536,7 @@ rgb(13, 148, 136)"]{background:linear-gradient(135deg,#1f6feb 0%,#a371f7 50%,#11
 [data-theme="dark"] [style*="background:#fff "]:not(.bc-sidebar-root):not([style*="rgba"]),
 [data-theme="dark"] [style*="background:#fff;"]:not(.bc-sidebar-root):not([style*="rgba"]),
 [data-theme="dark"] [style*="background: #fff;"]:not(.bc-sidebar-root):not([style*="rgba"]),
-[data-theme="dark"] [style*="background:#fff,
-"]:not(.bc-sidebar-root):not([style*="rgba"]){background-color:#161b22 !important;}
+[data-theme="dark"] [style*="background:#fff,"]:not(.bc-sidebar-root):not([style*="rgba"]){background-color:#161b22 !important;}
 [data-theme="dark"] [style*="background:#f9fafb"],
 [data-theme="dark"] [style*="background: #f9fafb"],
 [data-theme="dark"] [style*="background:rgb(249, 250, 251)"],
@@ -588,250 +591,6 @@ rgb(13, 148, 136)"]{background:linear-gradient(135deg,#1f6feb 0%,#a371f7 50%,#11
 [data-theme="dark"] *::-webkit-scrollbar{width:10px;height:10px;}
 [data-theme="dark"] *::-webkit-scrollbar-track{background:#0d1117 !important;}
 [data-theme="dark"] *::-webkit-scrollbar-thumb{background:#30363d !important;border-radius:5px;}
-
-/* ┌────────────────────────────────────────────────────────────────────┐
-   │  MIDNIGHT  (DARK)
-   └────────────────────────────────────────────────────────────────────┘ */
-
-/* App root: page bg + font + base text */
-
-/* Sidebar */
-
-/* Top page bar */
-
-/* Cards */
-
-/* Hero gradient (Good morning / Good afternoon banner) */
-#0d9488"],
-#0d9488"],
-rgb(13, 148, 136)"],
-rgb(13, 148, 136)"],
-#0d9488"],
-rgb(13, 148, 136)"]{background:linear-gradient(135deg,#22d3ee 0%,#a78bfa 50%,#3b2680 100%) !important;}
-
-
-/* Teal accent overrides */
-
-
-/* Status pill recoloring */
-
-
-/* Text overrides */
-
-
-/* Background overrides */
-"]:not(.bc-sidebar-root):not([style*="rgba"]){background-color:#1a1240 !important;}
-
-
-/* Border overrides */
-
-
-/* Inputs */
-
-/* Scrollbar */
-
-/* ┌────────────────────────────────────────────────────────────────────┐
-   │  LIGHT  (LIGHT)
-   └────────────────────────────────────────────────────────────────────┘ */
-
-/* App root: page bg + font + base text */
-
-/* Sidebar */
-
-/* Top page bar */
-
-/* Cards */
-
-/* Hero gradient (Good morning / Good afternoon banner) */
-#0d9488"],
-#0d9488"],
-rgb(13, 148, 136)"],
-rgb(13, 148, 136)"],
-#0d9488"],
-rgb(13, 148, 136)"]{background:linear-gradient(135deg,#f59e0b 0%,#d97706 50%,#b45309 100%) !important;}
-
-
-/* Teal accent overrides */
-
-
-/* Status pill recoloring */
-
-
-/* Text overrides */
-
-
-/* Background overrides */
-
-
-/* Border overrides */
-
-
-/* Inputs */
-
-/* Scrollbar */
-
-/* ┌────────────────────────────────────────────────────────────────────┐
-   │  OCEAN  (LIGHT)
-   └────────────────────────────────────────────────────────────────────┘ */
-
-/* App root: page bg + font + base text */
-
-/* Sidebar */
-
-/* Top page bar */
-
-/* Cards */
-
-/* Hero gradient (Good morning / Good afternoon banner) */
-#0d9488"],
-#0d9488"],
-rgb(13, 148, 136)"],
-rgb(13, 148, 136)"],
-#0d9488"],
-rgb(13, 148, 136)"]{background:linear-gradient(135deg,#0891b2 0%,#0e7490 50%,#082f49 100%) !important;}
-
-
-/* Teal accent overrides */
-
-
-/* Status pill recoloring */
-
-
-/* Text overrides */
-
-
-/* Background overrides */
-
-
-/* Border overrides */
-
-
-/* Inputs */
-
-/* Scrollbar */
-
-/* ┌────────────────────────────────────────────────────────────────────┐
-   │  FOREST  (LIGHT)
-   └────────────────────────────────────────────────────────────────────┘ */
-
-/* App root: page bg + font + base text */
-
-/* Sidebar */
-
-/* Top page bar */
-
-/* Cards */
-
-/* Hero gradient (Good morning / Good afternoon banner) */
-#0d9488"],
-#0d9488"],
-rgb(13, 148, 136)"],
-rgb(13, 148, 136)"],
-#0d9488"],
-rgb(13, 148, 136)"]{background:linear-gradient(135deg,#16a34a 0%,#15803d 50%,#052e16 100%) !important;}
-
-
-/* Teal accent overrides */
-
-
-/* Status pill recoloring */
-
-
-/* Text overrides */
-
-
-/* Background overrides */
-
-
-/* Border overrides */
-
-
-/* Inputs */
-
-/* Scrollbar */
-
-/* ┌────────────────────────────────────────────────────────────────────┐
-   │  SUNSET  (LIGHT)
-   └────────────────────────────────────────────────────────────────────┘ */
-
-/* App root: page bg + font + base text */
-
-/* Sidebar */
-
-/* Top page bar */
-
-/* Cards */
-
-/* Hero gradient (Good morning / Good afternoon banner) */
-#0d9488"],
-#0d9488"],
-rgb(13, 148, 136)"],
-rgb(13, 148, 136)"],
-#0d9488"],
-rgb(13, 148, 136)"]{background:linear-gradient(135deg,#f97316 0%,#ea580c 50%,#7c2d12 100%) !important;}
-
-
-/* Teal accent overrides */
-
-
-/* Status pill recoloring */
-
-
-/* Text overrides */
-
-
-/* Background overrides */
-
-
-/* Border overrides */
-
-
-/* Inputs */
-
-/* Scrollbar */
-
-/* ┌────────────────────────────────────────────────────────────────────┐
-   │  ROSE  (LIGHT)
-   └────────────────────────────────────────────────────────────────────┘ */
-
-/* App root: page bg + font + base text */
-
-/* Sidebar */
-
-/* Top page bar */
-
-/* Cards */
-
-/* Hero gradient (Good morning / Good afternoon banner) */
-#0d9488"],
-#0d9488"],
-rgb(13, 148, 136)"],
-rgb(13, 148, 136)"],
-#0d9488"],
-rgb(13, 148, 136)"]{background:linear-gradient(135deg,#db2777 0%,#be185d 50%,#500724 100%) !important;}
-
-
-/* Teal accent overrides */
-
-
-/* Status pill recoloring */
-
-
-/* Text overrides */
-
-
-/* Background overrides */
-
-
-/* Border overrides */
-
-
-/* Inputs */
-
-/* Scrollbar */
-
-
-
 
 /* ════════════════════════════════════════════════════════════════════════
    v2.5.1 — DARK THEME PASTEL READABILITY FIX
@@ -1975,14 +1734,10 @@ keep its text dark so it stays readable.
    v2.5.0 replaced it with a bright purple/blue gradient. Now: deep slate →
    dark indigo for a calmer, more professional dark-mode hero. Force ALL
    descendants to bright white text regardless of their inline colors. */
-body[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"],
-body[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"],
-body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(13, 148, 136)"],
-body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(13, 148, 136)"]{
+body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"],
+body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"],
+body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136)"],
+body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136)"]{
   background:linear-gradient(135deg,#0d1117 0%,#1e1b4b 50%,#0d1117 100%) !important;
   border:1px solid #30363d !important;
 }
@@ -1990,23 +1745,17 @@ rgb(13, 148, 136)"]{
 /* Force every text element inside the hero to bright white — overrides any
    inline color, gets through v2.5.1 preservation because of higher
    specificity from the body prefix and the descendant combinator. */
-body[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"] *,
-body[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"] *,
-body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(13, 148, 136)"] *,
-body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(13, 148, 136)"] *{
+body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"] *,
+body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"] *,
+body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136)"] *,
+body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136)"] *{
   color:#f0f6fc !important;
 }
 
 /* KPI tile inner backgrounds inside the hero (rgba semi-transparent white over
    the gradient) — give them a slightly more visible translucent panel. */
-body[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"] [style*="rgba(255"],
-body[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"] [style*="rgba(255"]{
+body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"] [style*="rgba(255"],
+body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"] [style*="rgba(255"]{
   background:rgba(255,255,255,0.08) !important;
   border:1px solid rgba(255,255,255,0.12) !important;
 }
@@ -2123,34 +1872,24 @@ Specificity: html body[data-theme="dark"] + 2+ attrs = max priority.
 rgb(13, 148, 136) 0%,
 rgb(14, 116, 144) 50%,
 rgb(12, 74, 110) 100%) */
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(13, 148, 136)"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(13, 148, 136)"]{
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136)"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136)"]{
   background:linear-gradient(135deg,#010409 0%,#161b22 50%,#010409 100%) !important;
   background-image:linear-gradient(135deg,#010409 0%,#161b22 50%,#010409 100%) !important;
   border:1px solid #30363d !important;
 }
 /* Every single text element in the hero → bright white */
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(13, 148, 136)"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(13, 148, 136)"] *{
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136)"] *{
   color:#ffffff !important;
 }
 /* KPI tile inner panels — translucent white */
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#0d9488"] [style*="rgba(255"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(13, 148, 136)"] [style*="rgba(255"]{
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488"] [style*="rgba(255"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136)"] [style*="rgba(255"]{
   background:rgba(255,255,255,0.06) !important;
   background-color:rgba(255,255,255,0.06) !important;
   border:1px solid rgba(255,255,255,0.15) !important;
@@ -2303,79 +2042,43 @@ html body[data-theme="dark"] [style*="background:#ecfdf588"]{
      1st = bg: linear-gradient(135deg,#fef3c7,#fde68a), border #f59e0b
      2nd = bg: linear-gradient(135deg,#f3f4f6,#e5e7eb), border #9ca3af  
      3rd = bg: linear-gradient(135deg,#fed7aa,#fdba74), border #ea580c */
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#fef3c7,
-#fde68a"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#fef3c7,
-#fde68a"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(254, 243, 199),
-rgb(253, 230, 138)"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(254, 243, 199),
-rgb(253, 230, 138)"]{
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#fef3c7,#fde68a"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#fef3c7,#fde68a"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(254, 243, 199),rgb(253, 230, 138)"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(254, 243, 199),rgb(253, 230, 138)"]{
   background:#161b22 !important;
   background-image:none !important;
   border:2px solid #f59e0b !important;
 }
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#f3f4f6,
-#e5e7eb"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#f3f4f6,
-#e5e7eb"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(243, 244, 246),
-rgb(229, 231, 235)"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(243, 244, 246),
-rgb(229, 231, 235)"]{
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#f3f4f6,#e5e7eb"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#f3f4f6,#e5e7eb"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(243, 244, 246),rgb(229, 231, 235)"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(243, 244, 246),rgb(229, 231, 235)"]{
   background:#161b22 !important;
   background-image:none !important;
   border:2px solid #9ca3af !important;
 }
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#fed7aa,
-#fdba74"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#fed7aa,
-#fdba74"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(254, 215, 170),
-rgb(253, 186, 116)"],
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(254, 215, 170),
-rgb(253, 186, 116)"]{
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#fed7aa,#fdba74"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#fed7aa,#fdba74"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(254, 215, 170),rgb(253, 186, 116)"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(254, 215, 170),rgb(253, 186, 116)"]{
   background:#161b22 !important;
   background-image:none !important;
   border:2px solid #ea580c !important;
 }
 /* Names + stats inside podium cards → light */
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#fef3c7"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#fef3c7"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(254, 243, 199)"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(254, 243, 199)"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#f3f4f6"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#f3f4f6"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(243, 244, 246)"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(243, 244, 246)"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#fed7aa"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-#fed7aa"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(254, 215, 170)"] *,
-html body[data-theme="dark"] [style*="linear-gradient(135deg,
-rgb(254, 215, 170)"] *{
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#fef3c7"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#fef3c7"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(254, 243, 199)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(254, 243, 199)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#f3f4f6"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#f3f4f6"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(243, 244, 246)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(243, 244, 246)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#fed7aa"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#fed7aa"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(254, 215, 170)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(254, 215, 170)"] *{
   color:#e6edf3 !important;
 }
 

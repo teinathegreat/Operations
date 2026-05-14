@@ -2354,6 +2354,27 @@ html body[data-theme="dark"] [style*="background-color: rgb(219, 234, 254)"]{
   background-image:none !important;
 }
 
+
+/* ════════════════════════════════════════════════════════════════════════
+   v2.6.0 — Hero banner text: force crisp #fff in dark theme
+   The dark hero gradient (#1c2128→#161b22→#0d1117) is now subtle/dark so
+   readability needs pure white text without opacity reductions.
+   ════════════════════════════════════════════════════════════════════════ */
+
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488 0%,#0e7490"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg, #0d9488 0%, #0e7490"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136) 0%, rgb(14, 116, 144)"],
+html body[data-theme="dark"] [style*="linear-gradient(135deg, rgb(13, 148, 136) 0%, rgb(14, 116, 144)"]{
+  color:#ffffff !important;
+}
+html body[data-theme="dark"] [style*="linear-gradient(135deg,#0d9488 0%,#0e7490"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg, #0d9488 0%, #0e7490"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg,rgb(13, 148, 136) 0%, rgb(14, 116, 144)"] *,
+html body[data-theme="dark"] [style*="linear-gradient(135deg, rgb(13, 148, 136) 0%, rgb(14, 116, 144)"] *{
+  color:#ffffff !important;
+  opacity:1 !important;
+}
+
 </style>
 </head>
 <body>
@@ -5661,7 +5682,6 @@ function App(){
           :<div style={{position:"absolute",top:0,left:0,right:0,height:"50vh",background:"linear-gradient(180deg,#0d9488 0%,#111827 100%)",opacity:.15}}/>}
         <div style={{background:"#fff",borderRadius:16,padding:"44px 40px",width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,.3)",position:"relative",animation:"fadeUp .4s ease"}}>
           <div style={{textAlign:"center",marginBottom:36}}>
-            <div style={{width:52,height:52,borderRadius:12,background:"#111827",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:14}}><span style={{color:"#14b8a6",fontWeight:800,fontSize:20}}>B</span></div>
             <div style={{fontWeight:800,fontSize:22,color:"#111827",letterSpacing:"-.02em"}}>Bachcare</div>
             <div style={{fontSize:13,color:"#9ca3af",marginTop:4,fontWeight:500}}>Operations Dashboard</div>
           </div>
@@ -8603,7 +8623,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         {/* Logo + collapse toggle */}
         <div style={{padding:sbCollapsed?"22px 8px 18px":"22px 18px 18px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
           <div style={{display:"flex",alignItems:"center",gap:10,justifyContent:sbCollapsed?"center":"flex-start"}}>
-            <div style={{width:34,height:34,borderRadius:10,background:"linear-gradient(135deg,#0d9488,#0e7490)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(13,148,136,.3)",flexShrink:0,cursor:"pointer"}} onClick={()=>setSbCollapsed(v=>!v)} title={sbCollapsed?"Expand sidebar":"Collapse sidebar"}><span style={{color:"#fff",fontWeight:800,fontSize:15}}>B</span></div>
+            {sbCollapsed&&<button onClick={()=>setSbCollapsed(false)} title="Expand sidebar" style={{background:"transparent",border:"none",color:"#9ca3af",cursor:"pointer",padding:6,borderRadius:6,fontSize:18,lineHeight:1,fontFamily:"inherit"}} onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,.06)";e.currentTarget.style.color="#e5e7eb";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9ca3af";}}>{"»"}</button>}
             {!sbCollapsed&&<div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:700,fontSize:15,color:"#f3f4f6",letterSpacing:"-.01em"}}>Bachcare</div>
               <div style={{fontSize:10,color:"#4b5563",fontWeight:500,letterSpacing:".04em",textTransform:"uppercase"}}>{"Operations"}<span onClick={()=>{if(currentUser?.username==="Teina"){setVersionEditVal(remoteVersion||APP_VERSION);setVersionEditOpen(true);}}} style={{marginLeft:6,fontSize:9,color:"#22d3ee",fontWeight:700,letterSpacing:0,cursor:currentUser?.username==="Teina"?"pointer":"default"}}>{" v"+(remoteVersion||APP_VERSION)}</span></div>
@@ -8709,7 +8729,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
 
         {/* User */}
         <div style={{padding:sbCollapsed?"14px 8px":"14px 16px",borderTop:"1px solid #1f2937",display:"flex",alignItems:"center",gap:10,justifyContent:sbCollapsed?"center":"flex-start",flexDirection:sbCollapsed?"column":"row"}}>
-          <button onClick={()=>setShowProfile(s=>!s)} title={sbCollapsed?currentUser?.displayName:""} style={{width:32,height:32,borderRadius:8,background:isAdmin?"#0d9488":"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11,fontWeight:700,flexShrink:0,border:"none",cursor:"pointer",fontFamily:"inherit"}}>{(currentUser?.displayName||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2)}</button>
+          {sbCollapsed&&<button onClick={()=>setShowProfile(s=>!s)} title={currentUser?.displayName||"Profile"} style={{background:"transparent",border:"none",color:"#9ca3af",cursor:"pointer",fontSize:18,padding:"4px",lineHeight:1,fontFamily:"inherit"}}>{"👤"}</button>}
           {!sbCollapsed&&<div style={{flex:1,minWidth:0}}>
             <button onClick={()=>setShowProfile(s=>!s)} style={{background:"none",border:"none",cursor:"pointer",color:"#e5e7eb",fontSize:12,fontWeight:600,padding:0,textAlign:"left",display:"block",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",width:"100%",fontFamily:"inherit"}}>{currentUser?.displayName}</button>
             <div style={{fontSize:10,color:"#6b7280",fontWeight:500}}>{isAdmin?"Admin":"Team Lead"}</div>

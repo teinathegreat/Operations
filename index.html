@@ -2375,6 +2375,44 @@ html body[data-theme="dark"] [style*="linear-gradient(135deg, rgb(13, 148, 136) 
   opacity:1 !important;
 }
 
+
+/* ════════════════════════════════════════════════════════════════════════
+   v2.6.1 — Quick References rich text editor + note rendering
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Light theme — rendered note styling (bullets, links, paragraphs) */
+.bc-qr-note a { color:#2563eb; text-decoration:underline; word-break:break-word; }
+.bc-qr-note ul, .bc-qr-note ol { padding-left:22px; margin:6px 0; }
+.bc-qr-note li { margin:2px 0; }
+.bc-qr-note p, .bc-qr-note div { margin:2px 0; }
+.bc-qr-note strong, .bc-qr-note b { font-weight:700; }
+.bc-qr-note em, .bc-qr-note i { font-style:italic; }
+
+/* contentEditable list / link styles so they look right while typing */
+.bc-rte-editor ul, .bc-rte-editor ol { padding-left:22px; margin:6px 0; }
+.bc-rte-editor li { margin:2px 0; }
+.bc-rte-editor a { color:#2563eb; text-decoration:underline; }
+.bc-rte-editor:empty::before { content:attr(data-placeholder); color:#9ca3af; pointer-events:none; }
+.bc-rte-editor:focus { border-color:#0d9488 !important; box-shadow:0 0 0 3px rgba(13,148,136,.15); }
+.bc-rte-toolbar button:focus { outline:none; }
+
+/* Dark theme overrides */
+[data-theme="dark"] .bc-qr-note a { color:#58a6ff !important; }
+[data-theme="dark"] .bc-rte-editor { background:#0d1117 !important; color:#e6edf3 !important; border-color:#30363d !important; }
+[data-theme="dark"] .bc-rte-editor a { color:#58a6ff !important; }
+[data-theme="dark"] .bc-rte-toolbar { background:#161b22 !important; border-color:#30363d !important; }
+[data-theme="dark"] .bc-rte-toolbar button { color:#9ca3af !important; }
+[data-theme="dark"] .bc-rte-toolbar button:hover { background:rgba(255,255,255,0.06) !important; border-color:#30363d !important; }
+[data-theme="dark"] .bc-rte-editor:focus { border-color:#58a6ff !important; box-shadow:0 0 0 3px rgba(56,139,253,.15) !important; }
+
+/* Hacker theme inherits the green-on-black aesthetic */
+[data-theme="hacker"] .bc-qr-note a,
+[data-theme="hacker"] .bc-rte-editor a { color:#00ff66 !important; }
+[data-theme="hacker"] .bc-rte-editor { background:#000 !important; color:#00ff66 !important; border-color:#00ff66 !important; }
+[data-theme="hacker"] .bc-rte-toolbar { background:#001a08 !important; border-color:#00ff66 !important; }
+[data-theme="hacker"] .bc-rte-toolbar button { color:#00aa44 !important; }
+[data-theme="hacker"] .bc-rte-toolbar button:hover { background:#001a08 !important; border-color:#00ff66 !important; color:#00ff66 !important; }
+
 </style>
 </head>
 <body>
@@ -3123,6 +3161,96 @@ function WeeklySummaryModalBuilder({sm,onClose,roster,callReviews,setCallReviews
       </div>
     </div>
   </Modal>;
+}
+
+// ─── RichTextEditor ────────────────────────────────────────────────────────
+// Lightweight contentEditable-based rich text editor used in Quick References.
+// Saves HTML to the bound state. Toolbar: B / I / U / bullet / numbered / link
+// / clear-formatting. Pasted content is stripped to plain text to keep storage
+// clean and prevent Word/Google Docs styles from leaking in.
+function RichTextEditor({value, onChange, minHeight}) {
+  const editorRef = React.useRef(null);
+  const lastSetRef = React.useRef(null);
+
+  // Set initial innerHTML and re-sync only when `value` changes from OUTSIDE
+  // (e.g. switching to edit a different reference). Don't re-set on our own
+  // onInput events — that would clobber the cursor position.
+  React.useEffect(() => {
+    const v = value || "";
+    if (editorRef.current && lastSetRef.current !== v) {
+      editorRef.current.innerHTML = v;
+      lastSetRef.current = v;
+    }
+  }, [value]);
+
+  const sync = () => {
+    if (!editorRef.current) return;
+    const html = editorRef.current.innerHTML;
+    lastSetRef.current = html;
+    onChange(html);
+  };
+
+  const exec = (cmd, arg) => {
+    if (editorRef.current) editorRef.current.focus();
+    document.execCommand(cmd, false, arg);
+    sync();
+  };
+
+  const insertLink = () => {
+    const sel = window.getSelection();
+    const hasSelection = sel && sel.toString().trim();
+    const url = window.prompt("Enter URL (e.g. https://example.com):", "https://");
+    if (!url || !url.trim()) return;
+    let u = url.trim();
+    if (!/^(https?:|mailto:|tel:|#)/i.test(u)) u = "https://" + u;
+    if (hasSelection) {
+      exec("createLink", u);
+    } else {
+      const linkText = window.prompt("Link text to display:", u) || u;
+      const safeUrl = u.replace(/"/g, "&quot;").replace(/</g, "&lt;");
+      const safeText = linkText.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const html = '<a href="' + safeUrl + '" target="_blank" rel="noopener">' + safeText + '</a>&nbsp;';
+      if (editorRef.current) editorRef.current.focus();
+      document.execCommand("insertHTML", false, html);
+      sync();
+    }
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData("text/plain");
+    document.execCommand("insertText", false, text);
+  };
+
+  const tbBtn = {fontSize:12,padding:"4px 9px",background:"transparent",border:"1px solid transparent",borderRadius:4,cursor:"pointer",color:"#4b5563",fontFamily:"inherit",minWidth:28,lineHeight:1.4};
+  const divider = {width:1,background:"#d1d5db",margin:"3px 4px",alignSelf:"stretch"};
+  const hover = e => { e.currentTarget.style.background = "#ffffff"; e.currentTarget.style.borderColor = "#e5e7eb"; };
+  const unhover = e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; };
+
+  return (
+    <div>
+      <div className="bc-rte-toolbar" style={{display:"flex",gap:2,padding:6,background:"#f9fafb",border:"1px solid #d1d5db",borderBottom:"none",borderRadius:"8px 8px 0 0",flexWrap:"wrap",alignItems:"center"}}>
+        <button type="button" onMouseDown={e=>{e.preventDefault();exec("bold");}} onMouseEnter={hover} onMouseLeave={unhover} style={tbBtn} title="Bold (Ctrl+B)"><strong>B</strong></button>
+        <button type="button" onMouseDown={e=>{e.preventDefault();exec("italic");}} onMouseEnter={hover} onMouseLeave={unhover} style={tbBtn} title="Italic (Ctrl+I)"><em>I</em></button>
+        <button type="button" onMouseDown={e=>{e.preventDefault();exec("underline");}} onMouseEnter={hover} onMouseLeave={unhover} style={tbBtn} title="Underline (Ctrl+U)"><span style={{textDecoration:"underline"}}>U</span></button>
+        <div style={divider}/>
+        <button type="button" onMouseDown={e=>{e.preventDefault();exec("insertUnorderedList");}} onMouseEnter={hover} onMouseLeave={unhover} style={tbBtn} title="Bullet list">• List</button>
+        <button type="button" onMouseDown={e=>{e.preventDefault();exec("insertOrderedList");}} onMouseEnter={hover} onMouseLeave={unhover} style={tbBtn} title="Numbered list">1. List</button>
+        <div style={divider}/>
+        <button type="button" onMouseDown={e=>{e.preventDefault();insertLink();}} onMouseEnter={hover} onMouseLeave={unhover} style={tbBtn} title="Insert hyperlink">🔗 Link</button>
+        <button type="button" onMouseDown={e=>{e.preventDefault();exec("unlink");exec("removeFormat");}} onMouseEnter={hover} onMouseLeave={unhover} style={tbBtn} title="Clear formatting">✕ Clear</button>
+      </div>
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        className="bc-rte-editor"
+        onInput={sync}
+        onPaste={handlePaste}
+        style={{minHeight:minHeight||120,padding:"10px 12px",border:"1px solid #d1d5db",borderTop:"none",borderRadius:"0 0 8px 8px",fontSize:13,lineHeight:1.6,outline:"none",background:"#fff",color:"#111827",overflowY:"auto",wordWrap:"break-word"}}
+      />
+    </div>
+  );
 }
 
 function App(){
@@ -10785,7 +10913,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 </div>
                 <div style={{marginBottom:10}}><div style={{fontSize:11,fontWeight:600,color:"#4b5563",marginBottom:4}}>Title</div><input value={qrTitle} onChange={e=>setQrTitle2(e.target.value)} placeholder="Give this reference a title..." style={{width:"100%",fontSize:13,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8}}/></div>
 
-                {qrType==="note"&&<div style={{marginBottom:10}}><div style={{fontSize:11,fontWeight:600,color:"#4b5563",marginBottom:4}}>Note</div><textarea value={qrNote} onChange={e=>setQrNote2(e.target.value)} placeholder="Write your note here..." rows={5} style={{width:"100%",fontSize:12,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8,resize:"vertical"}}/></div>}
+                {qrType==="note"&&<div style={{marginBottom:10}}><div style={{fontSize:11,fontWeight:600,color:"#4b5563",marginBottom:4}}>Note</div><RichTextEditor value={qrNote} onChange={setQrNote2} minHeight={140}/></div>}
 
                 {qrType==="link"&&<div><div style={{marginBottom:10}}><div style={{fontSize:11,fontWeight:600,color:"#4b5563",marginBottom:4}}>URL</div><input value={qrUrl} onChange={e=>setQrUrl2(e.target.value)} placeholder="https://..." style={{width:"100%",fontSize:13,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8}}/></div><div style={{marginBottom:10}}><div style={{fontSize:11,fontWeight:600,color:"#4b5563",marginBottom:4}}>Note (optional)</div><textarea value={qrNote} onChange={e=>setQrNote2(e.target.value)} placeholder="Add a note about this link..." rows={2} style={{width:"100%",fontSize:12,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:8,resize:"vertical"}}/></div></div>}
 
@@ -10816,7 +10944,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                     {isPDF(r.fileName)&&<div onClick={()=>setQrPreview2(r)} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,cursor:"pointer",marginBottom:6}}><span style={{fontSize:20}}>📄</span><span style={{fontSize:12,fontWeight:600,color:"#dc2626"}}>{r.fileName}</span><span style={{fontSize:10,color:"#6b7280"}}>Click to view</span></div>}
                     {!isImage(r.fileName)&&!isPDF(r.fileName)&&<div onClick={()=>{const a=document.createElement("a");a.href=r.file;a.download=r.fileName;a.click();}} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",background:"#f1f5f9",border:"1px solid #e5e7eb",borderRadius:8,cursor:"pointer",marginBottom:6}}><span style={{fontSize:20}}>📎</span><span style={{fontSize:12,fontWeight:600,color:"#374151"}}>{r.fileName}</span><span style={{fontSize:10,color:"#6b7280"}}>Click to download</span></div>}
                   </div>}
-                  {r.note&&<div style={{fontSize:12,color:"#374151",lineHeight:1.6,whiteSpace:"pre-wrap",marginTop:6}}>{r.note}</div>}
+                  {r.note&&<div className="bc-qr-note" style={{fontSize:12,color:"#374151",lineHeight:1.6,whiteSpace:"pre-wrap",marginTop:6}} dangerouslySetInnerHTML={{__html:r.note}}/>}
                   <div style={{fontSize:10,color:"#9ca3af",marginTop:8}}>{"Added by "+(r.createdBy||"Admin")+" · "+new Date(r.createdAt).toLocaleDateString("en-NZ",{day:"2-digit",month:"short",year:"numeric"})}</div>
                 </div>}
               </div>})}

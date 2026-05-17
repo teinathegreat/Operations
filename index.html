@@ -4335,6 +4335,10 @@ function App(){
   const sbDataReceived=useRef(false);
   const saveEnabled=useRef(false);
   const saveEnabledSet=useRef(false);
+  // True while a CSV import is mid-save. Blocks the auto-refresh on tab change
+  // from clobbering local state with the not-yet-saved server data.
+  const schedSavingRef=useRef(false);
+  const icSavingRef=useRef(false);
   useEffect(()=>{
     if(sbDataReceived.current&&!saveEnabledSet.current){
       saveEnabledSet.current=true;
@@ -4432,7 +4436,7 @@ function App(){
         }catch(e){console.error("Dashboard refresh failed:",e);}
         setTimeout(()=>{saveEnabled.current=prev;},300);
       };
-      fetchAppData();const directFetchConfig=async(prefix,setter)=>{const prev2=saveEnabled.current;saveEnabled.current=false;const obj=await dbLoadConfig(prefix);if(obj)setter(obj);setTimeout(()=>{saveEnabled.current=prev2;},300);};directFetchConfig("ic",setIcData);directFetchConfig("sched",setSchedData);}},[tab]);
+      fetchAppData();const directFetchConfig=async(prefix,setter)=>{const prev2=saveEnabled.current;saveEnabled.current=false;const obj=await dbLoadConfig(prefix);if(obj)setter(obj);setTimeout(()=>{saveEnabled.current=prev2;},300);};if(!icSavingRef.current)directFetchConfig("ic",setIcData);if(!schedSavingRef.current)directFetchConfig("sched",setSchedData);}},[tab]);
     useEffect(()=>{if(sbUrl&&sbKey)loadFromSupabase();},[]);
   // ── ROW-LEVEL SYNC EFFECTS ──────────────────────────────────────────
   // Detect changes to migrated arrays and sync only the differences to row tables.
@@ -4691,13 +4695,28 @@ function App(){
   };
   const setIcDataWithMonths=(updater)=>{
     // Uses wrapped setIcData which auto-saves
+    let computedAgg=null;
     setIcData(prev=>{
       const next=typeof updater==="function"?updater(prev):updater;
       const agg=aggregateIcMonths(next);
-      // Direct save immediately
-      Object.entries(agg).forEach(([k,v])=>dbSaveConfigKey("ic",k,v));
+      computedAgg=agg;
       return agg;
     });
+    // Track the save end-to-end so the tab-switch auto-refresh can't clobber
+    // the local state with stale server data while saves are still in flight.
+    if(computedAgg){
+      icSavingRef.current=true;
+      const entries=Object.entries(computedAgg);
+      Promise.allSettled(entries.map(([k,v])=>dbSaveConfigKey("ic",k,v))).then(results=>{
+        icSavingRef.current=false;
+        const failed=results.filter(r=>r.status==="rejected").length;
+        if(failed>0){
+          toast2(`⚠️ ${failed} of ${entries.length} report entries failed to save — please re-upload.`);
+          addAudit("Report Import Partial Save",`${entries.length - failed} saved, ${failed} failed`);
+        }
+        // No success toast here — each CSV import handler shows its own.
+      });
+    }
   };
   // ── Auto-fill individual person stats from icData ───────────────────────────
   const autoFillIndividuals=(icDataIn,filter,wkNum,monLabel)=>{
@@ -5002,6 +5021,7 @@ function App(){
           imported++;
         }
         // Merge into existing schedData (don't wipe previous uploads)
+        let computedMerged=null;
         setSchedData(prev=>{
           const merged={...prev};
           Object.entries(newSched).forEach(([name,nd])=>{
@@ -5015,11 +5035,27 @@ function App(){
             Object.entries(nd.months).forEach(([m,h])=>{merged[name].months[m]=h;});
             Object.entries(nd.days).forEach(([d,dv])=>{merged[name].days[d]=dv;});
           });
-          // Direct save each person immediately
-          Object.entries(merged).forEach(([k,v])=>dbSaveConfigKey("sched",k,v));
+          computedMerged=merged;
           return merged;
         });
-        toast2(`Schedule imported: ${Object.keys(newSched).length} people, ${imported} shifts.`);
+        // Track the save end-to-end so the tab-switch auto-refresh can't clobber
+        // the local state with stale server data while saves are still in flight.
+        if(computedMerged){
+          schedSavingRef.current=true;
+          const entries=Object.entries(computedMerged);
+          toast2(`Saving ${entries.length} people to cloud...`);
+          Promise.allSettled(entries.map(([k,v])=>dbSaveConfigKey("sched",k,v))).then(results=>{
+            schedSavingRef.current=false;
+            const failed=results.filter(r=>r.status==="rejected").length;
+            if(failed>0){
+              toast2(`⚠️ ${failed} of ${entries.length} entries failed to save — please re-upload.`);
+              addAudit("Schedule Import Partial Save",`${entries.length - failed} saved, ${failed} failed`);
+            }else{
+              toast2(`✅ Schedule saved (${entries.length} people, ${imported} shifts).`);
+              addAudit("Schedule Imported",`${entries.length} people, ${imported} shifts`);
+            }
+          });
+        }
       }catch(err){toast2("Error reading file: "+err.message);}
     };
     reader.readAsArrayBuffer(file);

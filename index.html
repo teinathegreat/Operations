@@ -4780,15 +4780,21 @@ function App(){
   };
   // Aggregator: returns {count, events} for a person + period.
   // filter: "week" | "month"; wkNum is FY25 week number; monLabel like "May 2026"
+  // Bulletproof against any data shape from Supabase (nulls, arrays, missing keys).
   const getAbandonedCalls=(name,filter,wkNum,monLabel)=>{
-    const p=rejectedCallsData[name];
-    if(!p)return{count:0,events:[]};
-    if(filter==="week"){
-      const w=p.weeks?.[wkNum];
-      return w?{count:w.count||0,events:w.events||[]}:{count:0,events:[]};
-    }
-    const m=p.months?.[monLabel];
-    return m?{count:m.count||0,events:m.events||[]}:{count:0,events:[]};
+    try{
+      if(!rejectedCallsData||typeof rejectedCallsData!=="object")return{count:0,events:[]};
+      const p=rejectedCallsData[name];
+      if(!p||typeof p!=="object")return{count:0,events:[]};
+      if(filter==="week"){
+        const weeks=p.weeks;if(!weeks||typeof weeks!=="object")return{count:0,events:[]};
+        const w=weeks[wkNum];if(!w||typeof w!=="object")return{count:0,events:[]};
+        return{count:w.count||0,events:Array.isArray(w.events)?w.events:[]};
+      }
+      const months=p.months;if(!months||typeof months!=="object")return{count:0,events:[]};
+      const m=months[monLabel];if(!m||typeof m!=="object")return{count:0,events:[]};
+      return{count:m.count||0,events:Array.isArray(m.events)?m.events:[]};
+    }catch(e){console.error("getAbandonedCalls error:",e);return{count:0,events:[]};}
   };
   // ── Auto-fill individual person stats from icData ───────────────────────────
   const autoFillIndividuals=(icDataIn,filter,wkNum,monLabel)=>{
@@ -6448,7 +6454,7 @@ function App(){
               const teamEmails=teamStats.reduce((s,x)=>s+(x.emails||0),0);
               const teamCalls=teamStats.reduce((s,x)=>s+(x.calls||0),0);
               const teamWfs=teamStats.reduce((s,x)=>s+(x.wfs||0),0);
-              const teamAbandoned=people.reduce((s,n)=>s+(getAbandonedCalls(n,icFilter,icWeek,icMonth).count||0),0);
+              let teamAbandoned=0;try{teamAbandoned=(people||[]).reduce((s,n)=>s+(getAbandonedCalls(n,icFilter,icWeek,icMonth).count||0),0);}catch(e){console.error("teamAbandoned err",e);}
               return(
                 <div key={tname} style={{marginBottom:20,borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,.06)",border:"1px solid #e5e7eb"}}>
                   {/* Team header */}
@@ -6484,7 +6490,7 @@ function App(){
                               <td style={{padding:"8px 12px",textAlign:"center",color:stats?.caseActions?"#111827":"#d1d5db"}}>{stats?.caseActions??"—"}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",color:stats?.wfs?"#111827":"#d1d5db"}}>{stats?.wfs??("—")}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",color:stats?.calls?"#111827":"#d1d5db"}}>{stats?.calls??("—")}</td>
-                              {(()=>{const ab=getAbandonedCalls(name,icFilter,icWeek,icMonth);const lbl=icFilter==="week"?`Week ${icWeek}`:icMonth;if(ab.count===0)return<td style={{padding:"8px 12px",textAlign:"center",color:"#d1d5db"}}>—</td>;return<td style={{padding:"8px 12px",textAlign:"center"}}><button onClick={()=>setAbandonedModal({name,events:ab.events,periodLabel:lbl})} style={{background:"#fee2e2",color:"#991b1b",border:"1px solid #fecaca",borderRadius:12,padding:"2px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"transform .12s"}} onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.06)";}} onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}} title="Click to see each missed call">{ab.count}</button></td>;})()}
+                              {(()=>{try{const ab=getAbandonedCalls(name,icFilter,icWeek,icMonth);const lbl=icFilter==="week"?`Week ${icWeek}`:icMonth;if(!ab||ab.count===0)return<td style={{padding:"8px 12px",textAlign:"center",color:"#d1d5db"}}>—</td>;return<td style={{padding:"8px 12px",textAlign:"center"}}><button onClick={()=>setAbandonedModal({name,events:Array.isArray(ab.events)?ab.events:[],periodLabel:lbl})} style={{background:"#fee2e2",color:"#991b1b",border:"1px solid #fecaca",borderRadius:12,padding:"2px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"transform .12s"}} onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.06)";}} onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}} title="Click to see each missed call">{ab.count}</button></td>;}catch(err){console.error("Abandoned cell err",name,err);return<td style={{padding:"8px 12px",textAlign:"center",color:"#d1d5db"}}>—</td>;}})()}
                               <td style={{padding:"8px 12px",textAlign:"center",color:stats?.medReply?"#111827":"#d1d5db"}}>{stats?.medReply?Math.round(stats.medReply*100)/100+"h":"—"}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",color:stats?.medClose?"#111827":"#d1d5db"}}>{stats?.medClose?Math.round(stats.medClose*100)/100+"h":"—"}</td>
                               <td style={{padding:"8px 12px",textAlign:"center",color:hrs?"#111827":"#d1d5db"}}>{hrs?hrs+"h":"—"}</td>
@@ -8853,7 +8859,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   {icStats.caseActions!=null&&<div><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>Case Actions</div><div style={{fontSize:18,fontWeight:700,color:"#111827"}}>{icStats.caseActions}</div></div>}
                   {icStats.wfs!=null&&<div style={{background:"#f5f3ff",borderRadius:7,padding:"8px 10px"}}><div style={{fontSize:11,color:"#7c3aed",marginBottom:2}}>WFs</div><div style={{fontSize:18,fontWeight:700,color:"#7c3aed"}}>{icStats.wfs}</div><div style={{fontSize:11,color:"#7c3aed"}}>{getW(teamName).wfs} pt each</div></div>}
                   {icStats.calls!=null&&<div style={{background:"#fef3c7",borderRadius:7,padding:"8px 10px"}}><div style={{fontSize:11,color:"#92400e",marginBottom:2}}>Calls</div><div style={{fontSize:18,fontWeight:700,color:"#92400e"}}>{icStats.calls}</div><div style={{fontSize:11,color:"#92400e"}}>{getW(teamName).calls} pt each</div></div>}
-                  {(()=>{const ab=getAbandonedCalls(name,iPt,iWk,iMo);if(ab.count===0&&!rejectedCallsData[name])return null;const onClick=ab.count>0?(()=>setAbandonedModal({name,events:ab.events,periodLabel:lb})):null;return<div onClick={onClick} style={{background:"#fee2e2",borderRadius:7,padding:"8px 10px",cursor:onClick?"pointer":"default",transition:"transform .12s"}} onMouseEnter={e=>{if(onClick)e.currentTarget.style.transform="scale(1.03)";}} onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}><div style={{fontSize:11,color:"#991b1b",marginBottom:2}}>Abandoned Calls</div><div style={{fontSize:18,fontWeight:700,color:"#991b1b"}}>{ab.count}</div><div style={{fontSize:11,color:"#991b1b"}}>{ab.count>0?"click for details":"none this period"}</div></div>;})()}
+                  {(()=>{try{const ab=getAbandonedCalls(name,iPt,iWk,iMo);if(!ab)return null;if(ab.count===0&&!rejectedCallsData[name])return null;const onClick=ab.count>0?(()=>setAbandonedModal({name,events:Array.isArray(ab.events)?ab.events:[],periodLabel:lb})):null;return<div onClick={onClick} style={{background:"#fee2e2",borderRadius:7,padding:"8px 10px",cursor:onClick?"pointer":"default",transition:"transform .12s"}} onMouseEnter={e=>{if(onClick)e.currentTarget.style.transform="scale(1.03)";}} onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}><div style={{fontSize:11,color:"#991b1b",marginBottom:2}}>Abandoned Calls</div><div style={{fontSize:18,fontWeight:700,color:"#991b1b"}}>{ab.count}</div><div style={{fontSize:11,color:"#991b1b"}}>{ab.count>0?"click for details":"none this period"}</div></div>;}catch(err){console.error("Abandoned people-card err",name,err);return null;}})()}
                   <div><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>Hours worked</div><div style={{fontSize:18,fontWeight:700,color:"#111827"}}>{hrs!=null?`${hrs}h`:"—"}</div><div style={{fontSize:11,color:"#6b7280"}}>{hrs==null?"upload schedule":""}</div></div>
                   
                 </div>
@@ -11912,9 +11918,9 @@ const teamMap={
         </div>
       </Modal>}
       {/* Abandoned Calls detail modal — opens from People card or team header */}
-      {abandonedModal&&(()=>{
+      {abandonedModal&&(()=>{try{
         const _isDark=(typeof document!=="undefined")&&(document.documentElement.getAttribute("data-theme")==="dark"||document.body.getAttribute("data-theme")==="dark");
-        const events=abandonedModal.events||[];
+        const events=Array.isArray(abandonedModal.events)?abandonedModal.events:[];
         const byDate={};
         events.forEach(e=>{if(!byDate[e.nzIso])byDate[e.nzIso]={weekday:e.nzWeekday,dateStr:e.nzDateStr,items:[]};byDate[e.nzIso].items.push(e);});
         const sortedDates=Object.keys(byDate).sort();
@@ -11970,7 +11976,7 @@ const teamMap={
             </div>
           </div>
         );
-      })()}
+      }catch(err){console.error("Abandoned modal err",err);return null;}})()}
       </div>{/* end main content area */}
     </div>
   );

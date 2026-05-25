@@ -2733,7 +2733,7 @@ function IntercomDropzone({isAdmin,icFileRef,handleIcFile,toast2,icData}){
           or <span style={{color:"#0d9488",fontWeight:600}}>click to browse</span> &nbsp;·&nbsp; CSV files only &nbsp;·&nbsp; auto-detects report type
         </div>
         <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",fontSize:11,color:"#6b7280"}}>
-          {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate","Activity Time","Abandoned Calls"].map(t=>(
+          {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate","Activity Time","Abandoned Calls","Detailed work log"].map(t=>(
             <span key={t} style={{background:"#f3f4f6",borderRadius:4,padding:"2px 8px"}}>{t}</span>
           ))}
         </div>
@@ -3792,6 +3792,10 @@ function App(){
   const[rejectedCallsData,setRejectedCallsData]=useState(()=>{return{};});
   // Modal state for the "view missed calls for X" popup
   const[abandonedModal,setAbandonedModal]=useState(null);
+  // Daily Record timeline events (per-event timestamps for the 7am–9pm day view).
+  // Shape: { "PersonName": { "2026-05-26": [ {type,time,minutes,label,detail,source} ] } }
+  // Populated by a future timestamped export; abandoned calls are merged in live.
+  const[dailyTimelineData,setDailyTimelineData]=useState(()=>{return{};});
   const[icFilter,setIcFilter]=useState("week");
   const[icWeek,setIcWeek]=useState(AUTO_WEEK);
   const[icMonth,setIcMonth]=useState("March 2026");
@@ -4181,7 +4185,7 @@ function App(){
     setSbMsg("Loading from Supabase...");
     try{
       // Load row-level tables + config from config_rows
-      const[cr2,ai2,td2,dr2,mn2,fm2,ah2,gl2,au2,nf2,aa2,pb2,pc2,ms2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence,rc_tgt,rc_rej]=await Promise.all([
+      const[cr2,ai2,td2,dr2,mn2,fm2,ah2,gl2,au2,nf2,aa2,pb2,pc2,ms2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence,rc_tgt,rc_rej,rc_tl]=await Promise.all([
         dbLoadAll("call_reviews"),dbLoadAll("action_items"),dbLoadAll("todos"),dbLoadAll("daily_reports"),
         dbLoadAll("meeting_notes"),dbLoadAll("formal_meetings"),dbLoadAll("assess_history"),dbLoadAll("goals"),
         dbLoadAll("audit_entries"),dbLoadAll("notif_entries"),dbLoadAll("alert_entries"),
@@ -4190,7 +4194,7 @@ function App(){
         dbLoadConfig("perms"),dbLoadConfig("dailycfg"),dbLoadConfig("snooze"),
         dbLoadConfig("sched"),dbLoadConfig("ic"),dbLoadConfig("icppt"),
         dbLoadConfig("weights"),dbLoadConfig("revcrit"),dbLoadConfig("sys"),dbLoadConfig("presence"),dbLoadConfig("tgt"),
-        dbLoadConfig("rejcalls")
+        dbLoadConfig("rejcalls"),dbLoadConfig("timeline")
       ]);
       // sys config holds app_data, accounts, api_keys, quick_refs, update_notes, etc.
       const sysConf=rc_sys||{};
@@ -4284,6 +4288,7 @@ function App(){
       if(f_id&&typeof f_id==="object")setIcData(f_id);
       if(f_ip&&typeof f_ip==="object")setIcPPT(f_ip);
       if(rc_rej&&typeof rc_rej==="object")setRejectedCallsData(rc_rej);
+      if(rc_tl&&typeof rc_tl==="object")setDailyTimelineData(rc_tl);
       if(f_wt&&typeof f_wt==="object"){
         // v2.4.4: Skip teams whose weights have an unsaved local edit in flight,
         // otherwise the stale DB read clobbers the user's change and the weight
@@ -4348,6 +4353,7 @@ function App(){
   const schedSavingRef=useRef(false);
   const icSavingRef=useRef(false);
   const rejSavingRef=useRef(false);
+  const tlSavingRef=useRef(false);
   useEffect(()=>{
     if(sbDataReceived.current&&!saveEnabledSet.current){
       saveEnabledSet.current=true;
@@ -4445,7 +4451,7 @@ function App(){
         }catch(e){console.error("Dashboard refresh failed:",e);}
         setTimeout(()=>{saveEnabled.current=prev;},300);
       };
-      fetchAppData();const directFetchConfig=async(prefix,setter)=>{const prev2=saveEnabled.current;saveEnabled.current=false;const obj=await dbLoadConfig(prefix);if(obj)setter(obj);setTimeout(()=>{saveEnabled.current=prev2;},300);};if(!icSavingRef.current)directFetchConfig("ic",setIcData);if(!schedSavingRef.current)directFetchConfig("sched",setSchedData);if(!rejSavingRef.current)directFetchConfig("rejcalls",setRejectedCallsData);}},[tab]);
+      fetchAppData();const directFetchConfig=async(prefix,setter)=>{const prev2=saveEnabled.current;saveEnabled.current=false;const obj=await dbLoadConfig(prefix);if(obj)setter(obj);setTimeout(()=>{saveEnabled.current=prev2;},300);};if(!icSavingRef.current)directFetchConfig("ic",setIcData);if(!schedSavingRef.current)directFetchConfig("sched",setSchedData);if(!rejSavingRef.current)directFetchConfig("rejcalls",setRejectedCallsData);if(!tlSavingRef.current)directFetchConfig("timeline",setDailyTimelineData);}},[tab]);
     useEffect(()=>{if(sbUrl&&sbKey)loadFromSupabase();},[]);
   // ── ROW-LEVEL SYNC EFFECTS ──────────────────────────────────────────
   // Detect changes to migrated arrays and sync only the differences to row tables.
@@ -4632,6 +4638,7 @@ function App(){
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(alertSnooze).forEach(([k,v])=>dbSaveConfigKey("snooze",k,v));},[alertSnooze]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(schedData).forEach(([k,v])=>dbSaveConfigKey("sched",k,v));},[schedData]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(rejectedCallsData).forEach(([k,v])=>dbSaveConfigKey("rejcalls",k,v));},[rejectedCallsData]);
+  useEffect(()=>{if(!saveEnabled.current)return;Object.entries(dailyTimelineData).forEach(([k,v])=>dbSaveConfigKey("timeline",k,v));},[dailyTimelineData]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(allWeights).forEach(([k,v])=>dbSaveConfigKey("weights",k,v));},[allWeights]);
   useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigKey("sys","call_review_teams",callReviewTeams);},[callReviewTeams]);
   const _appDataLoaded=useRef(false);
@@ -4778,7 +4785,27 @@ function App(){
       });
     }
   };
-  // Aggregator: returns {count, events} for a person + period.
+  // Save-tracked setter for dailyTimelineData (mirrors rejected-calls pattern).
+  const setDailyTimelineWithSaves=(updater)=>{
+    let computed=null;
+    setDailyTimelineData(prev=>{
+      const next=typeof updater==="function"?updater(prev):updater;
+      computed=next;
+      return next;
+    });
+    if(computed){
+      tlSavingRef.current=true;
+      const entries=Object.entries(computed);
+      Promise.allSettled(entries.map(([k,v])=>dbSaveConfigKey("timeline",k,v))).then(results=>{
+        tlSavingRef.current=false;
+        const failed=results.filter(r=>r.status==="rejected").length;
+        if(failed>0){
+          toast2(`⚠️ ${failed} of ${entries.length} timeline entries failed to save — please re-upload.`);
+          addAudit("Daily Record Partial Save",`${entries.length - failed} saved, ${failed} failed`);
+        }
+      });
+    }
+  };
   // filter: "week" | "month"; wkNum is FY25 week number; monLabel like "May 2026"
   // Bulletproof against any data shape from Supabase (nulls, arrays, missing keys).
   const getAbandonedCalls=(name,filter,wkNum,monLabel)=>{
@@ -4795,6 +4822,56 @@ function App(){
       const m=months[monLabel];if(!m||typeof m!=="object")return{count:0,events:[]};
       return{count:m.count||0,events:Array.isArray(m.events)?m.events:[]};
     }catch(e){console.error("getAbandonedCalls error:",e);return{count:0,events:[]};}
+  };
+  // ── Daily Record timeline helpers ───────────────────────────────────────────
+  // Event type → display config (icon, colors). Keep keys stable; future imports reuse them.
+  const _DR_TYPES={
+    ticket_closed:{ic:"🎫",label:"Ticket closed",c:"#059669",bg:"#ecfdf5",bd:"#a7f3d0"},
+    email:{ic:"✉️",label:"Email sent",c:"#b45309",bg:"#fffbeb",bd:"#fde68a"},
+    case_action:{ic:"📋",label:"Case action",c:"#7c3aed",bg:"#f5f3ff",bd:"#ddd6fe"},
+    workflow:{ic:"⚡",label:"Workflow resolved",c:"#db2777",bg:"#fdf2f8",bd:"#fbcfe8"},
+    call_inbound:{ic:"📲",label:"Inbound call",c:"#2563eb",bg:"#eff6ff",bd:"#bfdbfe"},
+    call_outbound:{ic:"📞",label:"Outbound call",c:"#0d9488",bg:"#f0fdfa",bd:"#99f6e4"},
+    call_abandoned:{ic:"📵",label:"Abandoned call",c:"#dc2626",bg:"#fef2f2",bd:"#fecaca"}
+  };
+  const _toMinutes=(t)=>{const m=(t||"").match(/^(\d{1,2}):(\d{2})/);return m?(+m[1]*60+ +m[2]):null;};
+  // Returns a normalized, time-sorted list of events for a person on a given NZ date (YYYY-MM-DD).
+  // Currently sources: abandoned calls (real NZ times) + any dailyTimelineData (future export).
+  const getDayEvents=(name,isoDate)=>{
+    const events=[];
+    try{
+      const p=rejectedCallsData[name];
+      if(p&&p.months&&typeof p.months==="object"){
+        const seen=new Set();
+        Object.values(p.months).forEach(mo=>{(mo&&Array.isArray(mo.events)?mo.events:[]).forEach(ev=>{
+          if(ev&&ev.nzIso===isoDate){
+            const min=_toMinutes(ev.nzTime);
+            const key=ev.nzTime+"|"+(ev.queue||"")+"|"+(ev.ukTime||"");
+            if(min!=null&&!seen.has(key)){seen.add(key);events.push({type:"call_abandoned",time:ev.nzTime,minutes:min,label:"Abandoned call",detail:(ev.queue||"").replace("Bachcare ",""),source:"abandoned_calls"});}
+          }
+        });});
+      }
+    }catch(e){console.error("getDayEvents abandoned err",e);}
+    try{
+      const t=dailyTimelineData[name];
+      const dayArr=t&&typeof t==="object"?t[isoDate]:null;
+      if(Array.isArray(dayArr)){
+        dayArr.forEach(ev=>{
+          if(!ev)return;
+          const min=ev.minutes!=null?ev.minutes:_toMinutes(ev.time);
+          if(min!=null)events.push({type:ev.type||"ticket_closed",time:ev.time||"",minutes:min,label:ev.label||(_DR_TYPES[ev.type]?.label||"Event"),detail:ev.detail||"",source:ev.source||"timeline"});
+        });
+      }
+    }catch(e){console.error("getDayEvents timeline err",e);}
+    events.sort((a,b)=>a.minutes-b.minutes);
+    return events;
+  };
+  // Sorted unique ISO dates that have any timeline data for a person.
+  const getRecordDates=(name)=>{
+    const set=new Set();
+    try{const p=rejectedCallsData[name];if(p&&p.months)Object.values(p.months).forEach(mo=>(mo&&Array.isArray(mo.events)?mo.events:[]).forEach(ev=>{if(ev&&ev.nzIso)set.add(ev.nzIso);}));}catch(e){}
+    try{const t=dailyTimelineData[name];if(t&&typeof t==="object")Object.keys(t).forEach(d=>{if(Array.isArray(t[d])&&t[d].length)set.add(d);});}catch(e){}
+    return [...set].sort();
   };
   // ── Auto-fill individual person stats from icData ───────────────────────────
   const autoFillIndividuals=(icDataIn,filter,wkNum,monLabel)=>{
@@ -5497,14 +5574,38 @@ function App(){
           const iTeam=col2("Team assigned to (name)");
           const iClosedBy=col2("Closed by (name)");
           const iAssigned=col2("Assigned to (name)");
+          const iLastClosedAt=col2("Last closed at");
+          const iChannel=col2("Channel");
           if(iFirstReply<0){toast2("Missing response time columns.");return;}
           if(iTeam<0){toast2("Missing 'Team assigned to (name)' column.");return;}
+          // Daily Record timeline: bucket ticket-close events by closer → NZ date.
+          // "Last closed at" is already in the export's Time Zone (Auckland/NZ).
+          const tlByPerson={};
+          const _SKIP_CLOSERS=new Set(["fin","former teammate",""]);
 
           // Bucket rows by team+week AND by agent+week
           const twData={};
           const agentData={};
           for(let i=1;i<lines2.length;i++){
             const row=parseRow2(lines2[i]);
+            // ── Daily Record: capture ticket-close event (independent of week/team filters) ──
+            if(iLastClosedAt>=0&&iClosedBy>=0){
+              const closedAtRaw=(row[iLastClosedAt]||"").trim();
+              const closerRaw=(row[iClosedBy]||"").trim();
+              if(closedAtRaw&&closerRaw&&!_SKIP_CLOSERS.has(closerRaw.toLowerCase())){
+                const m=closedAtRaw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
+                if(m){
+                  const closer=normalizeAgentToRoster(closerRaw,roster)||closerRaw;
+                  // Only keep real people in the roster (skip teams/unknowns)
+                  if(getPersonTeam(closer)){
+                    const ch=iChannel>=0?(row[iChannel]||"").trim():"";
+                    if(!tlByPerson[closer])tlByPerson[closer]={};
+                    if(!tlByPerson[closer][m[1]])tlByPerson[closer][m[1]]=[];
+                    tlByPerson[closer][m[1]].push({type:"ticket_closed",time:m[2],detail:ch});
+                  }
+                }
+              }
+            }
             const created=row[iCreated]||"";
             const wkN=wkFromDateStr(created.slice(0,10));
             if(!wkN)continue;
@@ -5579,7 +5680,127 @@ function App(){
           }
 
           const agentCount=Object.keys(newIc).length;
-          toast2(`Response times imported: ${filled} team/week(s) + ${agentCount} agents. Weekend hours excluded for Owner Support & R&R.`);
+          // Merge ticket-close timeline events. Replace each (person,date)'s ticket_closed
+          // events with the freshly imported set (idempotent re-import) while preserving
+          // any other event types already recorded for that day (e.g. abandoned calls live-merge separately).
+          let tlPeople=0,tlEvents=0;
+          if(Object.keys(tlByPerson).length){
+            setDailyTimelineWithSaves(prev=>{
+              const merged={...prev};
+              Object.entries(tlByPerson).forEach(([name,days])=>{
+                tlPeople++;
+                merged[name]={...(merged[name]||{})};
+                Object.entries(days).forEach(([date,evs])=>{
+                  tlEvents+=evs.length;
+                  const existing=Array.isArray(merged[name][date])?merged[name][date]:[];
+                  const nonTicket=existing.filter(e=>e&&e.type!=="ticket_closed");
+                  merged[name][date]=[...nonTicket,...evs];
+                });
+              });
+              return merged;
+            });
+            addAudit("Daily Record Imported",`${tlEvents} ticket closes across ${tlPeople} agents`);
+          }
+          toast2(`Imported: ${filled} team/week response times + ${agentCount} agents · ${tlEvents} ticket closes → Daily Record (${tlPeople} agents).`);
+        }
+
+        // ── TYPE D2: Detailed work-activity log (per-event timestamps) → Daily Record ──
+        // Unique signature: the "Time Since Last Work" column (not in the aggregate report).
+        // Columns: Date, Time, Work, Detail, Detail2, Name (Employee1) #1, Full Date, ...
+        else if(text.includes("Time Since Last Work")){
+          const rawLines=text.split(/\r?\n/).filter(l=>l.trim());
+          const hdr=(rawLines[0]||"").split("\t").map(h=>h.trim().replace(/^\uFEFF/,"").replace(/^"|"$/g,""));
+          const ci=(n)=>hdr.findIndex(h=>h===n);
+          const iTime=ci("Time"),iWork=ci("Work"),iDetail=ci("Detail"),iName=ci("Name (Employee1) #1"),iFull=ci("Full Date");
+          if(iTime<0||iWork<0||iName<0||iFull<0){toast2("Detailed work log: missing expected columns (Time / Work / Name / Full Date).");return;}
+          const WORK_MAP={"Case Actions":"case_action","WFs":"workflow","Emails via Cases":"email","Template Comms":"email"};
+          const ownedTypes=new Set(["case_action","workflow","email"]);
+          const tlByPerson={};let evCount=0;const skippedTypes={};
+          // agg: per-agent weekly counts for the dashboard (replaces the Work Completed upload)
+          const agg={};
+          for(let i=1;i<rawLines.length;i++){
+            const row=rawLines[i].split("\t");
+            const work=(row[iWork]||"").trim();
+            const type=WORK_MAP[work];
+            if(!type){if(work)skippedTypes[work]=(skippedTypes[work]||0)+1;continue;}
+            const tm=(row[iTime]||"").trim().match(/^(\d{1,2}):(\d{2})/);if(!tm)continue;
+            const time=tm[1].padStart(2,"0")+":"+tm[2];
+            const fd=(row[iFull]||"").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(!fd)continue;
+            const iso=fd[3]+"-"+fd[2].padStart(2,"0")+"-"+fd[1].padStart(2,"0");
+            const rawName=(row[iName]||"").trim();if(!rawName)continue;
+            const agent=normalizeAgentToRoster(rawName,roster)||rawName;
+            const detail=(row[iDetail]||"").trim();
+            if(!tlByPerson[agent])tlByPerson[agent]={};
+            if(!tlByPerson[agent][iso])tlByPerson[agent][iso]=[];
+            tlByPerson[agent][iso].push({type,time,detail});
+            evCount++;
+            // Dashboard aggregate (count events per type per FY week) — mirrors Work Completed report.
+            const rAgent=getRosterName(rawName);
+            const wk=wkFromDateStr(iso);
+            if(wk){
+              if(!agg[rAgent])agg[rAgent]={team:getPersonTeam(rAgent)||"",weeks:{}};
+              if(!agg[rAgent].weeks[wk])agg[rAgent].weeks[wk]={caseActions:0,emails:0,wfs:0};
+              if(type==="case_action")agg[rAgent].weeks[wk].caseActions++;
+              else if(type==="email")agg[rAgent].weeks[wk].emails++;
+              else if(type==="workflow")agg[rAgent].weeks[wk].wfs++;
+            }
+          }
+          let people=0;
+          if(Object.keys(tlByPerson).length){
+            setDailyTimelineWithSaves(prev=>{
+              const merged={...prev};
+              Object.entries(tlByPerson).forEach(([nm,days])=>{
+                people++;merged[nm]={...(merged[nm]||{})};
+                Object.entries(days).forEach(([d,evs])=>{
+                  const existing=Array.isArray(merged[nm][d])?merged[nm][d]:[];
+                  // Replace the types this report owns for that day; keep ticket closes + calls.
+                  const kept=existing.filter(e=>e&&!ownedTypes.has(e.type));
+                  merged[nm][d]=[...kept,...evs];
+                });
+              });
+              return merged;
+            });
+            addAudit("Daily Record Detailed Import",evCount+" events across "+people+" agents");
+          }
+          // Merge weekly counts into icData (case actions / emails / WFs) — same shape the Work Completed report fed.
+          if(Object.keys(agg).length){
+            setIcDataWithMonths(prev=>{
+              const merged={...prev};
+              Object.entries(agg).forEach(([nm,nd])=>{
+                if(!merged[nm])merged[nm]={team:nd.team,weeks:{},months:{}};
+                merged[nm].team=nd.team||merged[nm].team;
+                Object.entries(nd.weeks).forEach(([wk2,wd])=>{
+                  merged[nm].weeks=merged[nm].weeks||{};
+                  merged[nm].weeks[wk2]={...(merged[nm].weeks[wk2]||{}),...wd};
+                });
+              });
+              return merged;
+            });
+            // Auto-fill team & lead productivity per week (tickets + emails + WFs ÷ hours) — mirrors Work Completed.
+            const teamWeeks={};
+            Object.entries(agg).forEach(([nm,nd])=>{const tname=nd.team;if(!tname)return;Object.keys(nd.weeks).forEach(wk2=>{const key=tname+"__"+wk2;if(!teamWeeks[key])teamWeeks[key]={tname,wk:+wk2};});});
+            Object.values(teamWeeks).forEach(({tname,wk:wkN})=>{
+              const updates={};
+              const agents=Object.entries(icData).filter(([,d])=>d.team===tname);
+              const closedTickets=agents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.closed||0),0);
+              const emailPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.emails||0),0);
+              const wfPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.wfs||0),0);
+              const totalPoints=closedTickets*weights.tickets+emailPoints*weights.emails+wfPoints*weights.wfs;
+              const teamHrs=Object.values(schedData).filter(p=>p.group===tname).reduce((s,p)=>{const h=p.overrides?.["w_"+wkN]??p.weeks?.[wkN]??0;return s+h;},0);
+              const leadName=TEAM_LEADS[tname];
+              const leadHrs=schedData[leadName]?((schedData[leadName].overrides?.["w_"+wkN]??schedData[leadName].weeks?.[wkN])??0):0;
+              const leadClosed=icData[leadName]?.weeks?.[wkN]?.closed||0;
+              const leadEmails=agg[leadName]?.weeks?.[wkN]?.emails||0;
+              const leadWfs=agg[leadName]?.weeks?.[wkN]?.wfs||0;
+              const leadPoints=leadClosed+leadEmails+leadWfs;
+              if(totalPoints>0&&teamHrs>0)updates.productivity_team=Math.round(totalPoints/teamHrs*100)/100;
+              if(leadPoints>0&&leadHrs>0)updates.productivity_lead=Math.round(leadPoints/leadHrs*100)/100;
+              if(Object.keys(updates).length)autoFillKPIs(tname,wkN,updates);
+            });
+          }
+          if(!evCount){toast2("Detailed work log parsed but no usable rows found.");return;}
+          const aggPeople=Object.keys(agg).length;
+          toast2("Detailed work log imported: "+evCount+" events → Daily Record ("+people+" agents) + dashboard case actions/emails/WFs updated ("+aggPeople+" agents).");
         }
 
         // ── TYPE D: Work Completed / Case Actions report ─────────────────
@@ -7829,6 +8050,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const[fmAttendees,setFmAttendees]=React.useState([name]);
     const[fmMinutes,setFmMinutes]=React.useState("");
     const[fmOther,setFmOther]=React.useState("");
+    const[drDate,setDrDate]=React.useState(null);
     const stats=getIcStats(name,pt,wk,mo);
     const hrs=getSchedHours(name,pt,wk,mo);
     const prod=stats&&hrs&&hrs>0?Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10:null;
@@ -7876,7 +8098,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
         </div>
       </div>
       <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:"2px solid #e5e7eb"}}>
-        {["overview","reviews","capabilities","meetings","meeting-log","onboarding","history"].map(k=>{const capSkills=TEAM_SKILLS[teamName]||[];const capData=capabilities[name]||{};const l3=capSkills.filter(s=>(capData[s.name]?.level||0)===3).length;return<button key={k} onClick={()=>setProfTab(k)} style={{padding:"10px 18px",border:"none",borderBottom:profTab===k?"2px solid #0d9488":"2px solid transparent",marginBottom:-2,background:"transparent",cursor:"pointer",fontSize:13,fontWeight:profTab===k?700:500,color:profTab===k?"#0d9488":"#6b7280"}}>{k==="overview"?"Overview":k==="reviews"?"Call Reviews ("+pdRevs.length+")":k==="capabilities"?"Capabilities"+(capSkills.length?" ("+l3+"/"+capSkills.length+")":""):k==="meetings"?"1:1 Notes":k==="meeting-log"?"Meetings ("+formalMeetings.filter(fm=>(fm.attendees||[]).includes(name)).length+")":k==="onboarding"?"Onboarding":"History"}</button>})}
+        {["overview","daily-record","reviews","capabilities","meetings","meeting-log","onboarding","history"].map(k=>{const capSkills=TEAM_SKILLS[teamName]||[];const capData=capabilities[name]||{};const l3=capSkills.filter(s=>(capData[s.name]?.level||0)===3).length;return<button key={k} onClick={()=>setProfTab(k)} style={{padding:"10px 18px",border:"none",borderBottom:profTab===k?"2px solid #0d9488":"2px solid transparent",marginBottom:-2,background:"transparent",cursor:"pointer",fontSize:13,fontWeight:profTab===k?700:500,color:profTab===k?"#0d9488":"#6b7280"}}>{k==="overview"?"Overview":k==="daily-record"?"Daily Record":k==="reviews"?"Call Reviews ("+pdRevs.length+")":k==="capabilities"?"Capabilities"+(capSkills.length?" ("+l3+"/"+capSkills.length+")":""):k==="meetings"?"1:1 Notes":k==="meeting-log"?"Meetings ("+formalMeetings.filter(fm=>(fm.attendees||[]).includes(name)).length+")":k==="onboarding"?"Onboarding":"History"}</button>})}
       </div>
       {profTab==="overview"&&<div>
         <div className="bc-stagger" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
@@ -8375,6 +8597,50 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
       })()}
 
       {profTab==="history"&&<div><div style={{background:"#fff",borderRadius:10,border:"1px solid #e5e7eb",padding:"18px 20px"}}><div style={{fontWeight:700,fontSize:14,color:"#111827",marginBottom:14}}>Activity Timeline</div>{(()=>{const ev=[];pActs.forEach(a=>{const c2=tc2[a.type];ev.push({d:a.createdAt,t:"action",tl:(c2?.ic||"")+" "+(c2?.lb||a.type)+": "+a.title,dt:a.description,by:a.createdBy});if(a.resolvedAt)ev.push({d:a.resolvedAt,t:"resolved",tl:"✓ Resolved: "+a.title,by:a.resolvedBy});});pRevs.forEach(r=>{ev.push({d:r.date+"T12:00:00",t:"review",tl:"Call Review \u2014 "+(r.passed?"Pass \u2713":"Needs Improvement \u2717"),dt:"Score: "+r.score+"/"+getReviewCriteria(r.team||teamName).length,by:r.reviewedBy});});ev.sort((a,b)=>new Date(b.d)-new Date(a.d));if(!ev.length)return<div style={{color:"#9ca3af",fontSize:13,textAlign:"center",padding:20}}>No activity yet.</div>;return ev.slice(0,50).map((e,i)=><div key={i} style={{display:"flex",gap:12,padding:"10px 0",borderBottom:i<ev.length-1?"1px solid #f3f4f6":"none"}}><div style={{width:8,height:8,borderRadius:4,marginTop:5,flexShrink:0,background:e.t==="review"?"#0d9488":e.t==="resolved"?"#059669":"#f59e0b"}}/><div style={{flex:1}}><div style={{fontWeight:600,fontSize:12,color:"#111827"}}>{e.tl}</div>{e.dt&&<div style={{fontSize:11,color:"#6b7280",marginTop:2}}>{e.dt}</div>}</div><div style={{fontSize:10,color:"#9ca3af",whiteSpace:"nowrap"}}>{e.d?.slice(0,10)?fmtNZDate(e.d.slice(0,10)):""}{e.by?" · "+e.by:""}</div></div>)})()}</div></div>}
+      {profTab==="daily-record"&&(()=>{
+        const START=7,END=21,HOUR_PX=56;const totalMin=(END-START)*60;const trackH=(END-START)*HOUR_PX;
+        const recordDates=getRecordDates(name);const today=todayNZ();
+        const activeDate=drDate||(recordDates.length?recordDates[recordDates.length-1]:today);
+        const events=getDayEvents(name,activeDate);
+        const inHours=events.filter(e=>e.minutes>=START*60&&e.minutes<=END*60);
+        const outHours=events.filter(e=>e.minutes<START*60||e.minutes>END*60);
+        // Cluster consecutive same-type events within 6 min into one chip (handles burst-closing).
+        const CLUSTER_GAP=6;const clusters=[];
+        inHours.forEach(e=>{const last=clusters[clusters.length-1];if(last&&last.type===e.type&&e.minutes-last.maxMin<=CLUSTER_GAP){last.count++;last.maxMin=e.minutes;if(e.detail)last.details[e.detail]=(last.details[e.detail]||0)+1;}else{clusters.push({type:e.type,minutes:e.minutes,maxMin:e.minutes,count:1,details:e.detail?{[e.detail]:1}:{}});}});
+        // Lane layout: vertical position = true time; overlapping clusters sit side-by-side.
+        const CHIP_H=26;const laneBottoms=[];
+        const placed=clusters.map(c=>{const top=(c.minutes-START*60)/totalMin*trackH;let lane=0;while(lane<laneBottoms.length&&laneBottoms[lane]>top-2)lane++;laneBottoms[lane]=top+CHIP_H;return{...c,_top:top,_lane:lane};});
+        const laneCount=Math.max(1,laneBottoms.length);
+        const GAP_MIN=60;const gaps=[];
+        for(let i=0;i<inHours.length-1;i++){const g=inHours[i+1].minutes-inHours[i].minutes;if(g>=GAP_MIN)gaps.push({from:inHours[i].minutes,to:inHours[i+1].minutes,mins:g});}
+        if(inHours.length){if(inHours[0].minutes-START*60>=GAP_MIN)gaps.push({from:START*60,to:inHours[0].minutes,mins:inHours[0].minutes-START*60});const last=inHours[inHours.length-1].minutes;if(END*60-last>=GAP_MIN)gaps.push({from:last,to:END*60,mins:END*60-last});}
+        const counts={};events.forEach(e=>{counts[e.type]=(counts[e.type]||0)+1;});
+        const fmtDur=(m)=>{const h=Math.floor(m/60),mm=m%60;return (h?h+"h ":"")+(mm?mm+"m":(h?"":"0m"));};
+        const fmt12=(min)=>{let h=Math.floor(min/60),m=min%60;const ap=h>=12?"pm":"am";let hh=h%12;if(hh===0)hh=12;return hh+(m?":"+String(m).padStart(2,"0"):"")+ap;};
+        const shiftDate=(delta)=>{const d=new Date(activeDate+"T12:00:00");d.setDate(d.getDate()+delta);setDrDate(d.toISOString().slice(0,10));};
+        const btn={background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:"7px 11px",cursor:"pointer",fontSize:13,fontWeight:600,color:"#4b5563"};
+        return <div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+            <button onClick={()=>shiftDate(-1)} style={btn}>←</button>
+            <input type="date" value={activeDate} onChange={e=>setDrDate(e.target.value)} style={{fontSize:13,padding:"6px 10px",border:"1px solid #e5e7eb",borderRadius:8,color:"#111827",fontWeight:600}}/>
+            <button onClick={()=>shiftDate(1)} style={btn}>→</button>
+            <button onClick={()=>setDrDate(today)} style={btn}>Today</button>
+            <span style={{fontSize:13,color:"#6b7280",marginLeft:4}}>{fmtNZDate(activeDate)} · <b style={{color:"#111827"}}>{events.length}</b> event{events.length===1?"":"s"}</span>
+            {recordDates.length>0&&<select value={recordDates.includes(activeDate)?activeDate:""} onChange={e=>{if(e.target.value)setDrDate(e.target.value);}} style={{marginLeft:"auto",fontSize:12,padding:"6px 10px",border:"1px solid #e5e7eb",borderRadius:8,background:"#fff",color:"#4b5563",cursor:"pointer"}}><option value="">Jump to a day with data…</option>{recordDates.slice().reverse().map(d=><option key={d} value={d}>{fmtNZDate(d)}</option>)}</select>}
+          </div>
+          {Object.values(counts).some(Boolean)&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>{Object.entries(_DR_TYPES).map(([k,t])=>counts[k]?<span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:14,padding:"3px 10px",fontSize:11,fontWeight:600}}>{t.ic} {t.label} · {counts[k]}</span>:null)}</div>}
+          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:9,padding:"9px 13px",marginBottom:14,fontSize:12,color:"#1e40af",lineHeight:1.5}}><b>Live now:</b> ticket closes (from the conversation export) and abandoned calls. Emails, case actions, workflows and answered calls will appear here as those timestamped exports are added. Rapid closes within ~6 min are grouped into one marker (hover to see the count and time range).</div>
+          <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"18px 18px 18px 0"}}>
+            <div style={{position:"relative",height:trackH,marginLeft:64}}>
+              {Array.from({length:END-START+1}).map((_,i)=><div key={i} style={{position:"absolute",top:i*HOUR_PX,left:0,right:0,borderTop:"1px solid #f1f5f9"}}><span style={{position:"absolute",left:-60,top:-7,fontSize:10,color:"#9ca3af",width:52,textAlign:"right"}}>{fmt12((START+i)*60)}</span></div>)}
+              {gaps.map((g,i)=>{const top=(g.from-START*60)/totalMin*trackH;const h=(g.to-g.from)/totalMin*trackH;return <div key={"g"+i} style={{position:"absolute",top,height:h,left:0,right:8,background:"repeating-linear-gradient(45deg,#fef2f2,#fef2f2 6px,transparent 6px,transparent 13px)",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><span style={{fontSize:10,fontWeight:700,color:"#dc2626",background:"#fff",padding:"2px 9px",borderRadius:10,border:"1px solid #fecaca"}}>{fmtDur(g.mins)} gap</span></div>;})}
+              {placed.map((c,i)=>{const t=_DR_TYPES[c.type]||_DR_TYPES.ticket_closed;const detailStr=Object.entries(c.details).map(([d,n])=>n>1?d+"×"+n:d).join(", ");const timeRange=c.minutes===c.maxMin?fmt12(c.minutes):fmt12(c.minutes)+"–"+fmt12(c.maxMin);return <div key={i} title={timeRange+" · "+t.label+(c.count>1?" ×"+c.count:"")+(detailStr?" ("+detailStr+")":"")} style={{position:"absolute",top:c._top,left:"calc("+c._lane+" * (100% - 8px)/"+laneCount+")",width:"calc((100% - 8px)/"+laneCount+")",height:CHIP_H,paddingRight:4,boxSizing:"border-box"}}><span style={{display:"flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,borderRadius:7,padding:"3px 8px",fontSize:11,fontWeight:600,color:t.c,height:"100%",boxSizing:"border-box",overflow:"hidden",whiteSpace:"nowrap",boxShadow:"0 1px 2px rgba(0,0,0,.04)"}}><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:10,opacity:.8,flexShrink:0}}>{fmt12(c.minutes)}</span><span style={{flexShrink:0}}>{t.ic}</span><span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{t.label}{c.count>1?" ×"+c.count:""}</span></span></div>;})}
+              {inHours.length===0&&<div style={{position:"absolute",top:trackH/2-24,left:0,right:0,textAlign:"center",color:"#9ca3af",fontSize:13,padding:"0 20px"}}>No timed activity recorded for {fmtNZDate(activeDate)}.<div style={{fontSize:11,marginTop:4}}>Once reports with timestamps are connected, the day will fill in here.</div></div>}
+            </div>
+          </div>
+          {outHours.length>0&&<div style={{marginTop:12,fontSize:12,color:"#6b7280",background:"#f9fafb",border:"1px solid #f3f4f6",borderRadius:8,padding:"8px 12px"}}><b style={{color:"#4b5563"}}>{outHours.length}</b> event{outHours.length===1?"":"s"} outside 7am–9pm: {outHours.map(e=>fmt12(e.minutes)).join(", ")}</div>}
+        </div>;
+      })()}
     </div></div>);
   }
 

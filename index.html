@@ -8630,12 +8630,21 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
         const availEnd=hasRoster?Math.max(...bands.map(b=>b.availE)):END*60;
         const inBand=(m)=>bands.some(b=>m>=b.availS&&m<=b.availE);
         const rosterAvailMin=hasRoster?bands.reduce((s,b)=>s+b.rawAvailMin,0):0;
+        let rosterReason="";
+        if(!hasRoster){
+          const _nN=name.replace(/\s*-\s*/g,"-").trim().toLowerCase();
+          const _p=schedData[name]||schedData[_nN]||Object.entries(schedData).find(([k])=>k.replace(/\s*-\s*/g,"-").trim().toLowerCase()===_nN)?.[1];
+          if(!_p)rosterReason="no schedule found for this person";
+          else if(!_p.days||!Object.keys(_p.days||{}).length)rosterReason="their schedule was uploaded before per-day shift times were captured — re-upload the roster .xlsx to enable the shift band";
+          else rosterReason="no shift rostered on this date (day off, or this date isn't in the uploaded roster)";
+        }
         // Gaps: when a roster exists, only flag gaps inside the rostered availability window; else whole day.
         const GAP_MIN=60;const gaps=[];
         if(inHours.length){
-          const segs=[[availStart,inHours[0].minutes]];
+          const segs=[];
+          if(hasRoster)segs.push([availStart,inHours[0].minutes]);
           for(let i=0;i<inHours.length-1;i++)segs.push([inHours[i].minutes,inHours[i+1].minutes]);
-          segs.push([inHours[inHours.length-1].minutes,availEnd]);
+          if(hasRoster)segs.push([inHours[inHours.length-1].minutes,availEnd]);
           segs.forEach(([from,to])=>{if(to-from>=GAP_MIN&&(!hasRoster||inBand((from+to)/2)||inBand(from)||inBand(to)))gaps.push({from:Math.max(from,START*60),to:Math.min(to,END*60),mins:to-from});});
         }else if(hasRoster&&availEnd-availStart>=GAP_MIN){
           gaps.push({from:availStart,to:availEnd,mins:availEnd-availStart});
@@ -8655,7 +8664,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             {recordDates.length>0&&<select value={recordDates.includes(activeDate)?activeDate:""} onChange={e=>{if(e.target.value)setDrDate(e.target.value);}} style={{marginLeft:"auto",fontSize:12,padding:"6px 10px",border:"1px solid #e5e7eb",borderRadius:8,background:"#fff",color:"#4b5563",cursor:"pointer"}}><option value="">Jump to a day with data…</option>{recordDates.slice().reverse().map(d=><option key={d} value={d}>{fmtNZDate(d)}</option>)}</select>}
           </div>
           {Object.values(counts).some(Boolean)&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>{Object.entries(_DR_TYPES).map(([k,t])=>counts[k]?<span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:14,padding:"3px 10px",fontSize:11,fontWeight:600}}>{t.ic} {t.label} · {counts[k]}</span>:null)}</div>}
-          {hasRoster?<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,fontSize:12,color:"#0f766e",background:"#f0fdfa",border:"1px solid #99f6e4",borderRadius:9,padding:"8px 13px",flexWrap:"wrap"}}><span style={{width:10,height:10,borderRadius:2,background:"#0d9488",display:"inline-block"}}/><b>Rostered:</b> {bands.map((b,i)=><span key={i}>{(i?", ":"")+fmt12(b.shiftS)+"–"+fmt12(b.shiftE)}</span>)} <span style={{color:"#5eead4"}}>|</span> should be available {fmt12(availStart)}–{fmt12(availEnd)} <span style={{color:"#0f766e",opacity:.8}}>(±{BUFFER}m buffer · {fmtDur(rosterAvailMin)})</span></div>:<div style={{marginBottom:12,fontSize:12,color:"#9ca3af",background:"#f9fafb",border:"1px solid #f3f4f6",borderRadius:9,padding:"8px 13px"}}>No roster found for {fmtNZDate(activeDate)} — upload the schedule to shade the expected availability window. Gaps are measured across the full day until then.</div>}
+          {hasRoster?<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,fontSize:12,color:"#0f766e",background:"#f0fdfa",border:"1px solid #99f6e4",borderRadius:9,padding:"8px 13px",flexWrap:"wrap"}}><span style={{width:10,height:10,borderRadius:2,background:"#0d9488",display:"inline-block"}}/><b>Rostered:</b> {bands.map((b,i)=><span key={i}>{(i?", ":"")+fmt12(b.shiftS)+"–"+fmt12(b.shiftE)}</span>)} <span style={{color:"#5eead4"}}>|</span> should be available {fmt12(availStart)}–{fmt12(availEnd)} <span style={{color:"#0f766e",opacity:.8}}>(±{BUFFER}m buffer · {fmtDur(rosterAvailMin)})</span></div>:<div style={{marginBottom:12,fontSize:12,color:"#9ca3af",background:"#f9fafb",border:"1px solid #f3f4f6",borderRadius:9,padding:"8px 13px"}}>No rostered shift band for {fmtNZDate(activeDate)} — {rosterReason}. Without it, only gaps <i>between</i> recorded activity are flagged.</div>}
           <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:9,padding:"9px 13px",marginBottom:14,fontSize:12,color:"#1e40af",lineHeight:1.5}}>The shaded green band is their rostered shift (+30 min either side). Red hatched bands flag <b>60+ min with no activity inside that window</b>. Rapid same-type events within ~6 min are grouped into one marker (hover for the count and time range).</div>
           <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"18px 18px 18px 0"}}>
             <div style={{position:"relative",height:trackH,marginLeft:64}}>

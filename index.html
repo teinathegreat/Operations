@@ -4873,6 +4873,17 @@ function App(){
     try{const t=dailyTimelineData[name];if(t&&typeof t==="object")Object.keys(t).forEach(d=>{if(Array.isArray(t[d])&&t[d].length)set.add(d);});}catch(e){}
     return [...set].sort();
   };
+  // Rostered shifts for a person on a given NZ date → [{s:"09:00",e:"17:30",net,label}]
+  const getDayShifts=(name,isoDate)=>{
+    try{
+      const normN=name.replace(/\s*-\s*/g,"-").trim().toLowerCase();
+      const p=schedData[name]||schedData[normN]||Object.entries(schedData).find(([k])=>k.replace(/\s*-\s*/g,"-").trim().toLowerCase()===normN)?.[1]||null;
+      if(!p||!p.days||typeof p.days!=="object")return [];
+      const d=p.days[isoDate];
+      if(!d||!Array.isArray(d.shifts))return [];
+      return d.shifts;
+    }catch(e){console.error("getDayShifts err",e);return [];}
+  };
   // ── Auto-fill individual person stats from icData ───────────────────────────
   const autoFillIndividuals=(icDataIn,filter,wkNum,monLabel)=>{
     // For each person in icData, fill their _i_ data with stats from that period
@@ -8611,9 +8622,24 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
         const CHIP_H=26;const laneBottoms=[];
         const placed=clusters.map(c=>{const top=(c.minutes-START*60)/totalMin*trackH;let lane=0;while(lane<laneBottoms.length&&laneBottoms[lane]>top-2)lane++;laneBottoms[lane]=top+CHIP_H;return{...c,_top:top,_lane:lane};});
         const laneCount=Math.max(1,laneBottoms.length);
+        // Rostered shift band(s) for this day, with ±30 min availability buffer (the window they should have been available).
+        const BUFFER=30;
+        const bands=getDayShifts(name,activeDate).map(sh=>{const s=_toMinutes(sh.s),e=_toMinutes(sh.e);if(s==null||e==null||e<=s)return null;return{shiftS:s,shiftE:e,availS:Math.max(START*60,s-BUFFER),availE:Math.min(END*60,e+BUFFER),rawAvailMin:(e+BUFFER)-(s-BUFFER),label:sh.label||""};}).filter(Boolean);
+        const hasRoster=bands.length>0;
+        const availStart=hasRoster?Math.min(...bands.map(b=>b.availS)):START*60;
+        const availEnd=hasRoster?Math.max(...bands.map(b=>b.availE)):END*60;
+        const inBand=(m)=>bands.some(b=>m>=b.availS&&m<=b.availE);
+        const rosterAvailMin=hasRoster?bands.reduce((s,b)=>s+b.rawAvailMin,0):0;
+        // Gaps: when a roster exists, only flag gaps inside the rostered availability window; else whole day.
         const GAP_MIN=60;const gaps=[];
-        for(let i=0;i<inHours.length-1;i++){const g=inHours[i+1].minutes-inHours[i].minutes;if(g>=GAP_MIN)gaps.push({from:inHours[i].minutes,to:inHours[i+1].minutes,mins:g});}
-        if(inHours.length){if(inHours[0].minutes-START*60>=GAP_MIN)gaps.push({from:START*60,to:inHours[0].minutes,mins:inHours[0].minutes-START*60});const last=inHours[inHours.length-1].minutes;if(END*60-last>=GAP_MIN)gaps.push({from:last,to:END*60,mins:END*60-last});}
+        if(inHours.length){
+          const segs=[[availStart,inHours[0].minutes]];
+          for(let i=0;i<inHours.length-1;i++)segs.push([inHours[i].minutes,inHours[i+1].minutes]);
+          segs.push([inHours[inHours.length-1].minutes,availEnd]);
+          segs.forEach(([from,to])=>{if(to-from>=GAP_MIN&&(!hasRoster||inBand((from+to)/2)||inBand(from)||inBand(to)))gaps.push({from:Math.max(from,START*60),to:Math.min(to,END*60),mins:to-from});});
+        }else if(hasRoster&&availEnd-availStart>=GAP_MIN){
+          gaps.push({from:availStart,to:availEnd,mins:availEnd-availStart});
+        }
         const counts={};events.forEach(e=>{counts[e.type]=(counts[e.type]||0)+1;});
         const fmtDur=(m)=>{const h=Math.floor(m/60),mm=m%60;return (h?h+"h ":"")+(mm?mm+"m":(h?"":"0m"));};
         const fmt12=(min)=>{let h=Math.floor(min/60),m=min%60;const ap=h>=12?"pm":"am";let hh=h%12;if(hh===0)hh=12;return hh+(m?":"+String(m).padStart(2,"0"):"")+ap;};
@@ -8629,9 +8655,11 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             {recordDates.length>0&&<select value={recordDates.includes(activeDate)?activeDate:""} onChange={e=>{if(e.target.value)setDrDate(e.target.value);}} style={{marginLeft:"auto",fontSize:12,padding:"6px 10px",border:"1px solid #e5e7eb",borderRadius:8,background:"#fff",color:"#4b5563",cursor:"pointer"}}><option value="">Jump to a day with data…</option>{recordDates.slice().reverse().map(d=><option key={d} value={d}>{fmtNZDate(d)}</option>)}</select>}
           </div>
           {Object.values(counts).some(Boolean)&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>{Object.entries(_DR_TYPES).map(([k,t])=>counts[k]?<span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:14,padding:"3px 10px",fontSize:11,fontWeight:600}}>{t.ic} {t.label} · {counts[k]}</span>:null)}</div>}
-          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:9,padding:"9px 13px",marginBottom:14,fontSize:12,color:"#1e40af",lineHeight:1.5}}><b>Live now:</b> ticket closes (from the conversation export) and abandoned calls. Emails, case actions, workflows and answered calls will appear here as those timestamped exports are added. Rapid closes within ~6 min are grouped into one marker (hover to see the count and time range).</div>
+          {hasRoster?<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,fontSize:12,color:"#0f766e",background:"#f0fdfa",border:"1px solid #99f6e4",borderRadius:9,padding:"8px 13px",flexWrap:"wrap"}}><span style={{width:10,height:10,borderRadius:2,background:"#0d9488",display:"inline-block"}}/><b>Rostered:</b> {bands.map((b,i)=><span key={i}>{(i?", ":"")+fmt12(b.shiftS)+"–"+fmt12(b.shiftE)}</span>)} <span style={{color:"#5eead4"}}>|</span> should be available {fmt12(availStart)}–{fmt12(availEnd)} <span style={{color:"#0f766e",opacity:.8}}>(±{BUFFER}m buffer · {fmtDur(rosterAvailMin)})</span></div>:<div style={{marginBottom:12,fontSize:12,color:"#9ca3af",background:"#f9fafb",border:"1px solid #f3f4f6",borderRadius:9,padding:"8px 13px"}}>No roster found for {fmtNZDate(activeDate)} — upload the schedule to shade the expected availability window. Gaps are measured across the full day until then.</div>}
+          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:9,padding:"9px 13px",marginBottom:14,fontSize:12,color:"#1e40af",lineHeight:1.5}}>The shaded green band is their rostered shift (+30 min either side). Red hatched bands flag <b>60+ min with no activity inside that window</b>. Rapid same-type events within ~6 min are grouped into one marker (hover for the count and time range).</div>
           <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"18px 18px 18px 0"}}>
             <div style={{position:"relative",height:trackH,marginLeft:64}}>
+              {bands.map((b,i)=>{const aTop=(b.availS-START*60)/totalMin*trackH;const aH=(b.availE-b.availS)/totalMin*trackH;const sTop=(Math.max(b.shiftS,START*60)-START*60)/totalMin*trackH;const sH=(Math.min(b.shiftE,END*60)-Math.max(b.shiftS,START*60))/totalMin*trackH;return <React.Fragment key={"band"+i}><div style={{position:"absolute",top:aTop,height:aH,left:0,right:0,background:"#f0fdfa",borderTop:"1px dashed #5eead4",borderBottom:"1px dashed #5eead4",pointerEvents:"none"}}/><div style={{position:"absolute",top:sTop,height:Math.max(2,sH),left:0,width:4,background:"#0d9488",borderRadius:2,pointerEvents:"none"}}/><span style={{position:"absolute",top:aTop+2,left:8,fontSize:9,fontWeight:800,color:"#0d9488",letterSpacing:".05em",pointerEvents:"none",opacity:.7}}>ROSTERED</span></React.Fragment>;})}
               {Array.from({length:END-START+1}).map((_,i)=><div key={i} style={{position:"absolute",top:i*HOUR_PX,left:0,right:0,borderTop:"1px solid #f1f5f9"}}><span style={{position:"absolute",left:-60,top:-7,fontSize:10,color:"#9ca3af",width:52,textAlign:"right"}}>{fmt12((START+i)*60)}</span></div>)}
               {gaps.map((g,i)=>{const top=(g.from-START*60)/totalMin*trackH;const h=(g.to-g.from)/totalMin*trackH;return <div key={"g"+i} style={{position:"absolute",top,height:h,left:0,right:8,background:"repeating-linear-gradient(45deg,#fef2f2,#fef2f2 6px,transparent 6px,transparent 13px)",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><span style={{fontSize:10,fontWeight:700,color:"#dc2626",background:"#fff",padding:"2px 9px",borderRadius:10,border:"1px solid #fecaca"}}>{fmtDur(g.mins)} gap</span></div>;})}
               {placed.map((c,i)=>{const t=_DR_TYPES[c.type]||_DR_TYPES.ticket_closed;const detailStr=Object.entries(c.details).map(([d,n])=>n>1?d+"×"+n:d).join(", ");const timeRange=c.minutes===c.maxMin?fmt12(c.minutes):fmt12(c.minutes)+"–"+fmt12(c.maxMin);return <div key={i} title={timeRange+" · "+t.label+(c.count>1?" ×"+c.count:"")+(detailStr?" ("+detailStr+")":"")} style={{position:"absolute",top:c._top,left:"calc("+c._lane+" * (100% - 8px)/"+laneCount+")",width:"calc((100% - 8px)/"+laneCount+")",height:CHIP_H,paddingRight:4,boxSizing:"border-box"}}><span style={{display:"flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,borderRadius:7,padding:"3px 8px",fontSize:11,fontWeight:600,color:t.c,height:"100%",boxSizing:"border-box",overflow:"hidden",whiteSpace:"nowrap",boxShadow:"0 1px 2px rgba(0,0,0,.04)"}}><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:10,opacity:.8,flexShrink:0}}>{fmt12(c.minutes)}</span><span style={{flexShrink:0}}>{t.ic}</span><span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{t.label}{c.count>1?" ×"+c.count:""}</span></span></div>;})}

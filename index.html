@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.4.3";
+const APP_VERSION="2.5.0";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -4212,6 +4212,10 @@ function App(){
       // Owner Withdrawals — saved CSV (single key)
       if(sysConf.owner_withdrawals&&typeof sysConf.owner_withdrawals==="object"){setOwnerWithdrawals(sysConf.owner_withdrawals);}
       if(sysConf.app_version)setRV(sysConf.app_version);
+      // v2.5: when an admin loads a newer build than what's published, publish it so every other
+      // session is prompted to refresh onto the fixed code (the admin-only config-save protection
+      // only takes effect once a client is running this build).
+      try{if(currentUser?.role==="admin"&&APP_VERSION>(sysConf.app_version||"0")){dbSaveConfigKey("sys","app_version",APP_VERSION);setRV(APP_VERSION);}}catch(e){}
       {let pmv=sysConf.phone_mask;if(pmv&&typeof pmv==="object"&&"_v" in pmv)pmv=pmv._v;if(typeof pmv==="boolean")setPhoneMaskOn(pmv);}
       if(rc_presence)onlineUsersRef.current=rc_presence;
       // Check if config_rows has data — if not, fall back to bc_store for migration
@@ -4484,6 +4488,10 @@ function App(){
           const sdv=await dbLoadConfig("sched");if(sdv&&typeof sdv==="object")setSchedData(sdv);
           const rjv=await dbLoadConfig("rejcalls");if(rjv&&typeof rjv==="object")setRejectedCallsData(rjv);
           const tlv=await dbLoadConfig("timeline");if(tlv&&typeof tlv==="object")setDailyTimelineData(tlv);
+          // Backfill call reviews a stranded session may have missed. MERGE (not replace): server rows win,
+          // but any review created locally and not yet returned by the read is preserved — so this can never
+          // make a just-submitted review vanish.
+          try{const crRows=await dbLoadAll("call_reviews");if(Array.isArray(crRows)&&crRows.length>0){setCallReviews(prev=>{const byId={};crRows.forEach(r=>{if(r&&r.id!=null)byId[r.id]=r;});(Array.isArray(prev)?prev:[]).forEach(r=>{if(r&&r.id!=null&&!(r.id in byId))byId[r.id]=r;});return Object.values(byId);});}}catch(e){}
         }catch(e){console.error("self-heal failed:",e);}
         setTimeout(()=>{saveEnabled.current=prev;},800);
       };
@@ -4662,33 +4670,35 @@ function App(){
 
 
 
-  useEffect(()=>{if(!saveEnabled.current)return;Object.entries(capabilities).forEach(([k,v])=>dbSaveConfigKey("caps",k,v));},[capabilities]);
-  useEffect(()=>{if(!saveEnabled.current)return;Object.entries(capCriteria).forEach(([k,v])=>dbSaveConfigKey("capcrit",k,v));},[capCriteria]);
-  useEffect(()=>{if(!saveEnabled.current)return;Object.entries(permissions).forEach(([k,v])=>dbSaveConfigKey("perms",k,v));},[permissions]);
-  useEffect(()=>{if(!saveEnabled.current||!dailyConfig)return;Object.entries(dailyConfig).forEach(([k,v])=>dbSaveConfigKey("dailycfg",k,v));},[dailyConfig]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(capabilities).forEach(([k,v])=>dbSaveConfigKey("caps",k,v));},[capabilities]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(capCriteria).forEach(([k,v])=>dbSaveConfigKey("capcrit",k,v));},[capCriteria]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(permissions).forEach(([k,v])=>dbSaveConfigKey("perms",k,v));},[permissions]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin||!dailyConfig)return;Object.entries(dailyConfig).forEach(([k,v])=>dbSaveConfigKey("dailycfg",k,v));},[dailyConfig]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(quickNotes).forEach(([k,v])=>dbSaveConfigKey("notes",k,v));},[quickNotes]);
-  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigKey("sys","quick_refs",quickRefs);},[quickRefs]);
-  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigKey("sys","update_notes",updateNotes);},[updateNotes]);
-  useEffect(()=>{if(!saveEnabled.current)return;Object.entries(reviewCriteriaConfig).forEach(([k,v])=>dbSaveConfigKey("revcrit",k,v));},[reviewCriteriaConfig]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;dbSaveConfigKey("sys","quick_refs",quickRefs);},[quickRefs]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;dbSaveConfigKey("sys","update_notes",updateNotes);},[updateNotes]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(reviewCriteriaConfig).forEach(([k,v])=>dbSaveConfigKey("revcrit",k,v));},[reviewCriteriaConfig]);
 
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(onboarding).forEach(([k,v])=>dbSaveConfigKey("onboard",k,v));},[onboarding]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(alertSnooze).forEach(([k,v])=>dbSaveConfigKey("snooze",k,v));},[alertSnooze]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(schedData).forEach(([k,v])=>dbSaveConfigKey("sched",k,v));},[schedData]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(rejectedCallsData).forEach(([k,v])=>dbSaveConfigKey("rejcalls",k,v));},[rejectedCallsData]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(dailyTimelineData).forEach(([k,v])=>dbSaveConfigKey("timeline",k,v));},[dailyTimelineData]);
-  useEffect(()=>{if(!saveEnabled.current)return;Object.entries(allWeights).forEach(([k,v])=>dbSaveConfigKey("weights",k,v));},[allWeights]);
-  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigKey("sys","call_review_teams",callReviewTeams);},[callReviewTeams]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(allWeights).forEach(([k,v])=>dbSaveConfigKey("weights",k,v));},[allWeights]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;dbSaveConfigKey("sys","call_review_teams",callReviewTeams);},[callReviewTeams]);
   const _appDataLoaded=useRef(false);
   useEffect(()=>{if(data&&Object.keys(data).length>0&&roster&&Object.keys(roster).length>0)_appDataLoaded.current=true;},[data,roster]);
   useEffect(()=>{if(!saveEnabled.current)return;if(!_appDataLoaded.current){console.warn("Blocked saving default app_data");return;}appDataLastSavedAt.current=Date.now();dbSaveConfigKey("sys","app_data",data);},[data]);
   // v2.4.3: Separate autosave for tc (team config / KPIs) — protected from cross-contamination with daily data saves
-  useEffect(()=>{if(!saveEnabled.current)return;if(!_tcLoaded.current)return;dbSaveConfigKey("sys","team_config",tc);},[tc]);
-  // v2.4.3: Separate autosave for roster
-  useEffect(()=>{if(!saveEnabled.current)return;if(!_rosterLoaded.current)return;dbSaveConfigKey("sys","team_roster",roster);},[roster]);
+  // v2.5: admin-only — KPI targets / team config are admin-edited; this prevents any non-admin client (e.g. a session
+  // that loaded stale config) from ever writing them back and reverting your changes.
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;if(!_tcLoaded.current)return;dbSaveConfigKey("sys","team_config",tc);},[tc]);
+  // v2.4.3: Separate autosave for roster (admin-only for the same reason)
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;if(!_rosterLoaded.current)return;dbSaveConfigKey("sys","team_roster",roster);},[roster]);
 
 
   // All saves handled by syncToSupabase (3-second debounce after any state change)
-  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("weights",allWeights);},[allWeights]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;dbSaveConfigAll("weights",allWeights);},[allWeights]);
   useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("ic",icData);},[icData]);
   useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("icppt",icPPT);},[icPPT]);
   // app_data save handled by syncToSupabase

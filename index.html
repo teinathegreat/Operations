@@ -8759,6 +8759,8 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
           gaps.push({from:availStart,to:availEnd,mins:availEnd-availStart});
         }
         const counts={};events.forEach(e=>{counts[e.type]=(counts[e.type]||0)+1;});
+        const byHour={};events.forEach(e=>{const h=Math.floor(e.minutes/60);if(!byHour[h])byHour[h]={};byHour[h][e.type]=(byHour[h][e.type]||0)+1;});
+        const hourKeys=Object.keys(byHour).map(Number).sort((a,b)=>a-b);
         const fmtDur=(m)=>{const h=Math.floor(m/60),mm=m%60;return (h?h+"h ":"")+(mm?mm+"m":(h?"":"0m"));};
         const fmt12=(min)=>{let h=Math.floor(min/60),m=min%60;const ap=h>=12?"pm":"am";let hh=h%12;if(hh===0)hh=12;return hh+(m?":"+String(m).padStart(2,"0"):"")+ap;};
         const INTERCOM_WS="mofjwruw";
@@ -8776,7 +8778,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             <button onClick={()=>setDrDate(today)} style={btn}>Today</button>
             <span style={{fontSize:13,color:"#6b7280",marginLeft:4}}>{fmtNZDate(activeDate)} · <b style={{color:"#111827"}}>{events.length}</b> event{events.length===1?"":"s"}</span>
             <div style={{display:"inline-flex",border:"1px solid #e5e7eb",borderRadius:8,overflow:"hidden",marginLeft:"auto"}}>
-              {[["timeline","Timeline"],["list","List"]].map(([v,lbl])=><button key={v} onClick={()=>setDrView(v)} style={{padding:"7px 14px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",background:drView===v?"#0d9488":"#fff",color:drView===v?"#fff":"#6b7280"}}>{lbl}</button>)}
+              {[["timeline","Timeline"],["list","List"],["hourly","Hourly"]].map(([v,lbl])=><button key={v} onClick={()=>setDrView(v)} style={{padding:"7px 14px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",background:drView===v?"#0d9488":"#fff",color:drView===v?"#fff":"#6b7280"}}>{lbl}</button>)}
             </div>
             {recordDates.length>0&&<select value={recordDates.includes(activeDate)?activeDate:""} onChange={e=>{if(e.target.value)setDrDate(e.target.value);}} style={{fontSize:12,padding:"6px 10px",border:"1px solid #e5e7eb",borderRadius:8,background:"#fff",color:"#4b5563",cursor:"pointer"}}><option value="">Jump to a day with data…</option>{recordDates.slice().reverse().map(d=><option key={d} value={d}>{fmtNZDate(d)}</option>)}</select>}
           </div>
@@ -8794,7 +8796,11 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             </div>
           </div>
           {outHours.length>0&&<div style={{marginTop:12,fontSize:12,color:"#6b7280",background:"#f9fafb",border:"1px solid #f3f4f6",borderRadius:8,padding:"8px 12px"}}><b style={{color:"#4b5563"}}>{outHours.length}</b> event{outHours.length===1?"":"s"} outside 7am–9pm: {outHours.map(e=>fmt12(e.minutes)).join(", ")}</div>}
-          </React.Fragment>:<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
+          </React.Fragment>:drView==="hourly"?<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
+            {hourKeys.length===0
+              ?<div style={{padding:"30px 20px",textAlign:"center",color:"#9ca3af",fontSize:13}}>No activity recorded for {fmtNZDate(activeDate)}.</div>
+              :hourKeys.map((h,i)=>{const cnts=byHour[h];const total=Object.values(cnts).reduce((a,b)=>a+b,0);return <div key={h} style={{display:"flex",alignItems:"flex-start",gap:14,padding:"11px 14px",borderTop:i?"1px solid #f3f4f6":"none"}}><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:12,fontWeight:700,color:"#111827",width:96,flexShrink:0,paddingTop:2}}>{fmt12(h*60)}–{fmt12((h+1)*60)}</span><div style={{display:"flex",flexWrap:"wrap",gap:6,flex:1,minWidth:0}}>{Object.entries(_DR_TYPES).map(([k,t])=>cnts[k]?<span key={k} style={{display:"inline-flex",alignItems:"center",gap:4,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:13,padding:"2px 9px",fontSize:11,fontWeight:700}}>{t.ic} {t.label}: {cnts[k]}</span>:null)}</div><span style={{fontSize:11,fontWeight:700,color:"#6b7280",flexShrink:0,paddingTop:3,whiteSpace:"nowrap"}}>{total} total</span></div>;})}
+          </div>:<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
             {events.length===0
               ?<div style={{padding:"30px 20px",textAlign:"center",color:"#9ca3af",fontSize:13}}>No activity recorded for {fmtNZDate(activeDate)}.</div>
               :events.map((e,i)=>{const t=_DR_TYPES[e.type]||_DR_TYPES.ticket_closed;const oh=e.minutes<START*60||e.minutes>END*60;const turl=e.type==="ticket_closed"&&e.cid?ticketUrl(e.cid):null;return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 14px",borderTop:i?"1px solid #f3f4f6":"none"}}><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:12,color:"#6b7280",width:64,flexShrink:0,textAlign:"right"}}>{fmt12(e.minutes)}</span><span style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700,flexShrink:0,minWidth:118,boxSizing:"border-box"}}>{t.ic} {t.label}</span><span style={{color:"#374151",fontSize:13,flex:1,minWidth:0,wordBreak:"break-word"}}>{turl?<React.Fragment>{e.detail?dShow(e.detail)+" · ":""}<a href={turl} target="_blank" rel="noopener noreferrer" style={{color:"#059669",fontWeight:700,textDecoration:"none"}}>Open ticket #{e.cid} ↗</a></React.Fragment>:(dShow(e.detail)||"—")}</span>{oh&&<span style={{fontSize:10,color:"#9ca3af",flexShrink:0,fontStyle:"italic"}}>outside hours</span>}</div>;})}

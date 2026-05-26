@@ -4874,14 +4874,24 @@ function App(){
     return [...set].sort();
   };
   // Rostered shifts for a person on a given NZ date → [{s:"09:00",e:"17:30",net,label}]
+  // Note: the Schedule tab indexes days by fmtDate = "M/D/YYYY" (un-padded), so we build
+  // that key from the ISO date and also try ISO / zero-padded variants for safety.
   const getDayShifts=(name,isoDate)=>{
     try{
       const normN=name.replace(/\s*-\s*/g,"-").trim().toLowerCase();
       const p=schedData[name]||schedData[normN]||Object.entries(schedData).find(([k])=>k.replace(/\s*-\s*/g,"-").trim().toLowerCase()===normN)?.[1]||null;
       if(!p||!p.days||typeof p.days!=="object")return [];
-      const d=p.days[isoDate];
-      if(!d||!Array.isArray(d.shifts))return [];
-      return d.shifts;
+      const m=(isoDate||"").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const keys=[isoDate];
+      if(m){
+        const y=m[1],mo=+m[2],da=+m[3];
+        keys.push(mo+"/"+da+"/"+y);                 // 5/22/2026  (Schedule tab fmtDate)
+        keys.push(String(mo).padStart(2,"0")+"/"+String(da).padStart(2,"0")+"/"+y); // 05/22/2026
+        keys.push(da+"/"+mo+"/"+y);                 // 22/5/2026  (DD/MM)
+        keys.push(String(da).padStart(2,"0")+"/"+String(mo).padStart(2,"0")+"/"+y); // 22/05/2026
+      }
+      for(const k of keys){const d=p.days[k];if(d&&Array.isArray(d.shifts)&&d.shifts.length)return d.shifts;}
+      return [];
     }catch(e){console.error("getDayShifts err",e);return [];}
   };
   // ── Auto-fill individual person stats from icData ───────────────────────────

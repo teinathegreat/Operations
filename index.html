@@ -2733,7 +2733,7 @@ function IntercomDropzone({isAdmin,icFileRef,handleIcFile,toast2,icData}){
           or <span style={{color:"#0d9488",fontWeight:600}}>click to browse</span> &nbsp;·&nbsp; CSV files only &nbsp;·&nbsp; auto-detects report type
         </div>
         <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",fontSize:11,color:"#6b7280"}}>
-          {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate","Activity Time","Abandoned Calls","Detailed work log"].map(t=>(
+          {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate","Activity Time","Abandoned Calls","Detailed work log","Call handle times"].map(t=>(
             <span key={t} style={{background:"#f3f4f6",borderRadius:4,padding:"2px 8px"}}>{t}</span>
           ))}
         </div>
@@ -4432,7 +4432,7 @@ function App(){
   // Direct daily reports fetch - bypasses all loading guards
   useEffect(()=>{if(tab!=="daily"&&tab!=="home")return;const fetchDaily=async()=>{const prev=saveEnabled.current;saveEnabled.current=false;const rows=await dbLoadAll("daily_reports");if(rows.length>0)setDailyReports(rows);setTimeout(()=>{saveEnabled.current=prev;},300);};fetchDaily();},[tab]);
   // Direct fetch for todos, actions, notifications on relevant tabs
-  useEffect(()=>{const url=sbUrlRef.current||sbUrl;const key=sbKeyRef.current||sbKey;if(!url||!key)return;const headers={"apikey":key,"Authorization":"Bearer "+key};const directFetch=async(sbKey2,setter)=>{try{const resp=await fetch(url+"/rest/v1/bc_store?key=eq."+sbKey2+"&select=value",{headers});if(!resp.ok)return;const d=await resp.json();if(d&&d[0]&&d[0].value){const parsed=JSON.parse(d[0].value);const prev=saveEnabled.current;saveEnabled.current=false;if(Array.isArray(parsed))setter(parsed);else if(typeof parsed==="object")setter(parsed);setTimeout(()=>{saveEnabled.current=prev;},300);}}catch(e){console.error("Refresh "+sbKey2+" failed:",e);}};const directFetchRows=async(table,setter)=>{const prev=saveEnabled.current;saveEnabled.current=false;const rows=await dbLoadAll(table);if(rows.length>0)setter(rows);setTimeout(()=>{saveEnabled.current=prev;},300);};if(tab==="to-do list"||tab==="home"){directFetchRows("todos",setTodos);directFetchRows("notif_entries",setNotifications);directFetchRows("alert_entries",setAdminAlerts);}if(tab==="action list"||tab==="home"){directFetchRows("action_items",setActionItems);}if(tab==="dashboard"||tab==="people"){
+  useEffect(()=>{const url=sbUrlRef.current||sbUrl;const key=sbKeyRef.current||sbKey;if(!url||!key)return;const headers={"apikey":key,"Authorization":"Bearer "+key};const directFetch=async(sbKey2,setter)=>{try{const resp=await fetch(url+"/rest/v1/bc_store?key=eq."+sbKey2+"&select=value",{headers});if(!resp.ok)return;const d=await resp.json();if(d&&d[0]&&d[0].value){const parsed=JSON.parse(d[0].value);const prev=saveEnabled.current;saveEnabled.current=false;if(Array.isArray(parsed))setter(parsed);else if(typeof parsed==="object")setter(parsed);setTimeout(()=>{saveEnabled.current=prev;},300);}}catch(e){console.error("Refresh "+sbKey2+" failed:",e);}};const directFetchRows=async(table,setter)=>{const prev=saveEnabled.current;saveEnabled.current=false;const rows=await dbLoadAll(table);if(rows.length>0)setter(rows);setTimeout(()=>{saveEnabled.current=prev;},300);};if(tab==="to-do list"||tab==="home"){directFetchRows("todos",setTodos);directFetchRows("notif_entries",setNotifications);directFetchRows("alert_entries",setAdminAlerts);}if(tab==="action list"||tab==="home"){directFetchRows("action_items",setActionItems);}if(tab==="call reviews"){directFetchRows("call_reviews",setCallReviews);}if(tab==="dashboard"||tab==="people"){
       // Fetch app_data from config_rows (not bc_store)
       const fetchAppData=async()=>{
         const prev=saveEnabled.current;saveEnabled.current=false;
@@ -4453,6 +4453,39 @@ function App(){
       };
       fetchAppData();const directFetchConfig=async(prefix,setter)=>{const prev2=saveEnabled.current;saveEnabled.current=false;const obj=await dbLoadConfig(prefix);if(obj)setter(obj);setTimeout(()=>{saveEnabled.current=prev2;},300);};if(!icSavingRef.current)directFetchConfig("ic",setIcData);if(!schedSavingRef.current)directFetchConfig("sched",setSchedData);if(!rejSavingRef.current)directFetchConfig("rejcalls",setRejectedCallsData);if(!tlSavingRef.current)directFetchConfig("timeline",setDailyTimelineData);if(!isAdmin)directFetchConfig("dailycfg",setDailyConfig);}},[tab]);
     useEffect(()=>{if(sbUrl&&sbKey)loadFromSupabase();},[]);
+    // Periodic read-only self-heal for non-admins. Realtime only delivers changes made while a
+    // client stays connected (no backfill), and the per-tab refreshes need a tab switch — so a
+    // session that loaded empty/stale, or whose realtime dropped, never recovers on its own.
+    // This re-pulls admin-managed shared data (config, roster, KPIs, uploaded report data) every
+    // 30s. It is strictly READ-ONLY and fully guarded: saveEnabled is held off during the read so
+    // no save-back can fire, every setter is gated by an if(data) check so an empty/failed read is
+    // ignored (never clobbers good local state), and admins are excluded entirely so an in-progress
+    // config edit can never be overwritten. Non-admins never edit any of these, so a full refresh
+    // of them cannot lose their work.
+    useEffect(()=>{
+      if(isAdmin)return;
+      const url=sbUrlRef.current||sbUrl;const key=sbKeyRef.current||sbKey;if(!url||!key)return;
+      const selfHeal=async()=>{
+        if(typeof document!=="undefined"&&document.hidden)return;
+        if(icSavingRef.current||schedSavingRef.current||rejSavingRef.current||tlSavingRef.current)return;
+        const prev=saveEnabled.current;saveEnabled.current=false;
+        try{
+          const sysConf=await dbLoadConfig("sys");
+          let tcVal=sysConf?.team_config;if(tcVal&&typeof tcVal==="object"&&"_v" in tcVal&&"_origin" in tcVal)tcVal=tcVal._v;
+          let rVal=sysConf?.team_roster;if(rVal&&typeof rVal==="object"&&"_v" in rVal&&"_origin" in rVal)rVal=rVal._v;
+          if(tcVal&&typeof tcVal==="object")setTc(tcVal);
+          if(rVal&&typeof rVal==="object")setRoster(migrateRoster(fixRosterNames(rVal)));
+          const dc=await dbLoadConfig("dailycfg");if(dc&&typeof dc==="object")setDailyConfig(dc);
+          const icv=await dbLoadConfig("ic");if(icv&&typeof icv==="object")setIcData(icv);
+          const sdv=await dbLoadConfig("sched");if(sdv&&typeof sdv==="object")setSchedData(sdv);
+          const rjv=await dbLoadConfig("rejcalls");if(rjv&&typeof rjv==="object")setRejectedCallsData(rjv);
+          const tlv=await dbLoadConfig("timeline");if(tlv&&typeof tlv==="object")setDailyTimelineData(tlv);
+        }catch(e){console.error("self-heal failed:",e);}
+        setTimeout(()=>{saveEnabled.current=prev;},800);
+      };
+      const iv=setInterval(selfHeal,30000);
+      return()=>clearInterval(iv);
+    },[isAdmin,sbUrl,sbKey]);
   // ── ROW-LEVEL SYNC EFFECTS ──────────────────────────────────────────
   // Detect changes to migrated arrays and sync only the differences to row tables.
   // Adds/updates → dbUpsert. Deletes → dbDeleteRow. Only runs after Supabase loaded.
@@ -5931,6 +5964,63 @@ function App(){
 
           const agents=Object.keys(bucket).length;
           toast2(`Work Completed imported: ${agents} agents, ${rowCount} rows. WF points included in productivity. ${filled} team(s) updated.`);
+        }
+
+
+        // ── TYPE H: Call Handle Times (answered inbound/outbound + duration) → Daily Record ──
+        // Unique signature: the "Total Talk Time" column. Times are UK local → converted to NZ (DST-aware).
+        // Columns: Agent, Date (MM/DD/YYYY), Time (HH:MM UK), Direction (Inbound/Outbound), Total Talk Time (sec), Calls Answered.
+        else if(text.includes("Total Talk Time")){
+          const rows=text.split(/\r?\n/).filter(l=>l.trim());
+          const parseRowH=(line)=>{const vals=[];let cur="";let inq=false;for(const ch of line){if(ch==='"'){inq=!inq;}else if(ch===','&&!inq){vals.push(cur.trim().replace(/^"|"$/g,""));cur="";}else cur+=ch;}vals.push(cur.trim().replace(/^"|"$/g,""));return vals;};
+          const hdr=parseRowH(rows[0]).map(h=>h.trim());
+          const ciInc=(frag)=>hdr.findIndex(h=>h.toLowerCase().includes(frag));
+          const iAgent=ciInc("agent"),iDate=ciInc("date"),iTime=hdr.findIndex(h=>h.trim().toLowerCase()==="time"),iDir=ciInc("direction"),iTalk=ciInc("talk"),iAns=ciInc("answered");
+          if(iAgent<0||iDate<0||iTime<0||iDir<0){toast2("Call Handle Times: missing expected columns (Agent / Date / Time / Direction).");return;}
+          const ownedTypes=new Set(["call_inbound","call_outbound"]);
+          const fmtDur=(s)=>{s=Math.max(0,Math.round(s));const m=Math.floor(s/60),ss=s%60;return m>0?(ss>0?m+"m "+ss+"s":m+"m"):ss+"s";};
+          const tlByPerson={};let evCount=0,skippedNoAns=0,skippedNoMatch=0,inb=0,outb=0;
+          for(let i=1;i<rows.length;i++){
+            const row=parseRowH(rows[i]);if(row.length<4)continue;
+            const ans=iAns>=0?(parseInt(row[iAns],10)||0):1;
+            if(ans<1){skippedNoAns++;continue;} // only ANSWERED calls
+            const dm=(row[iDate]||"").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(!dm)continue;
+            const tm=(row[iTime]||"").match(/^(\d{1,2}):(\d{2})/);if(!tm)continue;
+            const mo=+dm[1],da=+dm[2],yr=+dm[3],hh=+tm[1],mm=+tm[2];
+            const utc=_ukLocalToUTC(yr,mo,da,hh,mm);const nz=_nzParts(utc); // UK→UTC→NZ
+            const dir=(row[iDir]||"").trim().toLowerCase();
+            const isIn=dir.startsWith("in");
+            const type=isIn?"call_inbound":"call_outbound";
+            const rawName=(row[iAgent]||"").trim();if(!rawName)continue;
+            const agent=normalizeAgentToRoster(rawName,roster);
+            if(!agent){skippedNoMatch++;continue;} // only roster members appear on the Daily Record
+            const talk=iTalk>=0?(parseInt(row[iTalk],10)||0):0;
+            const detail=(isIn?"Inbound":"Outbound")+" call · "+fmtDur(talk)+(ans>1?(" · "+ans+" answered"):"");
+            if(!tlByPerson[agent])tlByPerson[agent]={};
+            if(!tlByPerson[agent][nz.iso])tlByPerson[agent][nz.iso]=[];
+            tlByPerson[agent][nz.iso].push({type,time:nz.time,detail,secs:talk});
+            evCount++;isIn?inb++:outb++;
+          }
+          let people=0;
+          if(Object.keys(tlByPerson).length){
+            setDailyTimelineWithSaves(prev=>{
+              const merged={...prev};
+              Object.entries(tlByPerson).forEach(([nm,days])=>{
+                people++;merged[nm]={...(merged[nm]||{})};
+                Object.entries(days).forEach(([d,evs])=>{
+                  const existing=Array.isArray(merged[nm][d])?merged[nm][d]:[];
+                  // Replace only answered-call markers for that day; keep ticket closes, emails, case actions, workflows, abandoned calls.
+                  const kept=existing.filter(e=>e&&!ownedTypes.has(e.type));
+                  merged[nm][d]=[...kept,...evs];
+                });
+              });
+              return merged;
+            });
+            addAudit("Daily Record Calls Import",evCount+" answered calls ("+inb+" in / "+outb+" out) across "+people+" agents");
+            toast2("Call Handle Times imported: "+evCount+" answered calls ("+inb+" in / "+outb+" out) across "+people+" agents."+(skippedNoMatch?" "+skippedNoMatch+" unmatched names skipped.":""));
+          } else {
+            toast2("Call Handle Times: no answered calls matched a roster member"+(skippedNoMatch?" ("+skippedNoMatch+" unmatched names).":"."));
+          }
         }
 
 

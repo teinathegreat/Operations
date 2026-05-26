@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.5.0";
+const APP_VERSION="2.5.1";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -3261,6 +3261,10 @@ function App(){
   // View As removed
   const effectiveUser=currentUser;
   const isAdmin=currentUser?.role==="admin";
+  // v2.5: the single "config owner" — the only account allowed to write KPI targets, roster and
+  // daily config. Prevents a SECOND admin's stale session from ever reverting these. (Teina is
+  // already the designated super-admin elsewhere, e.g. the version editor.)
+  const isOwner=currentUser?.username==="Teina";
   const isLeader=currentUser?.role==="leader";
   const isGuest=currentUser?.role==="guest";
   const[pw,setPw]=useState("");const[pwErr,setPwErr]=useState("");const[showPw,setShowPw]=useState(false);
@@ -4458,7 +4462,7 @@ function App(){
         }catch(e){console.error("Dashboard refresh failed:",e);}
         setTimeout(()=>{saveEnabled.current=prev;},300);
       };
-      fetchAppData();const directFetchConfig=async(prefix,setter)=>{const prev2=saveEnabled.current;saveEnabled.current=false;const obj=await dbLoadConfig(prefix);if(obj)setter(obj);setTimeout(()=>{saveEnabled.current=prev2;},300);};if(!icSavingRef.current)directFetchConfig("ic",setIcData);if(!schedSavingRef.current)directFetchConfig("sched",setSchedData);if(!rejSavingRef.current)directFetchConfig("rejcalls",setRejectedCallsData);if(!tlSavingRef.current)directFetchConfig("timeline",setDailyTimelineData);if(!isAdmin)directFetchConfig("dailycfg",setDailyConfig);}},[tab]);
+      fetchAppData();const directFetchConfig=async(prefix,setter)=>{const prev2=saveEnabled.current;saveEnabled.current=false;const obj=await dbLoadConfig(prefix);if(obj)setter(obj);setTimeout(()=>{saveEnabled.current=prev2;},300);};if(!icSavingRef.current)directFetchConfig("ic",setIcData);if(!schedSavingRef.current)directFetchConfig("sched",setSchedData);if(!rejSavingRef.current)directFetchConfig("rejcalls",setRejectedCallsData);if(!tlSavingRef.current)directFetchConfig("timeline",setDailyTimelineData);if(!isOwner)directFetchConfig("dailycfg",setDailyConfig);}},[tab]);
     useEffect(()=>{if(sbUrl&&sbKey)loadFromSupabase();},[]);
     // Periodic read-only self-heal for non-admins. Realtime only delivers changes made while a
     // client stays connected (no backfill), and the per-tab refreshes need a tab switch — so a
@@ -4470,7 +4474,7 @@ function App(){
     // config edit can never be overwritten. Non-admins never edit any of these, so a full refresh
     // of them cannot lose their work.
     useEffect(()=>{
-      if(isAdmin)return;
+      if(isOwner)return;
       const url=sbUrlRef.current||sbUrl;const key=sbKeyRef.current||sbKey;if(!url||!key)return;
       const selfHeal=async()=>{
         if(typeof document!=="undefined"&&document.hidden)return;
@@ -4673,7 +4677,7 @@ function App(){
   useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(capabilities).forEach(([k,v])=>dbSaveConfigKey("caps",k,v));},[capabilities]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(capCriteria).forEach(([k,v])=>dbSaveConfigKey("capcrit",k,v));},[capCriteria]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(permissions).forEach(([k,v])=>dbSaveConfigKey("perms",k,v));},[permissions]);
-  useEffect(()=>{if(!saveEnabled.current||!isAdmin||!dailyConfig)return;Object.entries(dailyConfig).forEach(([k,v])=>dbSaveConfigKey("dailycfg",k,v));},[dailyConfig]);
+  useEffect(()=>{if(!saveEnabled.current||!isOwner||!dailyConfig)return;Object.entries(dailyConfig).forEach(([k,v])=>dbSaveConfigKey("dailycfg",k,v));},[dailyConfig]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(quickNotes).forEach(([k,v])=>dbSaveConfigKey("notes",k,v));},[quickNotes]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;dbSaveConfigKey("sys","quick_refs",quickRefs);},[quickRefs]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;dbSaveConfigKey("sys","update_notes",updateNotes);},[updateNotes]);
@@ -4690,11 +4694,11 @@ function App(){
   useEffect(()=>{if(data&&Object.keys(data).length>0&&roster&&Object.keys(roster).length>0)_appDataLoaded.current=true;},[data,roster]);
   useEffect(()=>{if(!saveEnabled.current)return;if(!_appDataLoaded.current){console.warn("Blocked saving default app_data");return;}appDataLastSavedAt.current=Date.now();dbSaveConfigKey("sys","app_data",data);},[data]);
   // v2.4.3: Separate autosave for tc (team config / KPIs) — protected from cross-contamination with daily data saves
-  // v2.5: admin-only — KPI targets / team config are admin-edited; this prevents any non-admin client (e.g. a session
-  // that loaded stale config) from ever writing them back and reverting your changes.
-  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;if(!_tcLoaded.current)return;dbSaveConfigKey("sys","team_config",tc);},[tc]);
-  // v2.4.3: Separate autosave for roster (admin-only for the same reason)
-  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;if(!_rosterLoaded.current)return;dbSaveConfigKey("sys","team_roster",roster);},[roster]);
+  // v2.5: owner-only — KPI targets / team config are owner-edited; this prevents ANY other client
+  // (including a second admin like Luke) whose session loaded stale config from writing them back.
+  useEffect(()=>{if(!saveEnabled.current||!isOwner)return;if(!_tcLoaded.current)return;dbSaveConfigKey("sys","team_config",tc);},[tc]);
+  // v2.4.3: Separate autosave for roster (owner-only for the same reason)
+  useEffect(()=>{if(!saveEnabled.current||!isOwner)return;if(!_rosterLoaded.current)return;dbSaveConfigKey("sys","team_roster",roster);},[roster]);
 
 
   // All saves handled by syncToSupabase (3-second debounce after any state change)
@@ -5054,7 +5058,7 @@ function App(){
   const[remoteVersion,setRemoteVersion]=useState(()=>{try{return localStorage.getItem("bc_remote_ver")||null;}catch{return null;}});
   const remoteVersionRef=useRef(remoteVersion);
   const setRV=(v)=>{remoteVersionRef.current=v;setRemoteVersion(v);try{localStorage.setItem("bc_remote_ver",v);}catch{}};
-  useEffect(()=>{setVersionOutdated(!!(remoteVersion&&remoteVersion!==APP_VERSION&&remoteVersion>APP_VERSION&&currentUser?.role!=="admin"));},[remoteVersion]);
+  useEffect(()=>{setVersionOutdated(!!(remoteVersion&&remoteVersion!==APP_VERSION&&remoteVersion>APP_VERSION&&currentUser?.username!=="Teina"));},[remoteVersion]);
   useEffect(()=>{if(!currentUser||!sbUrl||!sbKey)return;const checkKill=async()=>{try{const killData=await dbLoadConfig("sys");const killVal=killData?.["kill_"+currentUser.username];if(killVal&&killVal>sessionStart.current){toast2("You've been signed out by an admin.");logout();}}catch{}};const heartbeat=async()=>{try{await dbSaveConfigKeySilent("presence",currentUser.username,{displayName:currentUser.displayName,role:currentUser.role,team:currentUser.team,lastSeen:new Date().toISOString(),version:remoteVersionRef.current||APP_VERSION});const presence=await dbLoadConfig("presence")||{};onlineUsersRef.current=presence;}catch{}};const checkVersion=async()=>{try{const sysConf=await dbLoadConfig("sys");const rv=sysConf?.app_version;if(rv&&rv!==remoteVersionRef.current){setRV(rv);}}catch{}};checkKill();heartbeat();checkVersion();const iv=setInterval(()=>{checkKill();heartbeat();checkVersion();},30000);return()=>clearInterval(iv);},[currentUser?.username]);
   // toast2 defined in db section above
 
@@ -11840,11 +11844,11 @@ const teamMap={
             const cfg=dailyConfig||DEFAULT_DAILY_CONFIG;
             const teams=Object.keys(cfg).filter(tn=>tNames.includes(tn));
             const getSyncPairs=(tn)=>(cfg[tn]?.syncPairs||{});
-            const setSyncPair=(tn,morningKey,eveningKey)=>{setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn],syncPairs:{...(c[tn].syncPairs||{})}};if(eveningKey){c[tn].syncPairs[morningKey]=eveningKey;}else{delete c[tn].syncPairs[morningKey];}const n2=c;dbSaveConfigAll("dailycfg",n2);return n2;});toast2("Sync updated.");};
-            const addField=(tn,shift)=>{var label=window.prompt("Field label:");if(!label)return;var key=label.toLowerCase().replace(/[^a-z0-9]/g,"_").slice(0,30);var typeChoice=window.prompt("Field type?\n\n1 = Number\n2 = Member selection\n3 = Yes / No\n\nEnter 1, 2, or 3:","1");var fType="number";if(typeChoice==="2")fType="members";else if(typeChoice==="3")fType="yesno";var otherShift=shift==="morning"?"evening":"morning";var addBoth=window.confirm("Add this field to "+(otherShift==="morning"?"Morning":"Evening")+" as well?");setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};c[tn][shift]=[...c[tn][shift],{k:key,l:label,t:fType}];if(addBoth){c[tn][otherShift]=[...c[tn][otherShift],{k:key,l:label,t:fType}];}return c;});toast2("Field added"+(addBoth?" to both shifts":"")+".");setTimeout(()=>{if(dailyConfig)dbSaveConfigAll("dailycfg",dailyConfig);},500); };
-            const removeField=(tn,shift,key)=>{if(!window.confirm("Remove this field?"))return;var otherShift=shift==="morning"?"evening":"morning";var rmBoth=cfg[tn]?.[otherShift]?.some(f=>f.k===key)&&window.confirm("Also remove from "+(otherShift==="morning"?"Morning":"Evening")+"?");setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};c[tn][shift]=c[tn][shift].filter(f=>f.k!==key);if(rmBoth)c[tn][otherShift]=c[tn][otherShift].filter(f=>f.k!==key);if(c[tn].syncPairs){const sp={...c[tn].syncPairs};Object.entries(sp).forEach(([mk,ek])=>{if(mk===key||ek===key)delete sp[mk];});c[tn].syncPairs=sp;}dbSaveConfigAll("dailycfg",c);return c;});};
+            const setSyncPair=(tn,morningKey,eveningKey)=>{if(!isOwner){toast2("Only the owner can change the daily config.");return;}setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn],syncPairs:{...(c[tn].syncPairs||{})}};if(eveningKey){c[tn].syncPairs[morningKey]=eveningKey;}else{delete c[tn].syncPairs[morningKey];}const n2=c;dbSaveConfigAll("dailycfg",n2);return n2;});toast2("Sync updated.");};
+            const addField=(tn,shift)=>{if(!isOwner){toast2("Only the owner can change the daily config.");return;}var label=window.prompt("Field label:");if(!label)return;var key=label.toLowerCase().replace(/[^a-z0-9]/g,"_").slice(0,30);var typeChoice=window.prompt("Field type?\n\n1 = Number\n2 = Member selection\n3 = Yes / No\n\nEnter 1, 2, or 3:","1");var fType="number";if(typeChoice==="2")fType="members";else if(typeChoice==="3")fType="yesno";var otherShift=shift==="morning"?"evening":"morning";var addBoth=window.confirm("Add this field to "+(otherShift==="morning"?"Morning":"Evening")+" as well?");setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};c[tn][shift]=[...c[tn][shift],{k:key,l:label,t:fType}];if(addBoth){c[tn][otherShift]=[...c[tn][otherShift],{k:key,l:label,t:fType}];}return c;});toast2("Field added"+(addBoth?" to both shifts":"")+".");setTimeout(()=>{if(dailyConfig)dbSaveConfigAll("dailycfg",dailyConfig);},500); };
+            const removeField=(tn,shift,key)=>{if(!isOwner){toast2("Only the owner can change the daily config.");return;}if(!window.confirm("Remove this field?"))return;var otherShift=shift==="morning"?"evening":"morning";var rmBoth=cfg[tn]?.[otherShift]?.some(f=>f.k===key)&&window.confirm("Also remove from "+(otherShift==="morning"?"Morning":"Evening")+"?");setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};c[tn][shift]=c[tn][shift].filter(f=>f.k!==key);if(rmBoth)c[tn][otherShift]=c[tn][otherShift].filter(f=>f.k!==key);if(c[tn].syncPairs){const sp={...c[tn].syncPairs};Object.entries(sp).forEach(([mk,ek])=>{if(mk===key||ek===key)delete sp[mk];});c[tn].syncPairs=sp;}dbSaveConfigAll("dailycfg",c);return c;});};
             const getPartner=(tn,shift,key)=>{const sp=getSyncPairs(tn);if(shift==="morning")return sp[key]||null;return Object.entries(sp).find(([,v])=>v===key)?.[0]||null;};
-            const moveField=(tn,shift,key,dir)=>{setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};const arr=[...c[tn][shift]];const idx=arr.findIndex(f=>f.k===key);const nIdx=idx+dir;if(nIdx<0||nIdx>=arr.length)return c;[arr[idx],arr[nIdx]]=[arr[nIdx],arr[idx]];c[tn][shift]=arr;var otherShift=shift==="morning"?"evening":"morning";const oArr=[...c[tn][otherShift]];const sp=getSyncPairs(tn);var partnerKey=null;if(shift==="morning")partnerKey=sp[key];else partnerKey=Object.entries(sp).find(([,v])=>v===key)?.[0]||null;if(!partnerKey)partnerKey=key;var oIdx=oArr.findIndex(f=>f.k===partnerKey);if(oIdx<0&&idx<oArr.length)oIdx=idx;if(oIdx>=0){const oNIdx=oIdx+dir;if(oNIdx>=0&&oNIdx<oArr.length){[oArr[oIdx],oArr[oNIdx]]=[oArr[oNIdx],oArr[oIdx]];c[tn][otherShift]=oArr;}}dbSaveConfigAll("dailycfg",c);return c;});};
+            const moveField=(tn,shift,key,dir)=>{if(!isOwner){toast2("Only the owner can change the daily config.");return;}setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};const arr=[...c[tn][shift]];const idx=arr.findIndex(f=>f.k===key);const nIdx=idx+dir;if(nIdx<0||nIdx>=arr.length)return c;[arr[idx],arr[nIdx]]=[arr[nIdx],arr[idx]];c[tn][shift]=arr;var otherShift=shift==="morning"?"evening":"morning";const oArr=[...c[tn][otherShift]];const sp=getSyncPairs(tn);var partnerKey=null;if(shift==="morning")partnerKey=sp[key];else partnerKey=Object.entries(sp).find(([,v])=>v===key)?.[0]||null;if(!partnerKey)partnerKey=key;var oIdx=oArr.findIndex(f=>f.k===partnerKey);if(oIdx<0&&idx<oArr.length)oIdx=idx;if(oIdx>=0){const oNIdx=oIdx+dir;if(oNIdx>=0&&oNIdx<oArr.length){[oArr[oIdx],oArr[oNIdx]]=[oArr[oNIdx],oArr[oIdx]];c[tn][otherShift]=oArr;}}dbSaveConfigAll("dailycfg",c);return c;});};
             const startEdit=(tn,shift,f)=>{setDcEditField({team:tn,shift,key:f.k});setDcEditLabel(f.l);setDcEditType(f.t);};
             const saveEdit=()=>{if(!dcEditField||!dcEditLabel.trim())return;setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[dcEditField.team]={...c[dcEditField.team]};c[dcEditField.team][dcEditField.shift]=c[dcEditField.team][dcEditField.shift].map(f=>f.k===dcEditField.key?{...f,l:dcEditLabel.trim(),t:dcEditType}:f);return c;});addAudit("Daily Config Edited",dcEditField.shift+" field: "+dcEditLabel.trim());setDcEditField(null);toast2("Field updated.");};
             const isEditing=(tn,shift,key)=>dcEditField&&dcEditField.team===tn&&dcEditField.shift===shift&&dcEditField.key===key;
@@ -12165,7 +12169,7 @@ const teamMap={
                 })}</tbody>
               </table>
               {Object.keys(kpiEditVals).length>0&&(<div style={{display:"flex",gap:8,padding:"12px 20px",borderTop:"1px solid #e5e7eb",background:"#f9fafb"}}>
-                <button onClick={()=>{const updatedKpis=(tc[kpiTeam]?.kpis||[]).map(k=>{const e2=kpiEditVals[k.key];return e2?{...k,...e2}:k;});const newTc={...tc,[kpiTeam]:{...tc[kpiTeam],kpis:updatedKpis}};setTc(newTc);
+                <button onClick={()=>{if(!isOwner){toast2("Only the owner can change KPI targets.");return;}const updatedKpis=(tc[kpiTeam]?.kpis||[]).map(k=>{const e2=kpiEditVals[k.key];return e2?{...k,...e2}:k;});const newTc={...tc,[kpiTeam]:{...tc[kpiTeam],kpis:updatedKpis}};setTc(newTc);
                   // Explicit save to Supabase — don't wait on the auto-save useEffect, which has hash-dedup that can sometimes skip
                   dbSaveConfigKey("sys","app_data",{...data,_r:roster,_tc:newTc});
                   addAudit("KPI Targets Updated",kpiTeam+": "+Object.keys(kpiEditVals).join(", "));setKpiEditVals({});toast2("KPI targets saved.");}} style={S.p1}>Save Changes</button>

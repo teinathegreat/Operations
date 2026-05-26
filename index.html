@@ -3321,6 +3321,7 @@ function App(){
   const[kpiEditVals,setKpiEditVals]=useState({});
   const[kpiTargetsLocked,setKpiTargetsLocked]=useState(true);
   const[callReviewTeams,setCallReviewTeams]=useState(()=>{return["Guest Support","Owner Support","Reputation and Resolutions"];});
+  const[phoneMaskOn,setPhoneMaskOn]=useState(true);
   // ── PROFILE & THEME ─────────────────────────────────────────────────────
   const[avatar,setAvatar]=useState(()=>localStorage.getItem("bc_avatar_"+(currentUser?.username||""))||null);
   const[showProfile,setShowProfile]=useState(false);
@@ -4069,7 +4070,7 @@ function App(){
     console.log("Migrating system config to config_rows...");
     // First check what already exists in config_rows so we don't overwrite
     const existingSys=await dbLoadConfig("sys")||{};
-    const sysKeys=["app_data","pending_edits","call_review_teams","sync_version","quick_refs","update_notes","api_keys","app_version","accounts","expectations_config","team_config","team_roster"];
+    const sysKeys=["app_data","pending_edits","call_review_teams","sync_version","quick_refs","update_notes","api_keys","app_version","accounts","expectations_config","team_config","team_roster","phone_mask"];
     for(const key of sysKeys){
       if(existingSys[key]){console.log("Skipping sys:"+key+" (already exists)");continue;}
       try{const val=await sbLoad("bc_store",key);
@@ -4211,6 +4212,7 @@ function App(){
       // Owner Withdrawals — saved CSV (single key)
       if(sysConf.owner_withdrawals&&typeof sysConf.owner_withdrawals==="object"){setOwnerWithdrawals(sysConf.owner_withdrawals);}
       if(sysConf.app_version)setRV(sysConf.app_version);
+      {let pmv=sysConf.phone_mask;if(pmv&&typeof pmv==="object"&&"_v" in pmv)pmv=pmv._v;if(typeof pmv==="boolean")setPhoneMaskOn(pmv);}
       if(rc_presence)onlineUsersRef.current=rc_presence;
       // Check if config_rows has data — if not, fall back to bc_store for migration
       const configMigrated=rc_caps!==null||rc_pm!==null||rc_sd!==null||Object.keys(sysConf).length>0;
@@ -4448,6 +4450,7 @@ function App(){
           if(d){const{_r,_tc,...rest}=d;setData(rest);}
           if(tcVal&&typeof tcVal==="object")setTc(tcVal);
           if(rVal&&typeof rVal==="object")setRoster(migrateRoster(fixRosterNames(rVal)));
+          {let pmv=sysConf?.phone_mask;if(pmv&&typeof pmv==="object"&&"_v" in pmv)pmv=pmv._v;if(typeof pmv==="boolean")setPhoneMaskOn(pmv);}
         }catch(e){console.error("Dashboard refresh failed:",e);}
         setTimeout(()=>{saveEnabled.current=prev;},300);
       };
@@ -4475,6 +4478,7 @@ function App(){
           let rVal=sysConf?.team_roster;if(rVal&&typeof rVal==="object"&&"_v" in rVal&&"_origin" in rVal)rVal=rVal._v;
           if(tcVal&&typeof tcVal==="object")setTc(tcVal);
           if(rVal&&typeof rVal==="object")setRoster(migrateRoster(fixRosterNames(rVal)));
+          {let pmv=sysConf?.phone_mask;if(pmv&&typeof pmv==="object"&&"_v" in pmv)pmv=pmv._v;if(typeof pmv==="boolean")setPhoneMaskOn(pmv);}
           const dc=await dbLoadConfig("dailycfg");if(dc&&typeof dc==="object")setDailyConfig(dc);
           const icv=await dbLoadConfig("ic");if(icv&&typeof icv==="object")setIcData(icv);
           const sdv=await dbLoadConfig("sched");if(sdv&&typeof sdv==="object")setSchedData(sdv);
@@ -5978,6 +5982,7 @@ function App(){
           const hdr=parseRowH(rows[0]).map(h=>h.trim());
           const ciInc=(frag)=>hdr.findIndex(h=>h.toLowerCase().includes(frag));
           const iAgent=ciInc("agent"),iDate=ciInc("date"),iTime=hdr.findIndex(h=>h.trim().toLowerCase()==="time"),iDir=ciInc("direction"),iTalk=ciInc("talk"),iAns=ciInc("answered");
+          const iPhone=hdr.findIndex((h,idx)=>idx!==iAgent&&idx!==iDate&&idx!==iTime&&idx!==iDir&&idx!==iTalk&&idx!==iAns&&/phone|caller|msisdn|external|contact number|customer number|^number$|number called|from number|to number/i.test(h.trim()));
           if(iAgent<0||iDate<0||iTime<0||iDir<0){toast2("Call Handle Times: missing expected columns (Agent / Date / Time / Direction).");return;}
           const ownedTypes=new Set(["call_inbound","call_outbound"]);
           const fmtDur=(s)=>{s=Math.max(0,Math.round(s));const m=Math.floor(s/60),ss=s%60;return m>0?(ss>0?m+"m "+ss+"s":m+"m"):ss+"s";};
@@ -5997,7 +6002,8 @@ function App(){
             const agent=normalizeAgentToRoster(rawName,roster);
             if(!agent){skippedNoMatch++;continue;} // only roster members appear on the Daily Record
             const talk=iTalk>=0?(parseInt(row[iTalk],10)||0):0;
-            const detail=(isIn?"Inbound":"Outbound")+" call · "+fmtDur(talk)+(ans>1?(" · "+ans+" answered"):"");
+            const phone=iPhone>=0?(row[iPhone]||"").trim().replace(/^['"]+|['"]+$/g,"").trim():"";
+            const detail=(isIn?"Inbound":"Outbound")+" call · "+fmtDur(talk)+(phone?(" · "+(isIn?"from ":"to ")+phone):"")+(ans>1?(" · "+ans+" answered"):"");
             if(!tlByPerson[agent])tlByPerson[agent]={};
             if(!tlByPerson[agent][nz.iso])tlByPerson[agent][nz.iso]=[];
             tlByPerson[agent][nz.iso].push({type,time:nz.time,detail,secs:talk});
@@ -8757,6 +8763,9 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
         const fmt12=(min)=>{let h=Math.floor(min/60),m=min%60;const ap=h>=12?"pm":"am";let hh=h%12;if(hh===0)hh=12;return hh+(m?":"+String(m).padStart(2,"0"):"")+ap;};
         const INTERCOM_WS="mofjwruw";
         const ticketUrl=(cid)=>cid?"https://app.intercom.com/a/inbox/"+INTERCOM_WS+"/inbox/search/conversation/"+cid+"?query="+cid:null;
+        // Customer phone privacy: when the admin toggle is on, mask numbers for everyone except admins.
+        const showMaskedPhone=phoneMaskOn&&!isAdmin;
+        const dShow=(s)=>showMaskedPhone?String(s||"").replace(/\+?\d{6,}/g,m=>{const d=m.replace(/\D/g,"");return d.length>4?"•••"+d.slice(-4):"•••";}):s;
         const shiftDate=(delta)=>{const d=new Date(activeDate+"T12:00:00");d.setDate(d.getDate()+delta);setDrDate(d.toISOString().slice(0,10));};
         const btn={background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:"7px 11px",cursor:"pointer",fontSize:13,fontWeight:600,color:"#4b5563"};
         return <div>
@@ -8780,7 +8789,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
               {bands.map((b,i)=>{const aTop=(b.availS-START*60)/totalMin*trackH;const aH=(b.availE-b.availS)/totalMin*trackH;const sTop=(Math.max(b.shiftS,START*60)-START*60)/totalMin*trackH;const sH=(Math.min(b.shiftE,END*60)-Math.max(b.shiftS,START*60))/totalMin*trackH;return <React.Fragment key={"band"+i}><div style={{position:"absolute",top:aTop,height:aH,left:0,right:0,background:"#f0fdfa",borderTop:"1px dashed #5eead4",borderBottom:"1px dashed #5eead4",pointerEvents:"none"}}/><div style={{position:"absolute",top:sTop,height:Math.max(2,sH),left:0,width:4,background:"#0d9488",borderRadius:2,pointerEvents:"none"}}/><span style={{position:"absolute",top:aTop+2,left:8,fontSize:9,fontWeight:800,color:"#0d9488",letterSpacing:".05em",pointerEvents:"none",opacity:.7}}>ROSTERED</span></React.Fragment>;})}
               {Array.from({length:END-START+1}).map((_,i)=><div key={i} style={{position:"absolute",top:i*HOUR_PX,left:0,right:0,borderTop:"1px solid #f1f5f9"}}><span style={{position:"absolute",left:-60,top:-7,fontSize:10,color:"#9ca3af",width:52,textAlign:"right"}}>{fmt12((START+i)*60)}</span></div>)}
               {gaps.map((g,i)=>{const top=(g.from-START*60)/totalMin*trackH;const h=(g.to-g.from)/totalMin*trackH;return <div key={"g"+i} style={{position:"absolute",top,height:h,left:0,right:8,background:"repeating-linear-gradient(45deg,#fef2f2,#fef2f2 6px,transparent 6px,transparent 13px)",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><span style={{fontSize:10,fontWeight:700,color:"#dc2626",background:"#fff",padding:"2px 9px",borderRadius:10,border:"1px solid #fecaca"}}>{fmtDur(g.mins)} gap</span></div>;})}
-              {placed.map((c,i)=>{const t=_DR_TYPES[c.type]||_DR_TYPES.ticket_closed;const detailStr=Object.entries(c.details).map(([d,n])=>n>1?d+"×"+n:d).join(", ");const timeRange=c.minutes===c.maxMin?fmt12(c.minutes):fmt12(c.minutes)+"–"+fmt12(c.maxMin);const link=(c.type==="ticket_closed"&&c.cids&&c.cids.length===1)?ticketUrl(c.cids[0]):null;const chipStyle={display:"flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,borderRadius:7,padding:"3px 8px",fontSize:11,fontWeight:600,color:t.c,height:"100%",boxSizing:"border-box",overflow:"hidden",whiteSpace:"nowrap",boxShadow:"0 1px 2px rgba(0,0,0,.04)",textDecoration:"none"};const inner=<React.Fragment><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:10,opacity:.8,flexShrink:0}}>{fmt12(c.minutes)}</span><span style={{flexShrink:0}}>{t.ic}</span><span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{t.label}{c.count>1?" ×"+c.count:""}</span>{link&&<span style={{flexShrink:0,opacity:.65,fontSize:10}}>↗</span>}</React.Fragment>;const titleTxt=timeRange+" · "+t.label+(c.count>1?" ×"+c.count:"")+(detailStr?" ("+detailStr+")":"")+(link?" · click to open in Intercom":(c.type==="ticket_closed"&&c.cids&&c.cids.length>1?" · open individual tickets in List view":""));return <div key={i} title={titleTxt} style={{position:"absolute",top:c._top,left:"calc("+c._lane+" * (100% - 8px)/"+laneCount+")",width:"calc((100% - 8px)/"+laneCount+")",height:CHIP_H,paddingRight:4,boxSizing:"border-box"}}>{link?<a href={link} target="_blank" rel="noopener noreferrer" style={{...chipStyle,cursor:"pointer"}}>{inner}</a>:<span style={chipStyle}>{inner}</span>}</div>;})}
+              {placed.map((c,i)=>{const t=_DR_TYPES[c.type]||_DR_TYPES.ticket_closed;const detailStr=Object.entries(c.details).map(([d,n])=>n>1?d+"×"+n:d).join(", ");const timeRange=c.minutes===c.maxMin?fmt12(c.minutes):fmt12(c.minutes)+"–"+fmt12(c.maxMin);const link=(c.type==="ticket_closed"&&c.cids&&c.cids.length===1)?ticketUrl(c.cids[0]):null;const chipStyle={display:"flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,borderRadius:7,padding:"3px 8px",fontSize:11,fontWeight:600,color:t.c,height:"100%",boxSizing:"border-box",overflow:"hidden",whiteSpace:"nowrap",boxShadow:"0 1px 2px rgba(0,0,0,.04)",textDecoration:"none"};const inner=<React.Fragment><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:10,opacity:.8,flexShrink:0}}>{fmt12(c.minutes)}</span><span style={{flexShrink:0}}>{t.ic}</span><span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{t.label}{c.count>1?" ×"+c.count:""}</span>{link&&<span style={{flexShrink:0,opacity:.65,fontSize:10}}>↗</span>}</React.Fragment>;const titleTxt=timeRange+" · "+t.label+(c.count>1?" ×"+c.count:"")+(detailStr?" ("+dShow(detailStr)+")":"")+(link?" · click to open in Intercom":(c.type==="ticket_closed"&&c.cids&&c.cids.length>1?" · open individual tickets in List view":""));return <div key={i} title={titleTxt} style={{position:"absolute",top:c._top,left:"calc("+c._lane+" * (100% - 8px)/"+laneCount+")",width:"calc((100% - 8px)/"+laneCount+")",height:CHIP_H,paddingRight:4,boxSizing:"border-box"}}>{link?<a href={link} target="_blank" rel="noopener noreferrer" style={{...chipStyle,cursor:"pointer"}}>{inner}</a>:<span style={chipStyle}>{inner}</span>}</div>;})}
               {inHours.length===0&&<div style={{position:"absolute",top:trackH/2-24,left:0,right:0,textAlign:"center",color:"#9ca3af",fontSize:13,padding:"0 20px"}}>No timed activity recorded for {fmtNZDate(activeDate)}.<div style={{fontSize:11,marginTop:4}}>Once reports with timestamps are connected, the day will fill in here.</div></div>}
             </div>
           </div>
@@ -8788,7 +8797,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
           </React.Fragment>:<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
             {events.length===0
               ?<div style={{padding:"30px 20px",textAlign:"center",color:"#9ca3af",fontSize:13}}>No activity recorded for {fmtNZDate(activeDate)}.</div>
-              :events.map((e,i)=>{const t=_DR_TYPES[e.type]||_DR_TYPES.ticket_closed;const oh=e.minutes<START*60||e.minutes>END*60;const turl=e.type==="ticket_closed"&&e.cid?ticketUrl(e.cid):null;return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 14px",borderTop:i?"1px solid #f3f4f6":"none"}}><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:12,color:"#6b7280",width:64,flexShrink:0,textAlign:"right"}}>{fmt12(e.minutes)}</span><span style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700,flexShrink:0,minWidth:118,boxSizing:"border-box"}}>{t.ic} {t.label}</span><span style={{color:"#374151",fontSize:13,flex:1,minWidth:0,wordBreak:"break-word"}}>{turl?<React.Fragment>{e.detail?e.detail+" · ":""}<a href={turl} target="_blank" rel="noopener noreferrer" style={{color:"#059669",fontWeight:700,textDecoration:"none"}}>Open ticket #{e.cid} ↗</a></React.Fragment>:(e.detail||"—")}</span>{oh&&<span style={{fontSize:10,color:"#9ca3af",flexShrink:0,fontStyle:"italic"}}>outside hours</span>}</div>;})}
+              :events.map((e,i)=>{const t=_DR_TYPES[e.type]||_DR_TYPES.ticket_closed;const oh=e.minutes<START*60||e.minutes>END*60;const turl=e.type==="ticket_closed"&&e.cid?ticketUrl(e.cid):null;return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 14px",borderTop:i?"1px solid #f3f4f6":"none"}}><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:12,color:"#6b7280",width:64,flexShrink:0,textAlign:"right"}}>{fmt12(e.minutes)}</span><span style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700,flexShrink:0,minWidth:118,boxSizing:"border-box"}}>{t.ic} {t.label}</span><span style={{color:"#374151",fontSize:13,flex:1,minWidth:0,wordBreak:"break-word"}}>{turl?<React.Fragment>{e.detail?dShow(e.detail)+" · ":""}<a href={turl} target="_blank" rel="noopener noreferrer" style={{color:"#059669",fontWeight:700,textDecoration:"none"}}>Open ticket #{e.cid} ↗</a></React.Fragment>:(dShow(e.detail)||"—")}</span>{oh&&<span style={{fontSize:10,color:"#9ca3af",flexShrink:0,fontStyle:"italic"}}>outside hours</span>}</div>;})}
           </div>}
         </div>;
       })()}
@@ -11876,6 +11885,21 @@ const teamMap={
           </div>
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,maxWidth:820}}>
+
+            {/* Customer phone privacy */}
+            <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden",gridColumn:"1 / -1"}}>
+              <div style={{padding:"14px 20px",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:16}}>📵</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:14,color:"#111827"}}>Customer phone privacy</div>
+                  <div style={{fontSize:12,color:"#9ca3af",marginTop:1}}>How customer phone numbers appear on the Daily Record</div>
+                </div>
+              </div>
+              <div style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:14}}>
+                <button onClick={()=>{const v=!phoneMaskOn;setPhoneMaskOn(v);try{dbSaveConfigKey("sys","phone_mask",v);}catch(e){}addAudit("Phone Privacy Changed",v?"Masked for team leads":"Full numbers shown to all");toast2(v?"Phone numbers masked for team leads.":"Full phone numbers now shown to everyone.");}} style={{position:"relative",width:48,height:26,borderRadius:13,border:"none",cursor:"pointer",background:phoneMaskOn?"#0d9488":"#d1d5db",transition:"background .15s",flexShrink:0}}><span style={{position:"absolute",top:3,left:phoneMaskOn?25:3,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left .15s",boxShadow:"0 1px 2px rgba(0,0,0,.2)"}}/></button>
+                <div style={{fontSize:13,color:"#374151",lineHeight:1.45}}><b>{phoneMaskOn?"Masked for team leads":"Full numbers shown"}</b> — {phoneMaskOn?"team leads see only the last 4 digits (e.g. •••5124); you (admin) always see the full number.":"everyone, including team leads, sees the complete customer phone number."}</div>
+              </div>
+            </div>
 
             {/* Database Connection */}
             <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden",gridColumn:"1 / -1"}}>

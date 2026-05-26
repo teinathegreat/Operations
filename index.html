@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.5.1";
+const APP_VERSION="2.5.2";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -5059,7 +5059,7 @@ function App(){
   const remoteVersionRef=useRef(remoteVersion);
   const setRV=(v)=>{remoteVersionRef.current=v;setRemoteVersion(v);try{localStorage.setItem("bc_remote_ver",v);}catch{}};
   useEffect(()=>{setVersionOutdated(!!(remoteVersion&&remoteVersion!==APP_VERSION&&remoteVersion>APP_VERSION&&currentUser?.username!=="Teina"));},[remoteVersion]);
-  useEffect(()=>{if(!currentUser||!sbUrl||!sbKey)return;const checkKill=async()=>{try{const killData=await dbLoadConfig("sys");const killVal=killData?.["kill_"+currentUser.username];if(killVal&&killVal>sessionStart.current){toast2("You've been signed out by an admin.");logout();}}catch{}};const heartbeat=async()=>{try{await dbSaveConfigKeySilent("presence",currentUser.username,{displayName:currentUser.displayName,role:currentUser.role,team:currentUser.team,lastSeen:new Date().toISOString(),version:remoteVersionRef.current||APP_VERSION});const presence=await dbLoadConfig("presence")||{};onlineUsersRef.current=presence;}catch{}};const checkVersion=async()=>{try{const sysConf=await dbLoadConfig("sys");const rv=sysConf?.app_version;if(rv&&rv!==remoteVersionRef.current){setRV(rv);}}catch{}};checkKill();heartbeat();checkVersion();const iv=setInterval(()=>{checkKill();heartbeat();checkVersion();},30000);return()=>clearInterval(iv);},[currentUser?.username]);
+  useEffect(()=>{if(!currentUser||!sbUrl||!sbKey)return;const checkKill=async()=>{try{const killData=await dbLoadConfig("sys");const killVal=killData?.["kill_"+currentUser.username];if(killVal&&killVal>sessionStart.current){toast2("You've been signed out by an admin.");logout();}}catch{}};const heartbeat=async()=>{try{await dbSaveConfigKeySilent("presence",currentUser.username,{displayName:currentUser.displayName,role:currentUser.role,team:currentUser.team,lastSeen:new Date().toISOString(),version:APP_VERSION});const presence=await dbLoadConfig("presence")||{};onlineUsersRef.current=presence;}catch{}};const checkVersion=async()=>{try{const sysConf=await dbLoadConfig("sys");const rv=sysConf?.app_version;if(rv&&rv!==remoteVersionRef.current){setRV(rv);}}catch{}};checkKill();heartbeat();checkVersion();const iv=setInterval(()=>{checkKill();heartbeat();checkVersion();},30000);return()=>clearInterval(iv);},[currentUser?.username]);
   // toast2 defined in db section above
 
   const pk=pt==="month"?`m__${mo}`:`w__${wk}`;
@@ -9417,7 +9417,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             {sbCollapsed&&<button onClick={()=>setSbCollapsed(false)} title="Expand sidebar" style={{background:"transparent",border:"none",color:"#9ca3af",cursor:"pointer",padding:6,borderRadius:6,fontSize:18,lineHeight:1,fontFamily:"inherit"}} onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,.06)";e.currentTarget.style.color="#e5e7eb";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#9ca3af";}}>{"»"}</button>}
             {!sbCollapsed&&<div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:700,fontSize:15,color:"#f3f4f6",letterSpacing:"-.01em"}}>Bachcare</div>
-              <div style={{fontSize:10,color:"#4b5563",fontWeight:500,letterSpacing:".04em",textTransform:"uppercase"}}>{"Operations"}<span onClick={()=>{if(currentUser?.username==="Teina"){setVersionEditVal(remoteVersion||APP_VERSION);setVersionEditOpen(true);}}} style={{marginLeft:6,fontSize:9,color:"#22d3ee",fontWeight:700,letterSpacing:0,cursor:currentUser?.username==="Teina"?"pointer":"default"}}>{" v"+(remoteVersion||APP_VERSION)}</span></div>
+              <div style={{fontSize:10,color:"#4b5563",fontWeight:500,letterSpacing:".04em",textTransform:"uppercase"}}>{"Operations"}<span style={{marginLeft:6,fontSize:9,color:"#22d3ee",fontWeight:700,letterSpacing:0}}>{" v"+APP_VERSION}</span></div>
             </div>}
             {!sbCollapsed&&<button onClick={()=>setSbCollapsed(true)} title="Collapse sidebar" style={{background:"transparent",border:"none",color:"#6b7280",cursor:"pointer",padding:6,borderRadius:6,fontSize:14,lineHeight:1}} onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,.06)";e.currentTarget.style.color="#9ca3af";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#6b7280";}}>{"«"}</button>}
           </div>
@@ -12356,28 +12356,6 @@ const teamMap={
         <div style={{background:"#f9fafb",borderRadius:8,padding:"12px 14px",fontSize:11,color:"#6b7280"}}>Preview will be copied as a formatted table ready for Microsoft Teams.</div>
       </Modal>}
       {showProfile&&<div onClick={()=>setShowProfile(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.3)",zIndex:199}}/>}
-      {versionEditOpen&&<Modal title="Push Version Update" onClose={()=>setVersionEditOpen(false)}
-        footer={<><button onClick={()=>setVersionEditOpen(false)} style={S.out}>Cancel</button><button onClick={async()=>{
-          if(!versionEditVal.trim())return toast2("Enter a version number.");
-          try{
-            await dbSaveConfigKey("sys","app_version",versionEditVal.trim());
-            setRV(versionEditVal.trim());
-            addAudit("Version Published","v"+versionEditVal.trim()+" pushed to all users");
-            toast2("Version v"+versionEditVal.trim()+" published! All other users will be forced to update.");
-            setVersionEditOpen(false);
-          }catch(e){toast2("Failed: "+e.message);}
-        }} style={{...S.p1,background:"#dc2626"}}>Force Update All Users</button></>}>
-        <div style={{textAlign:"center",padding:"10px 0 20px"}}>
-          <div style={{fontSize:48,marginBottom:12}}>🚀</div>
-          <div style={{fontSize:14,color:"#374151",marginBottom:20}}>This will force every other user to refresh their browser and load the latest version. Only do this after you've pushed new code to GitHub.</div>
-          <div style={{marginBottom:16}}>
-            <div style={{fontSize:11,fontWeight:600,color:"#4b5563",marginBottom:6}}>New Version Number</div>
-            <input value={versionEditVal} onChange={e=>setVersionEditVal(e.target.value)} placeholder="e.g. 1.0.7" style={{...S.inp,textAlign:"center",fontSize:18,fontWeight:800,maxWidth:200,margin:"0 auto"}}/>
-          </div>
-          <div style={{fontSize:12,color:"#9ca3af"}}>{"Current version in code: v"+APP_VERSION}</div>
-          <div style={{marginTop:16,padding:"10px 16px",background:"#fef2f2",borderRadius:8,border:"1px solid #fecaca",fontSize:12,color:"#dc2626",fontWeight:500}}>⚠️ All users currently online will see a full-screen update wall and must refresh to continue.</div>
-        </div>
-      </Modal>}
       {/* Abandoned Calls detail modal — opens from People card or team header */}
       {abandonedModal&&(()=>{try{
         const _isDark=(typeof document!=="undefined")&&(document.documentElement.getAttribute("data-theme")==="dark"||document.body.getAttribute("data-theme")==="dark");

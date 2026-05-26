@@ -4892,7 +4892,7 @@ function App(){
         dayArr.forEach(ev=>{
           if(!ev)return;
           const min=ev.minutes!=null?ev.minutes:_toMinutes(ev.time);
-          if(min!=null)events.push({type:ev.type||"ticket_closed",time:ev.time||"",minutes:min,label:ev.label||(_DR_TYPES[ev.type]?.label||"Event"),detail:ev.detail||"",source:ev.source||"timeline"});
+          if(min!=null)events.push({type:ev.type||"ticket_closed",time:ev.time||"",minutes:min,label:ev.label||(_DR_TYPES[ev.type]?.label||"Event"),detail:ev.detail||"",cid:ev.cid||"",source:ev.source||"timeline"});
         });
       }
     }catch(e){console.error("getDayEvents timeline err",e);}
@@ -5630,6 +5630,7 @@ function App(){
           const iAssigned=col2("Assigned to (name)");
           const iLastClosedAt=col2("Last closed at");
           const iChannel=col2("Channel");
+          const iConvId=col2("Conversation ID");
           if(iFirstReply<0){toast2("Missing response time columns.");return;}
           if(iTeam<0){toast2("Missing 'Team assigned to (name)' column.");return;}
           // Daily Record timeline: bucket ticket-close events by closer → NZ date.
@@ -5653,9 +5654,10 @@ function App(){
                   // Only keep real people in the roster (skip teams/unknowns)
                   if(getPersonTeam(closer)){
                     const ch=iChannel>=0?(row[iChannel]||"").trim():"";
+                    const cid=iConvId>=0?(row[iConvId]||"").replace(/[^0-9]/g,""):"";
                     if(!tlByPerson[closer])tlByPerson[closer]={};
                     if(!tlByPerson[closer][m[1]])tlByPerson[closer][m[1]]=[];
-                    tlByPerson[closer][m[1]].push({type:"ticket_closed",time:m[2],detail:ch});
+                    tlByPerson[closer][m[1]].push({type:"ticket_closed",time:m[2],detail:ch,cid});
                   }
                 }
               }
@@ -8718,7 +8720,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
         const outHours=events.filter(e=>e.minutes<START*60||e.minutes>END*60);
         // Cluster consecutive same-type events within 6 min into one chip (handles burst-closing).
         const CLUSTER_GAP=6;const clusters=[];
-        inHours.forEach(e=>{const last=clusters[clusters.length-1];if(last&&last.type===e.type&&e.minutes-last.maxMin<=CLUSTER_GAP){last.count++;last.maxMin=e.minutes;if(e.detail)last.details[e.detail]=(last.details[e.detail]||0)+1;}else{clusters.push({type:e.type,minutes:e.minutes,maxMin:e.minutes,count:1,details:e.detail?{[e.detail]:1}:{}});}});
+        inHours.forEach(e=>{const last=clusters[clusters.length-1];if(last&&last.type===e.type&&e.minutes-last.maxMin<=CLUSTER_GAP){last.count++;last.maxMin=e.minutes;if(e.detail)last.details[e.detail]=(last.details[e.detail]||0)+1;if(e.cid)last.cids.push(e.cid);}else{clusters.push({type:e.type,minutes:e.minutes,maxMin:e.minutes,count:1,details:e.detail?{[e.detail]:1}:{},cids:e.cid?[e.cid]:[]});}});
         // Lane layout: vertical position = true time; overlapping clusters sit side-by-side.
         const CHIP_H=26;const laneBottoms=[];
         const placed=clusters.map(c=>{const top=(c.minutes-START*60)/totalMin*trackH;let lane=0;while(lane<laneBottoms.length&&laneBottoms[lane]>top-2)lane++;laneBottoms[lane]=top+CHIP_H;return{...c,_top:top,_lane:lane};});
@@ -8753,6 +8755,8 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
         const counts={};events.forEach(e=>{counts[e.type]=(counts[e.type]||0)+1;});
         const fmtDur=(m)=>{const h=Math.floor(m/60),mm=m%60;return (h?h+"h ":"")+(mm?mm+"m":(h?"":"0m"));};
         const fmt12=(min)=>{let h=Math.floor(min/60),m=min%60;const ap=h>=12?"pm":"am";let hh=h%12;if(hh===0)hh=12;return hh+(m?":"+String(m).padStart(2,"0"):"")+ap;};
+        const INTERCOM_WS="mofjwruw";
+        const ticketUrl=(cid)=>cid?"https://app.intercom.com/a/inbox/"+INTERCOM_WS+"/inbox/search/conversation/"+cid+"?query="+cid:null;
         const shiftDate=(delta)=>{const d=new Date(activeDate+"T12:00:00");d.setDate(d.getDate()+delta);setDrDate(d.toISOString().slice(0,10));};
         const btn={background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:"7px 11px",cursor:"pointer",fontSize:13,fontWeight:600,color:"#4b5563"};
         return <div>
@@ -8776,7 +8780,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
               {bands.map((b,i)=>{const aTop=(b.availS-START*60)/totalMin*trackH;const aH=(b.availE-b.availS)/totalMin*trackH;const sTop=(Math.max(b.shiftS,START*60)-START*60)/totalMin*trackH;const sH=(Math.min(b.shiftE,END*60)-Math.max(b.shiftS,START*60))/totalMin*trackH;return <React.Fragment key={"band"+i}><div style={{position:"absolute",top:aTop,height:aH,left:0,right:0,background:"#f0fdfa",borderTop:"1px dashed #5eead4",borderBottom:"1px dashed #5eead4",pointerEvents:"none"}}/><div style={{position:"absolute",top:sTop,height:Math.max(2,sH),left:0,width:4,background:"#0d9488",borderRadius:2,pointerEvents:"none"}}/><span style={{position:"absolute",top:aTop+2,left:8,fontSize:9,fontWeight:800,color:"#0d9488",letterSpacing:".05em",pointerEvents:"none",opacity:.7}}>ROSTERED</span></React.Fragment>;})}
               {Array.from({length:END-START+1}).map((_,i)=><div key={i} style={{position:"absolute",top:i*HOUR_PX,left:0,right:0,borderTop:"1px solid #f1f5f9"}}><span style={{position:"absolute",left:-60,top:-7,fontSize:10,color:"#9ca3af",width:52,textAlign:"right"}}>{fmt12((START+i)*60)}</span></div>)}
               {gaps.map((g,i)=>{const top=(g.from-START*60)/totalMin*trackH;const h=(g.to-g.from)/totalMin*trackH;return <div key={"g"+i} style={{position:"absolute",top,height:h,left:0,right:8,background:"repeating-linear-gradient(45deg,#fef2f2,#fef2f2 6px,transparent 6px,transparent 13px)",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><span style={{fontSize:10,fontWeight:700,color:"#dc2626",background:"#fff",padding:"2px 9px",borderRadius:10,border:"1px solid #fecaca"}}>{fmtDur(g.mins)} gap</span></div>;})}
-              {placed.map((c,i)=>{const t=_DR_TYPES[c.type]||_DR_TYPES.ticket_closed;const detailStr=Object.entries(c.details).map(([d,n])=>n>1?d+"×"+n:d).join(", ");const timeRange=c.minutes===c.maxMin?fmt12(c.minutes):fmt12(c.minutes)+"–"+fmt12(c.maxMin);return <div key={i} title={timeRange+" · "+t.label+(c.count>1?" ×"+c.count:"")+(detailStr?" ("+detailStr+")":"")} style={{position:"absolute",top:c._top,left:"calc("+c._lane+" * (100% - 8px)/"+laneCount+")",width:"calc((100% - 8px)/"+laneCount+")",height:CHIP_H,paddingRight:4,boxSizing:"border-box"}}><span style={{display:"flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,borderRadius:7,padding:"3px 8px",fontSize:11,fontWeight:600,color:t.c,height:"100%",boxSizing:"border-box",overflow:"hidden",whiteSpace:"nowrap",boxShadow:"0 1px 2px rgba(0,0,0,.04)"}}><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:10,opacity:.8,flexShrink:0}}>{fmt12(c.minutes)}</span><span style={{flexShrink:0}}>{t.ic}</span><span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{t.label}{c.count>1?" ×"+c.count:""}</span></span></div>;})}
+              {placed.map((c,i)=>{const t=_DR_TYPES[c.type]||_DR_TYPES.ticket_closed;const detailStr=Object.entries(c.details).map(([d,n])=>n>1?d+"×"+n:d).join(", ");const timeRange=c.minutes===c.maxMin?fmt12(c.minutes):fmt12(c.minutes)+"–"+fmt12(c.maxMin);const link=(c.type==="ticket_closed"&&c.cids&&c.cids.length===1)?ticketUrl(c.cids[0]):null;const chipStyle={display:"flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,borderRadius:7,padding:"3px 8px",fontSize:11,fontWeight:600,color:t.c,height:"100%",boxSizing:"border-box",overflow:"hidden",whiteSpace:"nowrap",boxShadow:"0 1px 2px rgba(0,0,0,.04)",textDecoration:"none"};const inner=<React.Fragment><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:10,opacity:.8,flexShrink:0}}>{fmt12(c.minutes)}</span><span style={{flexShrink:0}}>{t.ic}</span><span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{t.label}{c.count>1?" ×"+c.count:""}</span>{link&&<span style={{flexShrink:0,opacity:.65,fontSize:10}}>↗</span>}</React.Fragment>;const titleTxt=timeRange+" · "+t.label+(c.count>1?" ×"+c.count:"")+(detailStr?" ("+detailStr+")":"")+(link?" · click to open in Intercom":(c.type==="ticket_closed"&&c.cids&&c.cids.length>1?" · open individual tickets in List view":""));return <div key={i} title={titleTxt} style={{position:"absolute",top:c._top,left:"calc("+c._lane+" * (100% - 8px)/"+laneCount+")",width:"calc((100% - 8px)/"+laneCount+")",height:CHIP_H,paddingRight:4,boxSizing:"border-box"}}>{link?<a href={link} target="_blank" rel="noopener noreferrer" style={{...chipStyle,cursor:"pointer"}}>{inner}</a>:<span style={chipStyle}>{inner}</span>}</div>;})}
               {inHours.length===0&&<div style={{position:"absolute",top:trackH/2-24,left:0,right:0,textAlign:"center",color:"#9ca3af",fontSize:13,padding:"0 20px"}}>No timed activity recorded for {fmtNZDate(activeDate)}.<div style={{fontSize:11,marginTop:4}}>Once reports with timestamps are connected, the day will fill in here.</div></div>}
             </div>
           </div>
@@ -8784,7 +8788,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
           </React.Fragment>:<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
             {events.length===0
               ?<div style={{padding:"30px 20px",textAlign:"center",color:"#9ca3af",fontSize:13}}>No activity recorded for {fmtNZDate(activeDate)}.</div>
-              :events.map((e,i)=>{const t=_DR_TYPES[e.type]||_DR_TYPES.ticket_closed;const oh=e.minutes<START*60||e.minutes>END*60;return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 14px",borderTop:i?"1px solid #f3f4f6":"none"}}><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:12,color:"#6b7280",width:64,flexShrink:0,textAlign:"right"}}>{fmt12(e.minutes)}</span><span style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700,flexShrink:0,minWidth:118,boxSizing:"border-box"}}>{t.ic} {t.label}</span><span style={{color:"#374151",fontSize:13,flex:1,minWidth:0,wordBreak:"break-word"}}>{e.detail||"—"}</span>{oh&&<span style={{fontSize:10,color:"#9ca3af",flexShrink:0,fontStyle:"italic"}}>outside hours</span>}</div>;})}
+              :events.map((e,i)=>{const t=_DR_TYPES[e.type]||_DR_TYPES.ticket_closed;const oh=e.minutes<START*60||e.minutes>END*60;const turl=e.type==="ticket_closed"&&e.cid?ticketUrl(e.cid):null;return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 14px",borderTop:i?"1px solid #f3f4f6":"none"}}><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:12,color:"#6b7280",width:64,flexShrink:0,textAlign:"right"}}>{fmt12(e.minutes)}</span><span style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700,flexShrink:0,minWidth:118,boxSizing:"border-box"}}>{t.ic} {t.label}</span><span style={{color:"#374151",fontSize:13,flex:1,minWidth:0,wordBreak:"break-word"}}>{turl?<React.Fragment>{e.detail?e.detail+" · ":""}<a href={turl} target="_blank" rel="noopener noreferrer" style={{color:"#059669",fontWeight:700,textDecoration:"none"}}>Open ticket #{e.cid} ↗</a></React.Fragment>:(e.detail||"—")}</span>{oh&&<span style={{fontSize:10,color:"#9ca3af",flexShrink:0,fontStyle:"italic"}}>outside hours</span>}</div>;})}
           </div>}
         </div>;
       })()}

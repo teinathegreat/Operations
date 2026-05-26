@@ -8162,6 +8162,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const[fmMinutes,setFmMinutes]=React.useState("");
     const[fmOther,setFmOther]=React.useState("");
     const[drDate,setDrDate]=React.useState(null);
+    const[drView,setDrView]=React.useState("timeline");
     const stats=getIcStats(name,pt,wk,mo);
     const hrs=getSchedHours(name,pt,wk,mo);
     const prod=stats&&hrs&&hrs>0?Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10:null;
@@ -8761,10 +8762,14 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             <button onClick={()=>shiftDate(1)} style={btn}>→</button>
             <button onClick={()=>setDrDate(today)} style={btn}>Today</button>
             <span style={{fontSize:13,color:"#6b7280",marginLeft:4}}>{fmtNZDate(activeDate)} · <b style={{color:"#111827"}}>{events.length}</b> event{events.length===1?"":"s"}</span>
-            {recordDates.length>0&&<select value={recordDates.includes(activeDate)?activeDate:""} onChange={e=>{if(e.target.value)setDrDate(e.target.value);}} style={{marginLeft:"auto",fontSize:12,padding:"6px 10px",border:"1px solid #e5e7eb",borderRadius:8,background:"#fff",color:"#4b5563",cursor:"pointer"}}><option value="">Jump to a day with data…</option>{recordDates.slice().reverse().map(d=><option key={d} value={d}>{fmtNZDate(d)}</option>)}</select>}
+            <div style={{display:"inline-flex",border:"1px solid #e5e7eb",borderRadius:8,overflow:"hidden",marginLeft:"auto"}}>
+              {[["timeline","Timeline"],["list","List"]].map(([v,lbl])=><button key={v} onClick={()=>setDrView(v)} style={{padding:"7px 14px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",background:drView===v?"#0d9488":"#fff",color:drView===v?"#fff":"#6b7280"}}>{lbl}</button>)}
+            </div>
+            {recordDates.length>0&&<select value={recordDates.includes(activeDate)?activeDate:""} onChange={e=>{if(e.target.value)setDrDate(e.target.value);}} style={{fontSize:12,padding:"6px 10px",border:"1px solid #e5e7eb",borderRadius:8,background:"#fff",color:"#4b5563",cursor:"pointer"}}><option value="">Jump to a day with data…</option>{recordDates.slice().reverse().map(d=><option key={d} value={d}>{fmtNZDate(d)}</option>)}</select>}
           </div>
           {Object.values(counts).some(Boolean)&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>{Object.entries(_DR_TYPES).map(([k,t])=>counts[k]?<span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:14,padding:"3px 10px",fontSize:11,fontWeight:600}}>{t.ic} {t.label} · {counts[k]}</span>:null)}</div>}
           {hasRoster?<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,fontSize:12,color:"#0f766e",background:"#f0fdfa",border:"1px solid #99f6e4",borderRadius:9,padding:"8px 13px",flexWrap:"wrap"}}><span style={{width:10,height:10,borderRadius:2,background:"#0d9488",display:"inline-block"}}/><b>Rostered:</b> {bands.map((b,i)=><span key={i}>{(i?", ":"")+fmt12(b.shiftS)+"–"+fmt12(b.shiftE)}</span>)} <span style={{color:"#5eead4"}}>|</span> should be available {fmt12(availStart)}–{fmt12(availEnd)} <span style={{color:"#0f766e",opacity:.8}}>(±{BUFFER}m buffer · {fmtDur(rosterAvailMin)})</span></div>:<div style={{marginBottom:12,fontSize:12,color:"#9ca3af",background:"#f9fafb",border:"1px solid #f3f4f6",borderRadius:9,padding:"8px 13px"}}>No rostered shift band for {fmtNZDate(activeDate)} — {rosterReason}. Without it, only gaps <i>between</i> recorded activity are flagged.</div>}
+          {drView==="timeline"?<React.Fragment>
           <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:9,padding:"9px 13px",marginBottom:14,fontSize:12,color:"#1e40af",lineHeight:1.5}}>The shaded green band is their rostered shift (+30 min either side). Red hatched bands flag <b>60+ min with no activity inside that window</b>. Rapid same-type events within ~6 min are grouped into one marker (hover for the count and time range).</div>
           <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"18px 18px 18px 0"}}>
             <div style={{position:"relative",height:trackH,marginLeft:64}}>
@@ -8776,6 +8781,11 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             </div>
           </div>
           {outHours.length>0&&<div style={{marginTop:12,fontSize:12,color:"#6b7280",background:"#f9fafb",border:"1px solid #f3f4f6",borderRadius:8,padding:"8px 12px"}}><b style={{color:"#4b5563"}}>{outHours.length}</b> event{outHours.length===1?"":"s"} outside 7am–9pm: {outHours.map(e=>fmt12(e.minutes)).join(", ")}</div>}
+          </React.Fragment>:<div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
+            {events.length===0
+              ?<div style={{padding:"30px 20px",textAlign:"center",color:"#9ca3af",fontSize:13}}>No activity recorded for {fmtNZDate(activeDate)}.</div>
+              :events.map((e,i)=>{const t=_DR_TYPES[e.type]||_DR_TYPES.ticket_closed;const oh=e.minutes<START*60||e.minutes>END*60;return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 14px",borderTop:i?"1px solid #f3f4f6":"none"}}><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:12,color:"#6b7280",width:64,flexShrink:0,textAlign:"right"}}>{fmt12(e.minutes)}</span><span style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700,flexShrink:0,minWidth:118,boxSizing:"border-box"}}>{t.ic} {t.label}</span><span style={{color:"#374151",fontSize:13,flex:1,minWidth:0,wordBreak:"break-word"}}>{e.detail||"—"}</span>{oh&&<span style={{fontSize:10,color:"#9ca3af",flexShrink:0,fontStyle:"italic"}}>outside hours</span>}</div>;})}
+          </div>}
         </div>;
       })()}
     </div></div>);

@@ -5251,6 +5251,35 @@ function App(){
           }
           imported++;
         }
+        // v2.5.4 — also read the "Time Off" sheet so AL / Sick / Birthday show on profile Overview.
+        // Time Off entries can span multiple days; expand to one entry per day.
+        const tofs=wb.Sheets["Time Off"];
+        if(tofs){
+          const torows=window.XLSX.utils.sheet_to_json(tofs,{header:1,defval:""});
+          // headers: Member, Work Email, Start Date, Start Time, End Date, End Time, Time Off Reason, Theme Color, Notes, Shared
+          for(let i=1;i<torows.length;i++){
+            const row=torows[i];
+            const tname=String(row[0]||"").trim();
+            const sD=row[2];const eD=row[4];
+            const reason=String(row[6]||"").trim();
+            const tnotes=String(row[8]||"").trim();
+            if(!tname||!(sD instanceof Date))continue;
+            const eD2=(eD instanceof Date)?eD:sD;
+            const correctGroup=getPersonTeam(tname)||"";
+            if(!newSched[tname])newSched[tname]={group:correctGroup,weeks:{},months:{},days:{},overrides:{}};
+            const startMs=Date.UTC(sD.getUTCFullYear(),sD.getUTCMonth(),sD.getUTCDate());
+            const endMs=Date.UTC(eD2.getUTCFullYear(),eD2.getUTCMonth(),eD2.getUTCDate());
+            let cur=startMs,safety=0;
+            while(cur<=endMs&&safety++<400){
+              const dt=new Date(cur);
+              const dk=dt.getUTCFullYear()+"-"+String(dt.getUTCMonth()+1).padStart(2,"0")+"-"+String(dt.getUTCDate()).padStart(2,"0");
+              if(!newSched[tname].days[dk])newSched[tname].days[dk]={hours:0,shifts:[],timeOff:[]};
+              if(!Array.isArray(newSched[tname].days[dk].timeOff))newSched[tname].days[dk].timeOff=[];
+              newSched[tname].days[dk].timeOff.push({reason,notes:tnotes});
+              cur+=86400000;
+            }
+          }
+        }
         // Merge into existing schedData (don't wipe previous uploads)
         let computedMerged=null;
         setSchedData(prev=>{
@@ -8167,13 +8196,12 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
   }
 
   function ProfileView(){
-    if(!profilePerson)return null;
-    const{id,name,teamName}=profilePerson;
+    // v2.5.4 — all hooks must run unconditionally so {ProfileView()} can be inlined below.
+    // Previously <ProfileView/> remounted on every App re-render (because the function reference
+    // changes — defined inside App), which wiped uncontrolled textarea text every 30s when the
+    // heartbeat updated onlineUsers. Calling as {ProfileView()} keeps the DOM stable; the
+    // per-person effect below clears form state only when you actually switch people.
     React.useLayoutEffect(()=>{if(profScrollRef.current)profScrollRef.current.scrollTop=profScrollPos.current;});
-    const tdef=tc[teamName]||{color:"#6b7280",lightBg:"#f3f4f6",kpis:[]};
-    const isLead=roster[teamName]?.lead===name;
-    const isMyTeamLead=currentUser?.role==="leader"&&currentUser?.team===teamName;
-    const tw=getW(teamName);
     const[aiType,setAiType]=React.useState(null);
     const[aiTitle,setAiTitle]=React.useState("");
     const[aiDesc,setAiDesc]=React.useState("");
@@ -8184,12 +8212,20 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const[fmEdit,setFmEdit]=React.useState(null);
     const[fmDate,setFmDate]=React.useState(todayNZ());
     const[fmType,setFmType]=React.useState("Formal");
-    const[fmAttendees,setFmAttendees]=React.useState([name]);
+    const[fmAttendees,setFmAttendees]=React.useState([]);
     const[fmMinutes,setFmMinutes]=React.useState("");
     const[fmOther,setFmOther]=React.useState("");
     const[drDate,setDrDate]=React.useState(null);
     const[drView,setDrView]=React.useState("timeline");
     const[drHourExp,setDrHourExp]=React.useState({});
+    const _pName=profilePerson?.name;
+    React.useEffect(()=>{if(_pName){setFmAttendees([_pName]);Object.values(mtgRefs).forEach(r=>{if(r.current)r.current.value="";});}},[_pName]);
+    if(!profilePerson)return null;
+    const{id,name,teamName}=profilePerson;
+    const tdef=tc[teamName]||{color:"#6b7280",lightBg:"#f3f4f6",kpis:[]};
+    const isLead=roster[teamName]?.lead===name;
+    const isMyTeamLead=currentUser?.role==="leader"&&currentUser?.team===teamName;
+    const tw=getW(teamName);
     const stats=getIcStats(name,pt,wk,mo);
     const hrs=getSchedHours(name,pt,wk,mo);
     const prod=stats&&hrs&&hrs>0?Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10:null;
@@ -8246,10 +8282,18 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
         {(()=>{
           const today=new Date();const yr=today.getFullYear();const pad=n=>String(n).padStart(2,"0");const cutoffIso=yr+"-"+pad(today.getMonth()+1)+"-"+pad(today.getDate());const startIso=yr+"-01-01";
           const personSched=schedData?.[name]||Object.entries(schedData||{}).find(([k])=>(k||"").trim().toLowerCase()===(name||"").trim().toLowerCase())?.[1]||null;
-          const ytd={al:0,sick:0,bday:0};
-          if(personSched?.days){Object.entries(personSched.days).forEach(([dkey,dval])=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(dkey))return;if(dkey<startIso||dkey>cutoffIso)return;if(!dval||!Array.isArray(dval.shifts))return;const labels=dval.shifts.map(s=>((s.label||"")+" "+(s.notes||"")).toLowerCase()).join(" | ");let hit=null;if(/birthday|b'?day/i.test(labels))hit="bday";else if(/sick/i.test(labels))hit="sick";else if(/annual|\bal\b/i.test(labels))hit="al";if(hit)ytd[hit]++;});}
+          const normIso=(dkey)=>{const s=String(dkey||"").trim();if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);if(!m)return null;let a=+m[1],b=+m[2],y=+m[3],mo,day;if(a>12){mo=b;day=a;}else{mo=a;day=b;}if(mo<1||mo>12||day<1||day>31)return null;return y+"-"+pad(mo)+"-"+pad(day);};
+          const ytd={al:0,sick:0,bday:0};let daysSeen=0,toEntries=0;const reasonCounts={};
+          if(personSched?.days){Object.entries(personSched.days).forEach(([dkey,dval])=>{const iso=normIso(dkey);if(!iso||iso<startIso||iso>cutoffIso)return;if(!dval)return;daysSeen++;let hit=null;
+            // Primary classification: Time Off entries (the leave records)
+            if(Array.isArray(dval.timeOff)){for(const t of dval.timeOff){toEntries++;const r=String(t.reason||"").trim();const n=String(t.notes||"").trim();const key=r+(n?" / "+n:"");reasonCounts[key]=(reasonCounts[key]||0)+1;const rL=r.toLowerCase(),nL=n.toLowerCase();if(/birthday|b'?day/i.test(nL)){hit="bday";break;}if(/sick/i.test(rL)){hit="sick";break;}if(rL==="holiday"){if(/stat\s*day|public\s*hol|unpaid|bereavement|funeral|tangi|family\s*emergency|course|training|attending|worked/i.test(nL))continue;hit="al";break;}}}
+            // Fallback: a "Sick" custom label on a shift (shortened sick shift, not in Time Off)
+            if(!hit&&Array.isArray(dval.shifts)){const labs=dval.shifts.map(s=>((s.label||"")+" "+(s.notes||"")).toLowerCase()).join(" | ");if(/birthday|b'?day/i.test(labs))hit="bday";else if(/sick/i.test(labs))hit="sick";}
+            if(hit)ytd[hit]++;
+          });}
+          const topReasons=Object.entries(reasonCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);
           const cards=[{l:"🏖️ Annual Leave",v:ytd.al,bg:"#f0f9ff",bd:"#bae6fd",lab:"#0369a1",val:"#0c4a6e"},{l:"🤒 Sick Days",v:ytd.sick,bg:"#fef2f2",bd:"#fecaca",lab:"#b91c1c",val:"#7f1d1d"},{l:"🎂 Birthdays",v:ytd.bday,bg:"#fdf4ff",bd:"#f5d0fe",lab:"#a21caf",val:"#701a75"}];
-          return <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"14px 16px",marginBottom:16}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}><div style={{fontWeight:700,fontSize:13,color:"#111827"}}>Leave taken this year ({yr})</div><div style={{fontSize:11,color:"#9ca3af"}}>1 Jan – {today.toLocaleDateString("en-NZ",{day:"numeric",month:"short",year:"numeric"})} · from roster</div></div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>{cards.map(c=><div key={c.l} style={{background:c.bg,border:"1px solid "+c.bd,borderRadius:9,padding:"10px 12px"}}><div style={{fontSize:11,color:c.lab,fontWeight:700,textTransform:"uppercase",letterSpacing:".04em"}}>{c.l}</div><div style={{fontSize:22,fontWeight:800,color:c.val,marginTop:2,fontVariantNumeric:"tabular-nums"}}>{c.v}<span style={{fontSize:12,fontWeight:600,color:c.lab,marginLeft:5}}>day{c.v===1?"":"s"}</span></div></div>)}</div></div>;
+          return <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"14px 16px",marginBottom:16}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}><div style={{fontWeight:700,fontSize:13,color:"#111827"}}>Leave taken this year ({yr})</div><div style={{fontSize:11,color:"#9ca3af"}}>1 Jan – {today.toLocaleDateString("en-NZ",{day:"numeric",month:"short",year:"numeric"})} · from roster · Stat Days, Unpaid &amp; Bereavement excluded</div></div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>{cards.map(c=><div key={c.l} style={{background:c.bg,border:"1px solid "+c.bd,borderRadius:9,padding:"10px 12px"}}><div style={{fontSize:11,color:c.lab,fontWeight:700,textTransform:"uppercase",letterSpacing:".04em"}}>{c.l}</div><div style={{fontSize:22,fontWeight:800,color:c.val,marginTop:2,fontVariantNumeric:"tabular-nums"}}>{c.v}<span style={{fontSize:12,fontWeight:600,color:c.lab,marginLeft:5}}>day{c.v===1?"":"s"}</span></div></div>)}</div><div style={{marginTop:10,paddingTop:8,borderTop:"1px dashed #f3f4f6",fontSize:10.5,color:"#9ca3af",lineHeight:1.5}}>Roster scan: {daysSeen} day{daysSeen===1?"":"s"} · {toEntries} time-off entr{toEntries===1?"y":"ies"} this year{topReasons.length?<span> · <b style={{color:"#6b7280",fontWeight:600}}>Reasons seen:</b> {topReasons.map(([r,c])=>r+" ("+c+")").join(", ")}</span>:toEntries===0&&daysSeen>0?<span> · No Time Off entries — re-upload the schedule file with v2.5.3 to import them</span>:null}</div></div>;
         })()}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
           <div style={{background:"#fff",borderRadius:10,border:"1px solid #e5e7eb",padding:"18px 20px"}}>
@@ -12271,7 +12315,7 @@ const teamMap={
       </Modal>}
 
       {iMember&&<IndivPanel/>}
-      {profilePerson&&<ProfileView/>}
+      {ProfileView()}
       {monRevModal&&<MonthlyReviewModal
         config={monRevModal}
         onClose={()=>{delete window["_cancelReview_"+(monRevModal.key||"cr")+"_"+(monRevModal.pk||"")];setMonRevModal(null);}}

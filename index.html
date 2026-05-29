@@ -5252,25 +5252,31 @@ function App(){
           imported++;
         }
         // v2.5.4 — also read the "Time Off" sheet so AL / Sick / Birthday show on profile Overview.
-        // Time Off entries can span multiple days; expand to one entry per day.
+        // Time Off entries can span multiple days; expand to one entry per day. Note that MS
+        // Shifts stores date cells as TEXT (M/D/YYYY), not as Excel date serials — so we must
+        // parse strings, not assume Date objects. And End is EXCLUSIVE (Start=4/20 End=4/21 means
+        // just Apr 20).
         const tofs=wb.Sheets["Time Off"];
         if(tofs){
           const torows=window.XLSX.utils.sheet_to_json(tofs,{header:1,defval:""});
+          const parseToDate=(v)=>{if(v instanceof Date)return v;const s=String(v||"").trim();if(!s)return null;const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);if(m){let a=+m[1],b=+m[2],y=+m[3],mo,day;if(a>12){mo=b;day=a;}else{mo=a;day=b;}if(mo<1||mo>12||day<1||day>31)return null;return new Date(Date.UTC(y,mo-1,day));}const iso=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);if(iso)return new Date(Date.UTC(+iso[1],+iso[2]-1,+iso[3]));return null;};
           // headers: Member, Work Email, Start Date, Start Time, End Date, End Time, Time Off Reason, Theme Color, Notes, Shared
           for(let i=1;i<torows.length;i++){
             const row=torows[i];
             const tname=String(row[0]||"").trim();
-            const sD=row[2];const eD=row[4];
+            const sD=parseToDate(row[2]);const eD=parseToDate(row[4])||sD;
             const reason=String(row[6]||"").trim();
             const tnotes=String(row[8]||"").trim();
-            if(!tname||!(sD instanceof Date))continue;
-            const eD2=(eD instanceof Date)?eD:sD;
+            if(!tname||!sD)continue;
             const correctGroup=getPersonTeam(tname)||"";
             if(!newSched[tname])newSched[tname]={group:correctGroup,weeks:{},months:{},days:{},overrides:{}};
             const startMs=Date.UTC(sD.getUTCFullYear(),sD.getUTCMonth(),sD.getUTCDate());
-            const endMs=Date.UTC(eD2.getUTCFullYear(),eD2.getUTCMonth(),eD2.getUTCDate());
+            const endMs=Date.UTC(eD.getUTCFullYear(),eD.getUTCMonth(),eD.getUTCDate());
+            // End is exclusive (next day after the last covered day). If End<=Start, treat as a
+            // single day (Start). Otherwise expand Start..End-1.
+            const endLimit=endMs>startMs?endMs:startMs+86400000;
             let cur=startMs,safety=0;
-            while(cur<=endMs&&safety++<400){
+            while(cur<endLimit&&safety++<400){
               const dt=new Date(cur);
               const dk=dt.getUTCFullYear()+"-"+String(dt.getUTCMonth()+1).padStart(2,"0")+"-"+String(dt.getUTCDate()).padStart(2,"0");
               if(!newSched[tname].days[dk])newSched[tname].days[dk]={hours:0,shifts:[],timeOff:[]};

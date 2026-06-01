@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.5.4";
+const APP_VERSION="2.5.5";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -3911,7 +3911,11 @@ function App(){
   const toast2=(msg)=>{if(msg.includes("⚠")||msg.includes("fail")||msg.includes("Failed"))toast3(msg,"error");else if(msg.includes("✓")||msg.includes("saved")||msg.includes("copied")||msg.includes("Added")||msg.includes("Resolved")||msg.includes("Updated")||msg.includes("Deleted")||msg.includes("Copied")||msg.includes("created")||msg.includes("Assigned")||msg.includes("Actioned"))toast3(msg,"success");else toast3(msg,"info");};
   const dbLoadAll=async(table)=>{
     const url=sbUrlRef.current,key=sbKeyRef.current;if(!url||!key)return[];
-    try{const resp=await fetch(url+"/rest/v1/"+table+"?select=id,data&order=created_at.desc&limit=5000",{headers:{"apikey":key,"Authorization":"Bearer "+key}});
+    // v2.5.5: cache:"no-store" prevents Chrome's heuristic GET caching from serving stale rows.
+    // Without it, a session that fetched once can keep getting the same response for hours even
+    // after admin updates — symptom is non-admin users showing the previous day's call reviews,
+    // KPIs, or roster while the admin sees correct data.
+    try{const resp=await fetch(url+"/rest/v1/"+table+"?select=id,data&order=created_at.desc&limit=5000",{cache:"no-store",headers:{"apikey":key,"Authorization":"Bearer "+key,"Cache-Control":"no-cache","Pragma":"no-cache"}});
     if(!resp.ok){console.error("dbLoadAll "+table+" failed:",resp.status);return[];}
     const rows=await resp.json();return rows.map(r=>({...r.data,id:r.id}));}catch(e){console.error("dbLoadAll "+table+" error:",e);return[];}
   };
@@ -3984,7 +3988,9 @@ function App(){
   // id format: "prefix:key" e.g. "caps:John Smith", "perms:drew"
   const dbLoadConfig=async(prefix)=>{
     const url=sbUrlRef.current,key=sbKeyRef.current;if(!url||!key)return null;
-    try{const resp=await fetch(url+"/rest/v1/config_rows?id=like."+encodeURIComponent(prefix+":*").replace("*","%25")+"&select=id,data",{headers:{"apikey":key,"Authorization":"Bearer "+key}});
+    // v2.5.5: cache:"no-store" — see dbLoadAll comment. This is the function that powers the
+    // dailycfg/call_review_teams/sched/etc. reads that team leaders were seeing stale.
+    try{const resp=await fetch(url+"/rest/v1/config_rows?id=like."+encodeURIComponent(prefix+":*").replace("*","%25")+"&select=id,data",{cache:"no-store",headers:{"apikey":key,"Authorization":"Bearer "+key,"Cache-Control":"no-cache","Pragma":"no-cache"}});
     if(!resp.ok)return null;const rows=await resp.json();if(!rows.length)return null;
     const obj={};rows.forEach(r=>{const k=r.id.slice(prefix.length+1);const d=r.data;obj[k]=(d&&typeof d==="object"&&"_v" in d&&"_origin" in d)?d._v:d;});return obj;}catch(e){console.error("dbLoadConfig "+prefix+" error:",e);return null;}
   };

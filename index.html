@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.5.5";
+const APP_VERSION="2.5.6";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -4467,9 +4467,13 @@ function App(){
           if(tcVal&&!Array.isArray(tcVal)&&typeof tcVal==="object"&&"_v" in tcVal&&"_origin" in tcVal)tcVal=tcVal._v;
           let rVal=sysConf?.team_roster;
           if(rVal&&!Array.isArray(rVal)&&typeof rVal==="object"&&"_v" in rVal&&"_origin" in rVal)rVal=rVal._v;
-          if(d){const{_r,_tc,...rest}=d;setData(rest);}
-          if(tcVal&&typeof tcVal==="object")setTc(tcVal);
-          if(rVal&&typeof rVal==="object")setRoster(migrateRoster(fixRosterNames(rVal)));
+          // v2.5.6: skip the setter if a save for this key is still in flight. Without this guard,
+          // the symptom is "I edited KPI targets, clicked Dashboard, and my changes reverted" —
+          // the tab-change re-fetch landed before the in-flight POST committed, so the read
+          // returned the OLD value and overwrote the fresh local state.
+          if(d&&!dirtyConfigRef.current.has("sys:app_data")){const{_r,_tc,...rest}=d;setData(rest);}
+          if(tcVal&&typeof tcVal==="object"&&!dirtyConfigRef.current.has("sys:team_config"))setTc(tcVal);
+          if(rVal&&typeof rVal==="object"&&!dirtyConfigRef.current.has("sys:team_roster"))setRoster(migrateRoster(fixRosterNames(rVal)));
           {let pmv=sysConf?.phone_mask;if(pmv&&typeof pmv==="object"&&"_v" in pmv)pmv=pmv._v;if(typeof pmv==="boolean")setPhoneMaskOn(pmv);}
         }catch(e){console.error("Dashboard refresh failed:",e);}
         setTimeout(()=>{saveEnabled.current=prev;},300);

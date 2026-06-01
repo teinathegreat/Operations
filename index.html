@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.5.3";
+const APP_VERSION="2.5.4";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -3460,6 +3460,8 @@ function App(){
   const[iVals,setIVals]=useState({});
   // ── PROFILE VIEW ──
   const[profilePerson,setProfilePerson]=useState(null);
+  // v2.5.4 — clear the 1:1 form draft when switching between people so person B doesn't see person A's typed notes
+  useEffect(()=>{setMtgDraft({personal:"",work:"",goals:"",followUp:"",leave:"",general:""});},[profilePerson?.name]);
   // Lifted Leaderboard comparison state — kept at App level so it survives LeaderboardTab re-renders triggered by period changes
   const[lbCompareMode,setLbCompareMode]=useState(false);
   const[lbCompareA,setLbCompareA]=useState("");
@@ -3744,6 +3746,10 @@ function App(){
   const[capHistView,setCapHistView]=useState(null);
   const[mtgDate,setMtgDate]=useState(todayNZ());
   const mtgRefs={personal:useRef(null),work:useRef(null),goals:useRef(null),followUp:useRef(null),leave:useRef(null),general:useRef(null)};
+  // v2.5.4 — 1:1 form values stored in App-scope state (NOT in ProfileView) so they survive the
+  // 30s ProfileView remount caused by heartbeat-triggered onlineUsers updates. The mtgRefs above
+  // are kept for backwards-compatibility but no longer drive the input value.
+  const[mtgDraft,setMtgDraft]=useState({personal:"",work:"",goals:"",followUp:"",leave:"",general:""});
   const goalTitleRef=useRef(null);const goalDueRef=useRef(null);
   const[profTab,setProfTab]=useState("overview");
   const profScrollRef=useRef(null);
@@ -8202,12 +8208,13 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
   }
 
   function ProfileView(){
-    // v2.5.4 — all hooks must run unconditionally so {ProfileView()} can be inlined below.
-    // Previously <ProfileView/> remounted on every App re-render (because the function reference
-    // changes — defined inside App), which wiped uncontrolled textarea text every 30s when the
-    // heartbeat updated onlineUsers. Calling as {ProfileView()} keeps the DOM stable; the
-    // per-person effect below clears form state only when you actually switch people.
+    if(!profilePerson)return null;
+    const{id,name,teamName}=profilePerson;
     React.useLayoutEffect(()=>{if(profScrollRef.current)profScrollRef.current.scrollTop=profScrollPos.current;});
+    const tdef=tc[teamName]||{color:"#6b7280",lightBg:"#f3f4f6",kpis:[]};
+    const isLead=roster[teamName]?.lead===name;
+    const isMyTeamLead=currentUser?.role==="leader"&&currentUser?.team===teamName;
+    const tw=getW(teamName);
     const[aiType,setAiType]=React.useState(null);
     const[aiTitle,setAiTitle]=React.useState("");
     const[aiDesc,setAiDesc]=React.useState("");
@@ -8218,20 +8225,12 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const[fmEdit,setFmEdit]=React.useState(null);
     const[fmDate,setFmDate]=React.useState(todayNZ());
     const[fmType,setFmType]=React.useState("Formal");
-    const[fmAttendees,setFmAttendees]=React.useState([]);
+    const[fmAttendees,setFmAttendees]=React.useState([name]);
     const[fmMinutes,setFmMinutes]=React.useState("");
     const[fmOther,setFmOther]=React.useState("");
     const[drDate,setDrDate]=React.useState(null);
     const[drView,setDrView]=React.useState("timeline");
     const[drHourExp,setDrHourExp]=React.useState({});
-    const _pName=profilePerson?.name;
-    React.useEffect(()=>{if(_pName){setFmAttendees([_pName]);Object.values(mtgRefs).forEach(r=>{if(r.current)r.current.value="";});}},[_pName]);
-    if(!profilePerson)return null;
-    const{id,name,teamName}=profilePerson;
-    const tdef=tc[teamName]||{color:"#6b7280",lightBg:"#f3f4f6",kpis:[]};
-    const isLead=roster[teamName]?.lead===name;
-    const isMyTeamLead=currentUser?.role==="leader"&&currentUser?.team===teamName;
-    const tw=getW(teamName);
     const stats=getIcStats(name,pt,wk,mo);
     const hrs=getSchedHours(name,pt,wk,mo);
     const prod=stats&&hrs&&hrs>0?Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10:null;
@@ -8256,10 +8255,10 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const delAct=(aid)=>{if(!window.confirm("Delete?"))return;setActionItems(p=>p.filter(a=>a.id!==aid));toast2("Deleted.");};
     const stEdit=(it)=>{setEditAi(it);setAiType(it.type);setAiTitle(it.title);setAiDesc(it.description||"");setAiPlan(it.actionPlan||"");setAiDue(it.dueDate||"");};
     const pMeetings=meetingNotes.filter(m=>m.personName===name&&m.teamName===teamName).sort((a,b)=>b.date.localeCompare(a.date));
-    const addMeeting=()=>{const p=mtgRefs.personal.current?.value?.trim()||"";const w=mtgRefs.work.current?.value?.trim()||"";const g=mtgRefs.goals.current?.value?.trim()||"";const f=mtgRefs.followUp.current?.value?.trim()||"";const l=mtgRefs.leave.current?.value?.trim()||"";const gn=mtgRefs.general.current?.value?.trim()||"";if(!p&&!w&&!g&&!f&&!l&&!gn)return;const wkStats=getIcStats(name,"week",wk);const wkHrs=getSchedHours(name,"week",wk);const wkProd=wkStats&&wkHrs&&wkHrs>0?Math.round(((wkStats.closed||0)*tw.tickets+(wkStats.emails||0)*tw.emails+(wkStats.wfs||0)*tw.wfs+(wkStats.calls||0)*tw.calls+(wkStats.caseActions||0)*(tw.case_actions||0))/wkHrs*10)/10:null;
+    const addMeeting=()=>{const p=(mtgDraft.personal||"").trim();const w=(mtgDraft.work||"").trim();const g=(mtgDraft.goals||"").trim();const f=(mtgDraft.followUp||"").trim();const l=(mtgDraft.leave||"").trim();const gn=(mtgDraft.general||"").trim();if(!p&&!w&&!g&&!f&&!l&&!gn)return;const wkStats=getIcStats(name,"week",wk);const wkHrs=getSchedHours(name,"week",wk);const wkProd=wkStats&&wkHrs&&wkHrs>0?Math.round(((wkStats.closed||0)*tw.tickets+(wkStats.emails||0)*tw.emails+(wkStats.wfs||0)*tw.wfs+(wkStats.calls||0)*tw.calls+(wkStats.caseActions||0)*(tw.case_actions||0))/wkHrs*10)/10:null;
     // Calculate ranking
     var rank=null;const tMems=(roster[teamName]?.members||[]).map(m2=>{const s2=getIcStats(m2.name,"week",wk);const h2=getSchedHours(m2.name,"week",wk);const pr=s2&&h2&&h2>0?Math.round(((s2.closed||0)*tw.tickets+(s2.emails||0)*tw.emails+(s2.wfs||0)*tw.wfs+(s2.calls||0)*tw.calls+(s2.caseActions||0)*(tw.case_actions||0))/h2*10)/10:null;return{name:m2.name,prod:pr};}).filter(m2=>m2.prod!==null).sort((a,b)=>b.prod-a.prod);const ri=tMems.findIndex(m2=>m2.name===name);if(ri>=0)rank={position:ri+1,total:tMems.length};
-    const nowTS=new Date();const mtgNote={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),personName:name,teamName,date:nowTS.toISOString(),personal:p,work:w,goalsDiscussed:g,followUp:f,leave:l,general:gn,stats:{prod:wkProd,hrs:wkHrs,tickets:wkStats?.closed||0,emails:wkStats?.emails||0,calls:wkStats?.calls||0,wfs:wkStats?.wfs||0,week:wk,rank:rank},createdBy:currentUser?.displayName||"Admin",createdAt:nowTS.toISOString()};setMeetingNotes(prev=>[mtgNote,...prev]);dbUpsert("meeting_notes",mtgNote);Object.values(mtgRefs).forEach(r=>{if(r.current)r.current.value="";});toast2("Note saved.");};
+    const nowTS=new Date();const mtgNote={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),personName:name,teamName,date:nowTS.toISOString(),personal:p,work:w,goalsDiscussed:g,followUp:f,leave:l,general:gn,stats:{prod:wkProd,hrs:wkHrs,tickets:wkStats?.closed||0,emails:wkStats?.emails||0,calls:wkStats?.calls||0,wfs:wkStats?.wfs||0,week:wk,rank:rank},createdBy:currentUser?.displayName||"Admin",createdAt:nowTS.toISOString()};setMeetingNotes(prev=>[mtgNote,...prev]);dbUpsert("meeting_notes",mtgNote);setMtgDraft({personal:"",work:"",goals:"",followUp:"",leave:"",general:""});toast2("Note saved.");};
     const mCStats=getIcStats(name,"week",wk);const mCHrs=getSchedHours(name,"week",wk);const mCProd=mCStats&&mCHrs&&mCHrs>0?Math.round(((mCStats.closed||0)*tw.tickets+(mCStats.emails||0)*tw.emails+(mCStats.wfs||0)*tw.wfs+(mCStats.calls||0)*tw.calls+(mCStats.caseActions||0)*(tw.case_actions||0))/mCHrs*10)/10:null;
     const mActiveGoals=goals.filter(g=>g.personName===name&&g.teamName===teamName&&g.status!=="complete");
     const pGoalsAll=goals.filter(g=>g.personName===name&&g.teamName===teamName).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -8638,12 +8637,12 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
           <div style={{background:"#fff",borderRadius:10,border:"1px solid #e5e7eb",padding:"18px 20px",marginBottom:16}}>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}><div style={{fontWeight:700,fontSize:14,color:"#111827",flex:1}}>New 1:1 Meeting Note</div><span style={{fontSize:11,color:"#9ca3af"}}>{"Will log: "+new Date().toLocaleDateString("en-NZ",{day:"2-digit",month:"short",year:"numeric"})+" "+new Date().toLocaleTimeString("en-NZ",{hour:"2-digit",minute:"2-digit"})}</span></div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-              <div><div style={{fontSize:11,fontWeight:700,color:"#7c3aed",marginBottom:4}}>{"💜 Personal Concerns"}</div><textarea ref={mtgRefs.personal} placeholder="How are they feeling? Any personal issues affecting work?" rows={3} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
-              <div><div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:4}}>{"⚠️ Work Concerns"}</div><textarea ref={mtgRefs.work} placeholder="Performance issues, workload, team dynamics?" rows={3} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
-              <div><div style={{fontSize:11,fontWeight:700,color:"#059669",marginBottom:4}}>{"🎯 Goals & Progress"}</div><textarea ref={mtgRefs.goals} placeholder="What goals were discussed? Progress updates?" rows={3} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
-              <div><div style={{fontSize:11,fontWeight:700,color:"#2563eb",marginBottom:4}}>{"📝 Follow Up for Next Meeting"}</div><textarea ref={mtgRefs.followUp} placeholder="Actions to check on, topics to revisit next time?" rows={3} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
-              <div><div style={{fontSize:11,fontWeight:700,color:"#d97706",marginBottom:4}}>{"🏖️ Planned Leave"}</div><textarea ref={mtgRefs.leave} placeholder="Any upcoming leave, days off, appointments?" rows={2} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
-              <div><div style={{fontSize:11,fontWeight:700,color:"#4b5563",marginBottom:4}}>{"💬 General Notes"}</div><textarea ref={mtgRefs.general} placeholder="Anything else discussed..." rows={2} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
+              <div><div style={{fontSize:11,fontWeight:700,color:"#7c3aed",marginBottom:4}}>{"💜 Personal Concerns"}</div><textarea value={mtgDraft.personal} onChange={e=>setMtgDraft(p=>({...p,personal:e.target.value}))} placeholder="How are they feeling? Any personal issues affecting work?" rows={3} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
+              <div><div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:4}}>{"⚠️ Work Concerns"}</div><textarea value={mtgDraft.work} onChange={e=>setMtgDraft(p=>({...p,work:e.target.value}))} placeholder="Performance issues, workload, team dynamics?" rows={3} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
+              <div><div style={{fontSize:11,fontWeight:700,color:"#059669",marginBottom:4}}>{"🎯 Goals & Progress"}</div><textarea value={mtgDraft.goals} onChange={e=>setMtgDraft(p=>({...p,goals:e.target.value}))} placeholder="What goals were discussed? Progress updates?" rows={3} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
+              <div><div style={{fontSize:11,fontWeight:700,color:"#2563eb",marginBottom:4}}>{"📝 Follow Up for Next Meeting"}</div><textarea value={mtgDraft.followUp} onChange={e=>setMtgDraft(p=>({...p,followUp:e.target.value}))} placeholder="Actions to check on, topics to revisit next time?" rows={3} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
+              <div><div style={{fontSize:11,fontWeight:700,color:"#d97706",marginBottom:4}}>{"🏖️ Planned Leave"}</div><textarea value={mtgDraft.leave} onChange={e=>setMtgDraft(p=>({...p,leave:e.target.value}))} placeholder="Any upcoming leave, days off, appointments?" rows={2} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
+              <div><div style={{fontSize:11,fontWeight:700,color:"#4b5563",marginBottom:4}}>{"💬 General Notes"}</div><textarea value={mtgDraft.general} onChange={e=>setMtgDraft(p=>({...p,general:e.target.value}))} placeholder="Anything else discussed..." rows={2} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
             </div>
             <div style={{marginTop:12}}><button onClick={addMeeting} style={S.p1}>Save Meeting Note</button></div>
           </div>
@@ -12321,7 +12320,7 @@ const teamMap={
       </Modal>}
 
       {iMember&&<IndivPanel/>}
-      {ProfileView()}
+      {profilePerson&&<ProfileView/>}
       {monRevModal&&<MonthlyReviewModal
         config={monRevModal}
         onClose={()=>{delete window["_cancelReview_"+(monRevModal.key||"cr")+"_"+(monRevModal.pk||"")];setMonRevModal(null);}}

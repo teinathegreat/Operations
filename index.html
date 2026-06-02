@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.5.6";
+const APP_VERSION="2.5.7";
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -3461,7 +3461,7 @@ function App(){
   // ── PROFILE VIEW ──
   const[profilePerson,setProfilePerson]=useState(null);
   // v2.5.4 — clear the 1:1 form draft when switching between people so person B doesn't see person A's typed notes
-  useEffect(()=>{setMtgDraft({personal:"",work:"",goals:"",followUp:"",leave:"",general:""});},[profilePerson?.name]);
+  useEffect(()=>{setMtgDraft({personal:"",work:"",goals:"",followUp:"",leave:"",general:""});setDrDate(null);setDrHourExp({});},[profilePerson?.name]);
   // Lifted Leaderboard comparison state — kept at App level so it survives LeaderboardTab re-renders triggered by period changes
   const[lbCompareMode,setLbCompareMode]=useState(false);
   const[lbCompareA,setLbCompareA]=useState("");
@@ -3750,6 +3750,14 @@ function App(){
   // 30s ProfileView remount caused by heartbeat-triggered onlineUsers updates. The mtgRefs above
   // are kept for backwards-compatibility but no longer drive the input value.
   const[mtgDraft,setMtgDraft]=useState({personal:"",work:"",goals:"",followUp:"",leave:"",general:""});
+  // v2.5.7 — Daily Record selection lifted from ProfileView to App scope. Without this, any App
+  // re-render (e.g. a realtime event from another user's edit, or the 30s self-heal touching
+  // state) remounts ProfileView and resets the date picker back to "today" — so a user looking
+  // at May 25 would suddenly jump to June 1 a few seconds later. drView (timeline/list/hourly)
+  // persists across people as a UI preference; drDate and drHourExp reset on person switch.
+  const[drDate,setDrDate]=useState(null);
+  const[drView,setDrView]=useState("timeline");
+  const[drHourExp,setDrHourExp]=useState({});
   const goalTitleRef=useRef(null);const goalDueRef=useRef(null);
   const[profTab,setProfTab]=useState("overview");
   const profScrollRef=useRef(null);
@@ -8238,9 +8246,6 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const[fmAttendees,setFmAttendees]=React.useState([name]);
     const[fmMinutes,setFmMinutes]=React.useState("");
     const[fmOther,setFmOther]=React.useState("");
-    const[drDate,setDrDate]=React.useState(null);
-    const[drView,setDrView]=React.useState("timeline");
-    const[drHourExp,setDrHourExp]=React.useState({});
     const stats=getIcStats(name,pt,wk,mo);
     const hrs=getSchedHours(name,pt,wk,mo);
     const prod=stats&&hrs&&hrs>0?Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10:null;

@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.6.8";
+const APP_VERSION="2.6.9";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -3405,6 +3405,14 @@ function App(){
   const[toast,setToast]=useState("");
   const[editOpen,setEditOpen]=useState(false);
   const[inlineKpi,setInlineKpi]=useState(null);
+  // v2.6.9 — click any CSAT KPI label to inspect every response that contributed. Value is the
+  // KPI key (csat_in_stay / post_case_csat / csat_owner_claim) so the modal can look up the
+  // matching csatData bucket and question labels.
+  const[csatDetail,setCsatDetail]=useState(null);
+  const[csatDetailScope,setCsatDetailScope]=useState("period");// "period" | "all"
+  // Reset scope filter back to "current period" each time a new KPI is opened so the user always
+  // lands on what's relevant to where they were on the dashboard. Closing (null) leaves it alone.
+  useEffect(()=>{if(csatDetail)setCsatDetailScope("period");},[csatDetail]);
   const[monRevModal,setMonRevModal]=useState(null);
   const[monRevExpanded,setMonRevExpanded]=useState(null);// key of expanded action menu
   const[passingMode,setPassingMode]=useState("avg");
@@ -4458,7 +4466,7 @@ function App(){
       if(rc_rej&&typeof rc_rej==="object")setRejectedCallsData(rc_rej);
       if(rc_tl&&typeof rc_tl==="object")setDailyTimelineData(rc_tl);
       // v2.5.9 — csat is stored as a single key (csat:data), so rc_csat is {data: {responses:[...]}}.
-      if(rc_csat&&rc_csat.data&&Array.isArray(rc_csat.data.responses))setCsatData(rc_csat.data);
+      if(rc_csat&&rc_csat.data&&typeof rc_csat.data==="object"&&(Array.isArray(rc_csat.data.responses)||Array.isArray(rc_csat.data.post_case)||Array.isArray(rc_csat.data.claim)||Array.isArray(rc_csat.data.in_stay)))setCsatData(rc_csat.data);
       if(f_wt&&typeof f_wt==="object"){
         // v2.4.4: Skip teams whose weights have an unsaved local edit in flight,
         // otherwise the stale DB read clobbers the user's change and the weight
@@ -4656,7 +4664,7 @@ function App(){
           const sdv=await dbLoadConfig("sched");if(sdv&&typeof sdv==="object")setSchedData(sdv);
           const rjv=await dbLoadConfig("rejcalls");if(rjv&&typeof rjv==="object")setRejectedCallsData(rjv);
           const tlv=await dbLoadConfig("timeline");if(tlv&&typeof tlv==="object")setDailyTimelineData(tlv);
-          const csv2=await dbLoadConfig("csat");if(csv2&&csv2.data&&Array.isArray(csv2.data.responses))setCsatData(csv2.data);
+          const csv2=await dbLoadConfig("csat");if(csv2&&csv2.data&&typeof csv2.data==="object"&&(Array.isArray(csv2.data.responses)||Array.isArray(csv2.data.post_case)||Array.isArray(csv2.data.claim)||Array.isArray(csv2.data.in_stay)))setCsatData(csv2.data);
           // Backfill call reviews a stranded session may have missed. MERGE (not replace): server rows win,
           // but any review created locally and not yet returned by the read is preserved — so this can never
           // make a just-submitted review vanish.
@@ -4796,7 +4804,7 @@ function App(){
           else if(prefix==="weights")objMerge(setAllWeights);
           else if(prefix==="revcrit")objMerge(setReviewCriteriaConfig);
           else if(prefix==="tgt")objMerge(setTgtOwners);
-          else if(prefix==="csat"){if(key==="data"&&value&&Array.isArray(value.responses)){setCsatData(value);try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}}}
+          else if(prefix==="csat"){if(key==="data"&&value&&typeof value==="object"&&(Array.isArray(value.responses)||Array.isArray(value.post_case)||Array.isArray(value.claim)||Array.isArray(value.in_stay))){setCsatData(value);try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}}}
           else if(prefix==="sys"){
             if(key==="app_data"&&value&&typeof value==="object"){
               // v2.4.3: app_data is now JUST data (no _tc/_r). Strip them in case an old client wrote them.
@@ -4859,7 +4867,10 @@ function App(){
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(rejectedCallsData).forEach(([k,v])=>dbSaveConfigKey("rejcalls",k,v));},[rejectedCallsData]);
   // v2.5.9 — CSAT responses stored as a single key (csat:data) since they're all one logical
   // collection and small enough not to warrant per-row config rows.
-  useEffect(()=>{if(!saveEnabled.current)return;if(!csatData||!Array.isArray(csatData.responses))return;dbSaveConfigKey("csat","data",csatData);},[csatData]);
+  // v2.6.9 — auto-save was gated on csatData.responses being an array (the old single-bucket shape).
+  // Since 2.5.9/2.6.0/2.6.8 we use {post_case,claim,in_stay} buckets, so the old gate never fired
+  // and CSAT uploads were silently dropped on refresh. Now we accept either shape.
+  useEffect(()=>{if(!saveEnabled.current)return;if(!csatData||typeof csatData!=="object")return;const hasResponses=Array.isArray(csatData.responses);const hasBuckets=Array.isArray(csatData.post_case)||Array.isArray(csatData.claim)||Array.isArray(csatData.in_stay);if(!hasResponses&&!hasBuckets)return;dbSaveConfigKey("csat","data",csatData);},[csatData]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(dailyTimelineData).forEach(([k,v])=>dbSaveConfigKey("timeline",k,v));},[dailyTimelineData]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(allWeights).forEach(([k,v])=>dbSaveConfigKey("weights",k,v));},[allWeights]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;dbSaveConfigKey("sys","call_review_teams",callReviewTeams);},[callReviewTeams]);
@@ -10282,7 +10293,9 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 }
                 const p=isPass(v,k);return(
                 <tr key={k.key} style={{background:i%2?tDef.lightBg||"#f9fafb":"#fff",borderBottom:"1px solid "+(tDef.lightBg||"#f3f4f6")}}>
-                  <td style={{padding:"9px 13px",color:"#111827"}}>
+                  <td style={{padding:"9px 13px",color:"#111827",cursor:(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")?"pointer":"default"}}
+                      onClick={()=>{if(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")setCsatDetail(k.key);}}
+                      title={(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")?"Click to view all submitted responses":""}>
                     {(k.dir==="bool"||k.key==="call_reviews_count"||k.key==="call_reviews_pass")?(()=>{
                       const wkMon=(()=>{
                         const _wkRange=FY25_WK_RANGES.find(([w])=>w===wk);
@@ -12854,6 +12867,121 @@ const teamMap={
           </div>
         );
       }catch(err){console.error("Abandoned modal err",err);return null;}})()}
+      {/* v2.6.9 — CSAT response detail modal. Opens when a user clicks one of the three CSAT KPI
+          labels. Shows every uploaded response from the relevant bucket so they can audit what's
+          behind the average. Period-aware: defaults to "current period" responses, with a toggle
+          for the full history. Read-only — no editing or deletion here. */}
+      {csatDetail&&(()=>{
+        const CFG={
+          csat_in_stay:{bucket:"in_stay",label:"CSAT after In Stay Resolution",team:"Guest Support",numQ:3,qLabels:["How we handled the issue","Communication & updates","Time taken to resolve"]},
+          post_case_csat:{bucket:"post_case",label:"Post Case File CSAT",team:"Reputation and Resolutions",numQ:4,qLabels:["How we handled your concern","Resolution provided","Communication & updates","Time taken to resolve"]},
+          csat_owner_claim:{bucket:"claim",label:"CSAT for Owners after Claim",team:"Reputation and Resolutions",numQ:5,qLabels:["How we handled your compensation","Fairness of outcome","Communication & updates","Time taken to resolve","Clarity of compensation process"]},
+        };
+        const cfg=CFG[csatDetail];if(!cfg)return null;
+        // Read from the right bucket. Backward compat: old responses[] maps to post_case.
+        const raw=Array.isArray(csatData?.[cfg.bucket])?csatData[cfg.bucket]:(cfg.bucket==="post_case"&&Array.isArray(csatData?.responses)?csatData.responses:[]);
+        const responses=[...raw].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+        const totalN=responses.length;
+        const totalAvg=totalN?Math.round(responses.reduce((s,r)=>s+(r.percent||0),0)/totalN):0;
+        // Period filter: figure out which responses belong to the dashboard's current period.
+        const inPeriod=(r)=>{
+          if(!r.date)return false;
+          const d=new Date(r.date);if(isNaN(d))return false;
+          if(pt==="month"){
+            const ml=d.toLocaleString("en-NZ",{month:"long",year:"numeric"});
+            return ml===mo;
+          }else{
+            const iso=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+            const rng=FY25_WK_RANGES.find(([w])=>w===wk);if(!rng)return false;
+            return iso>=rng[1]&&iso<=rng[2];
+          }
+        };
+        const periodN=responses.filter(inPeriod).length;
+        const periodAvg=periodN?Math.round(responses.filter(inPeriod).reduce((s,r)=>s+(r.percent||0),0)/periodN):0;
+        const periodLabel=pt==="month"?mo:`W${wk}`;
+        const list=csatDetailScope==="period"?responses.filter(inPeriod):responses;
+        const ratingPill=(n)=>{
+          const bg=n>=4?"#dcfce7":(n>=3?"#fef3c7":"#fee2e2");
+          const fg=n>=4?"#166534":(n>=3?"#92400e":"#991b1b");
+          return<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",minWidth:24,height:22,padding:"0 6px",fontSize:12,fontWeight:700,background:bg,color:fg,borderRadius:6}}>{n||"—"}</span>;
+        };
+        const pctPill=(p)=>{
+          const pass=p>=85;
+          const bg=pass?"#dcfce7":(p>=65?"#fef3c7":"#fee2e2");
+          const fg=pass?"#166534":(p>=65?"#92400e":"#991b1b");
+          return<span style={{padding:"3px 10px",fontSize:13,fontWeight:700,background:bg,color:fg,borderRadius:12}}>{p}%</span>;
+        };
+        return(
+          <div onClick={()=>setCsatDetail(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,padding:20}}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,width:"100%",maxWidth:880,maxHeight:"88vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.35)",border:"1px solid #e5e7eb"}}>
+              {/* Header */}
+              <div style={{padding:"16px 22px",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:17,color:"#111827",letterSpacing:"-.2px"}}>{cfg.label}</div>
+                  <div style={{fontSize:12,color:"#6b7280",marginTop:3}}>{cfg.team} · {totalN} response{totalN===1?"":"s"} total · all-time avg {totalAvg}%</div>
+                </div>
+                <button onClick={()=>setCsatDetail(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,color:"#6b7280",lineHeight:1,padding:"4px 8px"}}>×</button>
+              </div>
+              {/* Period filter toggle */}
+              <div style={{padding:"10px 22px",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:10,background:"#fafbfc"}}>
+                <span style={{fontSize:11,color:"#6b7280",fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"}}>Show:</span>
+                <button onClick={()=>setCsatDetailScope("period")} style={{padding:"5px 12px",fontSize:12,fontWeight:600,background:csatDetailScope==="period"?"#0d9488":"#fff",color:csatDetailScope==="period"?"#fff":"#111827",border:"1px solid "+(csatDetailScope==="period"?"#0d9488":"#d1d5db"),borderRadius:8,cursor:"pointer"}}>Current period · {periodLabel} ({periodN}{periodN>0?` · ${periodAvg}%`:""})</button>
+                <button onClick={()=>setCsatDetailScope("all")} style={{padding:"5px 12px",fontSize:12,fontWeight:600,background:csatDetailScope==="all"?"#0d9488":"#fff",color:csatDetailScope==="all"?"#fff":"#111827",border:"1px solid "+(csatDetailScope==="all"?"#0d9488":"#d1d5db"),borderRadius:8,cursor:"pointer"}}>All time ({totalN}{totalN>0?` · ${totalAvg}%`:""})</button>
+              </div>
+              {/* Body */}
+              <div style={{padding:"16px 22px",overflowY:"auto",flex:1}}>
+                {list.length===0&&(
+                  <div style={{textAlign:"center",padding:"40px 20px",color:"#9ca3af",fontSize:13}}>
+                    {csatDetailScope==="period"?`No responses dated within ${periodLabel}.`:"No responses uploaded yet."}
+                    {csatDetailScope==="period"&&totalN>0&&<div style={{marginTop:8,fontSize:12}}>Try the "All time" view above — {totalN} response{totalN===1?"":"s"} {totalN===1?"is":"are"} stored.</div>}
+                  </div>
+                )}
+                {list.map((r,idx)=>{
+                  const dateStr=r.date?new Date(r.date).toLocaleString("en-NZ",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
+                  const ratings=[];
+                  for(let qi=1;qi<=cfg.numQ;qi++)ratings.push(r["q"+qi]||0);
+                  return(
+                    <div key={r.id||idx} style={{padding:"12px 14px",marginBottom:10,border:"1px solid #e5e7eb",borderRadius:10,background:idx%2?"#fafbfc":"#fff"}}>
+                      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:8}}>
+                        <div style={{flex:"1 1 auto",minWidth:200}}>
+                          <div style={{fontWeight:700,fontSize:13,color:"#111827"}}>{dateStr}</div>
+                          <div style={{fontSize:11,color:"#6b7280",marginTop:2,display:"flex",gap:10,flexWrap:"wrap"}}>
+                            <span>{r.email&&r.email!=="anonymous"?r.email:"anonymous"}</span>
+                            {r.caseNumber&&<span>· case {r.caseNumber}</span>}
+                          </div>
+                        </div>
+                        {pctPill(r.percent||0)}
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",gap:8,marginBottom:r.feedback?10:0}}>
+                        {ratings.map((rv,qi)=>(
+                          <div key={qi} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"#f9fafb",borderRadius:6}}>
+                            {ratingPill(rv)}
+                            <span style={{fontSize:11,color:"#6b7280",lineHeight:1.3}}>{cfg.qLabels[qi]}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {r.feedback&&(
+                        <div style={{padding:"8px 12px",background:"#fffbeb",borderLeft:"3px solid #f59e0b",borderRadius:"0 6px 6px 0",fontSize:12,color:"#92400e",lineHeight:1.4}}>
+                          <span style={{fontWeight:700,marginRight:4}}>Feedback:</span>{r.feedback}
+                        </div>
+                      )}
+                      {r.overallStay&&(
+                        <div style={{padding:"8px 12px",marginTop:r.feedback?6:0,background:"#f0f9ff",borderLeft:"3px solid #0ea5e9",borderRadius:"0 6px 6px 0",fontSize:12,color:"#075985",lineHeight:1.4}}>
+                          <span style={{fontWeight:700,marginRight:4}}>Overall stay:</span>{r.overallStay}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Footer */}
+              <div style={{padding:"12px 22px",borderTop:"1px solid #e5e7eb",display:"flex",justifyContent:"flex-end",gap:8,background:"#fafbfc"}}>
+                <button onClick={()=>setCsatDetail(null)} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#fff",color:"#111827",border:"1px solid #d1d5db",borderRadius:8,cursor:"pointer"}}>Close</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       </div>{/* end main content area */}
     </div>
   );

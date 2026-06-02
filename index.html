@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.6.7";
+const APP_VERSION="2.6.8";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -2823,12 +2823,14 @@ function CsatDropzone({isAdmin,csatFileRef,handleCsatFile,toast2,csatData}){
   };
   const handleDragOver=(e)=>{e.preventDefault();setDragging(true);};
   const handleDragLeave=(e)=>{e.preventDefault();setDragging(false);};
-  // Backward compat: old shape was {responses:[...]} (all post case). New shape: {post_case, claim}.
+  // Backward compat: old shape was {responses:[...]} (all post case). New shape: {post_case, claim, in_stay}.
   const postCase=Array.isArray(csatData?.post_case)?csatData.post_case:(Array.isArray(csatData?.responses)?csatData.responses:[]);
   const claim=Array.isArray(csatData?.claim)?csatData.claim:[];
-  const pcN=postCase.length,clN=claim.length;
+  const inStay=Array.isArray(csatData?.in_stay)?csatData.in_stay:[];
+  const pcN=postCase.length,clN=claim.length,isN=inStay.length;
   const pcAvg=pcN?Math.round(postCase.reduce((s,r)=>s+(r.percent||0),0)/pcN):0;
   const clAvg=clN?Math.round(claim.reduce((s,r)=>s+(r.percent||0),0)/clN):0;
+  const isAvg=isN?Math.round(inStay.reduce((s,r)=>s+(r.percent||0),0)/isN):0;
   return(
     <div style={{marginBottom:14}}>
       <div
@@ -2842,10 +2844,10 @@ function CsatDropzone({isAdmin,csatFileRef,handleCsatFile,toast2,csatData}){
           {dragging?"Drop your file here":"Drag & drop a CSAT Satisfaction Form here"}
         </div>
         <div style={{fontSize:13,color:"#9ca3af",marginBottom:14}}>
-          or <span style={{color:"#d97706",fontWeight:600}}>click to browse</span> &nbsp;·&nbsp; .xlsx files only &nbsp;·&nbsp; auto-detects Post Case File vs Claim Resolution
+          or <span style={{color:"#d97706",fontWeight:600}}>click to browse</span> &nbsp;·&nbsp; .xlsx files only &nbsp;·&nbsp; auto-detects Post Case File, Claim Resolution, or In Stay Support
         </div>
         <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",fontSize:11,color:"#6b7280"}}>
-          {["Post Case File CSAT","CSAT for Owners after Claim"].map(t=>(
+          {["Post Case File CSAT","CSAT for Owners after Claim","In Stay Support CSAT"].map(t=>(
             <span key={t} style={{background:"#fef3c7",borderRadius:4,padding:"2px 8px"}}>{t}</span>
           ))}
         </div>
@@ -2855,7 +2857,7 @@ function CsatDropzone({isAdmin,csatFileRef,handleCsatFile,toast2,csatData}){
         setLastFile({name:file.name,time:new Date().toLocaleTimeString("en-NZ")});
         handleCsatFile(e);
       }}/>
-      {(lastFile||pcN>0||clN>0)&&(
+      {(lastFile||pcN>0||clN>0||isN>0)&&(
         <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 14px",flexWrap:"wrap"}}>
           <span style={{fontSize:16}}>{lastFile?"✅":"⭐"}</span>
           <div style={{flex:"1 1 auto",minWidth:200}}>
@@ -2866,6 +2868,7 @@ function CsatDropzone({isAdmin,csatFileRef,handleCsatFile,toast2,csatData}){
           <div style={{display:"flex",gap:12,fontSize:12,fontWeight:600,color:"#92400e"}}>
             {pcN>0&&<span>{pcN} Post Case · avg {pcAvg}%</span>}
             {clN>0&&<span>{clN} Claim · avg {clAvg}%</span>}
+            {isN>0&&<span>{isN} In Stay · avg {isAvg}%</span>}
           </div>
         </div>
       )}
@@ -5677,34 +5680,49 @@ function App(){
         // Detect form type from distinctive question phrases.
         const isClaim=hdr.some(h=>h.includes("compensation request")||h.includes("fair did you feel the outcome")||h.includes("clear was the compensation process"));
         const isPostCase=!isClaim&&hdr.some(h=>h.includes("how we handled your concern")||h.includes("resolution provided")||h.includes("overall stay"));
-        if(!isClaim&&!isPostCase){toast2("Couldn't tell which CSAT form this is. Expected Post Case File or Claim Resolution Satisfaction.");return;}
-        const type=isClaim?"claim":"post_case";
-        const formLabel=isClaim?"CSAT for Owners after Claim":"Post Case File CSAT";
-        const kpiKey=isClaim?"csat_owner_claim":"post_case_csat";
-        // Map every column we care about. Questions differ between forms — only one set will match.
+        // v2.6.8 — In Stay Support CSAT (Guest Support team). 3 rating questions, max 15. Detection
+        // key is "how we handled the iss[ue]" — note it's "issue" here, vs Post Case's "your
+        // concern". The shared phrases "communication and updates" and "time taken to resolve"
+        // appear in both Post Case and In Stay, so they can't be used as discriminators on their own.
+        const isInStay=!isClaim&&!isPostCase&&hdr.some(h=>h.includes("how we handled the iss"));
+        if(!isClaim&&!isPostCase&&!isInStay){toast2("Couldn't tell which CSAT form this is. Expected Post Case File, Claim Resolution, or In Stay Support Satisfaction.");return;}
+        let type,formLabel,kpiKey,teamName,numQ;
+        if(isClaim){type="claim";formLabel="CSAT for Owners after Claim";kpiKey="csat_owner_claim";teamName="Reputation and Resolutions";numQ=5;}
+        else if(isPostCase){type="post_case";formLabel="Post Case File CSAT";kpiKey="post_case_csat";teamName="Reputation and Resolutions";numQ=4;}
+        else{type="in_stay";formLabel="In Stay Support CSAT";kpiKey="csat_in_stay";teamName="Guest Support";numQ=3;}
+        // Map every column we care about. Rating columns differ between forms — dispatch by type
+        // so we never mis-bind (e.g. Post Case and In Stay both have "communication and updates"
+        // and "time taken to resolve" but at different q-indices, so a shared map would collide).
         const colsMap={};
         rows[headerIdx].forEach((c,j)=>{
           const cl=String(c||"").toLowerCase().replace(/\s+/g," ").trim();
+          // Shared meta columns across all three forms
           if(cl==="id")colsMap.id=j;
           else if(cl.includes("completion time"))colsMap.date=j;
           else if(cl==="email")colsMap.email=j;
           else if(cl.includes("case file number"))colsMap.caseNum=j;
-          // Post Case File questions
-          else if(cl.includes("how we handled your concern"))colsMap.q1=j;
-          else if(cl.includes("resolution provided"))colsMap.q2=j;
-          else if(cl.includes("communication and updates")&&!isClaim)colsMap.q3=j;
-          else if(cl.includes("time taken to resolve")&&!isClaim)colsMap.q4=j;
-          else if(cl.includes("overall stay"))colsMap.overall=j;
-          // Claim questions
-          else if(cl.includes("how we handled your compensation"))colsMap.q1=j;
-          else if(cl.includes("fair did you feel the outcome"))colsMap.q2=j;
-          else if(cl.includes("communication and updates")&&isClaim)colsMap.q3=j;
-          else if(cl.includes("time taken to resolve")&&isClaim)colsMap.q4=j;
-          else if(cl.includes("clear was the compensation process"))colsMap.q5=j;
-          // Free-text shared
           else if(cl.includes("done better"))colsMap.feedback=j;
+          // Per-type rating columns
+          else if(type==="claim"){
+            if(cl.includes("how we handled your compensation"))colsMap.q1=j;
+            else if(cl.includes("fair did you feel the outcome"))colsMap.q2=j;
+            else if(cl.includes("communication and updates"))colsMap.q3=j;
+            else if(cl.includes("time taken to resolve"))colsMap.q4=j;
+            else if(cl.includes("clear was the compensation process"))colsMap.q5=j;
+          }
+          else if(type==="post_case"){
+            if(cl.includes("how we handled your concern"))colsMap.q1=j;
+            else if(cl.includes("resolution provided"))colsMap.q2=j;
+            else if(cl.includes("communication and updates"))colsMap.q3=j;
+            else if(cl.includes("time taken to resolve"))colsMap.q4=j;
+            else if(cl.includes("overall stay"))colsMap.overall=j;
+          }
+          else{// in_stay — only 3 rating questions
+            if(cl.includes("how we handled the iss"))colsMap.q1=j;
+            else if(cl.includes("communication and"))colsMap.q2=j;
+            else if(cl.includes("time taken to resolve"))colsMap.q3=j;
+          }
         });
-        const numQ=isClaim?5:4;
         for(let qi=1;qi<=numQ;qi++){
           if(colsMap["q"+qi]==null){toast2(`Could not locate rating column ${qi} of ${numQ} in this ${formLabel} file.`);return;}
         }
@@ -5742,17 +5760,18 @@ function App(){
           // Backward compat: older shipped shape was { responses:[...] } (all Post Case).
           let postCase=Array.isArray(prev?.post_case)?prev.post_case:[];
           let claim=Array.isArray(prev?.claim)?prev.claim:[];
-          if(!prev?.post_case&&!prev?.claim&&Array.isArray(prev?.responses)){postCase=prev.responses;}
-          const targetArr=type==="claim"?claim:postCase;
+          let inStay=Array.isArray(prev?.in_stay)?prev.in_stay:[];
+          if(!prev?.post_case&&!prev?.claim&&!prev?.in_stay&&Array.isArray(prev?.responses)){postCase=prev.responses;}
+          const targetArr=type==="claim"?claim:(type==="in_stay"?inStay:postCase);
           const byId={};targetArr.forEach(r=>{if(r&&r.id)byId[r.id]=r;});
           parsed.forEach(r=>{if(byId[r.id])updated++;else added++;byId[r.id]=r;});
           const merged=Object.values(byId).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-          if(type==="claim")claim=merged;else postCase=merged;
+          if(type==="claim")claim=merged;else if(type==="in_stay")inStay=merged;else postCase=merged;
           // Aggregate the corresponding type by both FY25 WEEK and calendar MONTH into the
           // appropriate KPI key. Each response counts toward its week's average AND its month's
           // average — so the dashboard shows the correct value whether the period filter is set
-          // to week or month.
-          const RR="Reputation and Resolutions";
+          // to week or month. The team destination differs by type: Guest Support for In Stay,
+          // R&R for the other two.
           const byWeek={},byMonth={};
           merged.forEach(r=>{
             if(!r.date)return;
@@ -5762,7 +5781,7 @@ function App(){
             if(m)(byMonth[m]=byMonth[m]||[]).push(r.percent);
           });
           setData(prevData=>{
-            const teamData={...(prevData[RR]||{})};
+            const teamData={...(prevData[teamName]||{})};
             const writeAvg=(pkey,arr)=>{
               if(!arr.length)return;
               const avg=Math.round(arr.reduce((s,v)=>s+v,0)/arr.length);
@@ -5771,9 +5790,9 @@ function App(){
             };
             Object.entries(byWeek).forEach(([w,arr])=>writeAvg("w__"+w,arr));
             Object.entries(byMonth).forEach(([m,arr])=>writeAvg("m__"+m,arr));
-            return{...prevData,[RR]:teamData};
+            return{...prevData,[teamName]:teamData};
           });
-          return{post_case:postCase,claim:claim};
+          return{post_case:postCase,claim:claim,in_stay:inStay};
         });
         setTimeout(()=>{toast2(`${formLabel} · ${added} new, ${updated} updated`);},10);
       }catch(err){

@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.6.2";
+const APP_VERSION="2.6.6";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -2465,7 +2465,7 @@ const DEFAULT_TEAMS={
     {key:"avg_response",label:"Avg Response Time",target:"<8 Business Hours",unit:"hrs",dir:"lt",thresh:8},
     {key:"productivity_team",label:"Productivity – Team",target:">8 Per Hour",unit:"/hr",dir:"gt",thresh:8},
     {key:"productivity_lead",label:"Productivity – Team Lead",target:">4 Per Hour",unit:"/hr",dir:"gt",thresh:4},
-    {key:"in_stay_resolved",label:"In Stay Cases Resolved >8 Hrs",target:">95%",unit:"%",dir:"gt",thresh:95},
+    {key:"in_stay_resolved",label:"Median In Stay Resolution Time",target:"<8 Work Hrs",unit:"hrs",dir:"lt",thresh:8},
     {key:"csat_in_stay",label:"CSAT after In Stay Resolution",target:">85%",unit:"%",dir:"gt",thresh:85},
     {key:"call_reviews_count",label:"Call Reviews Per Agent/Month",target:">8",unit:"",dir:"gt",thresh:8},
     {key:"call_reviews_pass",label:"Call Reviews Pass Rate",target:">95%",unit:"%",dir:"gt",thresh:95},
@@ -2549,6 +2549,30 @@ const WEEKS=[
 
 // Auto-detect current FY25 week from PC date
 const FY25_START=new Date(2025,9,4);// Oct 4 2025
+// Mirror of WEEKS as [weekNum, startISO, endISO] tuples. Module-scope so render-time IIFEs can
+// reference it without hitting the const TDZ that bit us in v2.6.2 (Cannot access FY25_WK_RANGES
+// before initialization — the inline declaration inside App came later in the function body than
+// the dashboard render code that needed it).
+const FY25_WK_RANGES=[
+  [1,"2025-10-04","2025-10-10"],[2,"2025-10-11","2025-10-17"],[3,"2025-10-18","2025-10-24"],
+  [4,"2025-10-25","2025-10-31"],[5,"2025-11-01","2025-11-07"],[6,"2025-11-08","2025-11-14"],
+  [7,"2025-11-15","2025-11-21"],[8,"2025-11-22","2025-11-28"],[9,"2025-11-29","2025-12-05"],
+  [10,"2025-12-06","2025-12-12"],[11,"2025-12-13","2025-12-19"],[12,"2025-12-20","2025-12-26"],
+  [13,"2025-12-27","2026-01-02"],[14,"2026-01-03","2026-01-09"],[15,"2026-01-10","2026-01-16"],
+  [16,"2026-01-17","2026-01-23"],[17,"2026-01-24","2026-01-30"],[18,"2026-01-31","2026-02-06"],
+  [19,"2026-02-07","2026-02-13"],[20,"2026-02-14","2026-02-20"],[21,"2026-02-21","2026-02-27"],
+  [22,"2026-02-28","2026-03-06"],[23,"2026-03-07","2026-03-13"],[24,"2026-03-14","2026-03-20"],
+  [25,"2026-03-21","2026-03-27"],[26,"2026-03-28","2026-04-03"],[27,"2026-04-04","2026-04-10"],
+  [28,"2026-04-11","2026-04-17"],[29,"2026-04-18","2026-04-24"],[30,"2026-04-25","2026-05-01"],
+  [31,"2026-05-02","2026-05-08"],[32,"2026-05-09","2026-05-15"],[33,"2026-05-16","2026-05-22"],
+  [34,"2026-05-23","2026-05-29"],[35,"2026-05-30","2026-06-05"],[36,"2026-06-06","2026-06-12"],
+  [37,"2026-06-13","2026-06-19"],[38,"2026-06-20","2026-06-26"],[39,"2026-06-27","2026-07-03"],
+  [40,"2026-07-04","2026-07-10"],[41,"2026-07-11","2026-07-17"],[42,"2026-07-18","2026-07-24"],
+  [43,"2026-07-25","2026-07-31"],[44,"2026-08-01","2026-08-07"],[45,"2026-08-08","2026-08-14"],
+  [46,"2026-08-15","2026-08-21"],[47,"2026-08-22","2026-08-28"],[48,"2026-08-29","2026-09-04"],
+  [49,"2026-09-05","2026-09-11"],[50,"2026-09-12","2026-09-18"],[51,"2026-09-19","2026-09-25"],
+  [52,"2026-09-26","2026-10-02"],[53,"2026-10-03","2026-10-09"],
+];
 const getCurrentFY25Week=()=>{const now=new Date();const diff=Math.floor((now-FY25_START)/(7*24*60*60*1000));const wk=Math.max(1,Math.min(53,diff+1));return wk;};
 /* Default the period filter to the PREVIOUS FY week on login.
    Showing the current (in-progress) week is misleading because the data is incomplete —
@@ -2643,6 +2667,25 @@ const migrateTeamColors=(tcIn)=>{
       }
     });
     out[teamName]={...out[teamName],kpis:reconciled};
+  });
+  // v2.6.4 — semantic KPI shape migrations. The key/label reconciliation above preserves saved
+  // KPIs whose KEY matches a default, so if the unit/dir/threshold semantics change for an
+  // existing key, we need to force-update here. Each entry below converts an OLD shape we shipped
+  // before to the current default for that key. Idempotent: matching uses the OLD detector
+  // (e.g. `unit:"%"`), so once migrated, the new shape passes through unchanged.
+  Object.keys(out).forEach(teamName=>{
+    if(!Array.isArray(out[teamName]?.kpis))return;
+    out[teamName]={...out[teamName],kpis:out[teamName].kpis.map(k=>{
+      // v2.6.4: in_stay_resolved went from "% of cases resolved in <8h (target >95%)" to
+      // "median resolution time in hours (target <8h)" because the % source data wasn't
+      // available in Intercom — we use the Median ticket time to resolve tile instead.
+      // v2.6.5: target text clarified to "<8 Work Hrs" — work hours = 8am–7pm × 7 days. The
+      // matcher catches both the original % shape AND the intermediate "<8 Hrs" shape.
+      if(k.key==="in_stay_resolved"&&(k.unit==="%"||k.target==="<8 Hrs")){
+        return{key:"in_stay_resolved",label:"Median In Stay Resolution Time",target:"<8 Work Hrs",unit:"hrs",dir:"lt",thresh:8};
+      }
+      return k;
+    })};
   });
   return out;
 }
@@ -2745,7 +2788,7 @@ function IntercomDropzone({isAdmin,icFileRef,handleIcFile,toast2,icData}){
           or <span style={{color:"#0d9488",fontWeight:600}}>click to browse</span> &nbsp;·&nbsp; CSV files only &nbsp;·&nbsp; auto-detects report type
         </div>
         <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",fontSize:11,color:"#6b7280"}}>
-          {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate","Activity Time","Abandoned Calls","Detailed work log","Call handle times"].map(t=>(
+          {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate","Activity Time","Abandoned Calls","Detailed work log","Call handle times","Ticket Stats (In Stay)"].map(t=>(
             <span key={t} style={{background:"#f3f4f6",borderRadius:4,padding:"2px 8px"}}>{t}</span>
           ))}
         </div>
@@ -5257,26 +5300,6 @@ function App(){
 
 
   // ── SCHEDULE XLSX PARSE ──
-  const FY25_WK_RANGES=[
-    [1,"2025-10-04","2025-10-10"],[2,"2025-10-11","2025-10-17"],[3,"2025-10-18","2025-10-24"],
-    [4,"2025-10-25","2025-10-31"],[5,"2025-11-01","2025-11-07"],[6,"2025-11-08","2025-11-14"],
-    [7,"2025-11-15","2025-11-21"],[8,"2025-11-22","2025-11-28"],[9,"2025-11-29","2025-12-05"],
-    [10,"2025-12-06","2025-12-12"],[11,"2025-12-13","2025-12-19"],[12,"2025-12-20","2025-12-26"],
-    [13,"2025-12-27","2026-01-02"],[14,"2026-01-03","2026-01-09"],[15,"2026-01-10","2026-01-16"],
-    [16,"2026-01-17","2026-01-23"],[17,"2026-01-24","2026-01-30"],[18,"2026-01-31","2026-02-06"],
-    [19,"2026-02-07","2026-02-13"],[20,"2026-02-14","2026-02-20"],[21,"2026-02-21","2026-02-27"],
-    [22,"2026-02-28","2026-03-06"],[23,"2026-03-07","2026-03-13"],[24,"2026-03-14","2026-03-20"],
-    [25,"2026-03-21","2026-03-27"],[26,"2026-03-28","2026-04-03"],[27,"2026-04-04","2026-04-10"],
-    [28,"2026-04-11","2026-04-17"],[29,"2026-04-18","2026-04-24"],[30,"2026-04-25","2026-05-01"],
-    [31,"2026-05-02","2026-05-08"],[32,"2026-05-09","2026-05-15"],[33,"2026-05-16","2026-05-22"],
-    [34,"2026-05-23","2026-05-29"],[35,"2026-05-30","2026-06-05"],[36,"2026-06-06","2026-06-12"],
-    [37,"2026-06-13","2026-06-19"],[38,"2026-06-20","2026-06-26"],[39,"2026-06-27","2026-07-03"],
-    [40,"2026-07-04","2026-07-10"],[41,"2026-07-11","2026-07-17"],[42,"2026-07-18","2026-07-24"],
-    [43,"2026-07-25","2026-07-31"],[44,"2026-08-01","2026-08-07"],[45,"2026-08-08","2026-08-14"],
-    [46,"2026-08-15","2026-08-21"],[47,"2026-08-22","2026-08-28"],[48,"2026-08-29","2026-09-04"],
-    [49,"2026-09-05","2026-09-11"],[50,"2026-09-12","2026-09-18"],[51,"2026-09-19","2026-09-25"],
-    [52,"2026-09-26","2026-10-02"],[53,"2026-10-03","2026-10-09"],
-  ];
   const dateToWk=(ds)=>{
     try{
       let iso;
@@ -5890,6 +5913,82 @@ function App(){
             return merged;
           });
           toast2(`Replies imported: ${Object.keys(newIc).length} agents (W${wk}).`);
+        }
+
+        // ── TYPE I: In Stay Ticket Stats (work-hours median resolution) ────
+        // Header signature: "Conversation ID" + "Ticket time to resolve" + "Ticket type".
+        // Must check BEFORE TYPE C — TYPE C also matches on "Conversation ID" alone.
+        // Algorithm:
+        //   • For each row, derive created = resolved - elapsed_seconds.
+        //   • Clip the [created, resolved] interval to each day's 8am-7pm window and sum.
+        //   • Group by FY25 week + month using the RESOLVED date.
+        //   • Median per group → KPI in_stay_resolved on Guest Support, unit = work hours.
+        // Validated against the May 2026 export: median work hrs = 6.15h vs calendar 16.89h.
+        else if(firstLine.includes("Conversation ID")&&firstLine.toLowerCase().includes("ticket time to resolve")&&firstLine.toLowerCase().includes("ticket type")){
+          const rows=parseCSV(text);
+          if(!rows.length){toast2("In Stay Ticket Stats: no rows found.");return;}
+          const WORK_START_HR=8,WORK_END_HR=19;
+          // Parse "2026-05-31 17:18:32" (or ISO with T) as LOCAL time. Bachcare team is in NZ,
+          // so local-time interpretation matches Pacific/Auckland for this user base.
+          const parseNzString=(s)=>{
+            const m=String(s||"").match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
+            if(!m)return null;
+            return new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]);
+          };
+          const workSeconds=(created,resolved)=>{
+            if(resolved<=created)return 0;
+            let total=0;let cur=new Date(created);let safety=0;
+            while(cur<resolved&&safety++<400){
+              const dayStart=new Date(cur);dayStart.setHours(WORK_START_HR,0,0,0);
+              const dayEnd=new Date(cur);dayEnd.setHours(WORK_END_HR,0,0,0);
+              const ovStart=cur>dayStart?cur:dayStart;
+              const ovEnd=resolved<dayEnd?resolved:dayEnd;
+              if(ovEnd>ovStart)total+=(ovEnd.getTime()-ovStart.getTime())/1000;
+              const next=new Date(cur);next.setDate(next.getDate()+1);next.setHours(WORK_START_HR,0,0,0);
+              cur=next;
+            }
+            return total;
+          };
+          const median=(arr)=>{if(!arr.length)return 0;const s=[...arr].sort((a,b)=>a-b);const m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2;};
+          const byWeek={},byMonth={};
+          let counted=0,skipped=0;
+          rows.forEach(row=>{
+            const ticketType=String(row.ticket_type||"").trim();
+            const stateCat=String(row.current_ticket_state_category||"").trim().toLowerCase();
+            if(ticketType!=="In Stay Complaint"){skipped++;return;}
+            if(stateCat&&stateCat!=="resolved"){skipped++;return;}
+            const resStr=row["ticket_last_resolved_(pacific/auckland)"]||row.ticket_last_resolved||"";
+            const elapsed=Number(row["ticket_time_to_resolve_(seconds)"]||row.ticket_time_to_resolve||0);
+            if(!resStr||!elapsed||!isFinite(elapsed)){skipped++;return;}
+            const resolved=parseNzString(resStr);
+            if(!resolved){skipped++;return;}
+            const created=new Date(resolved.getTime()-elapsed*1000);
+            const workH=workSeconds(created,resolved)/3600;
+            const iso=resolved.getFullYear()+"-"+String(resolved.getMonth()+1).padStart(2,"0")+"-"+String(resolved.getDate()).padStart(2,"0");
+            const wkN=FY25_WK_RANGES.find(([,s,e])=>iso>=s&&iso<=e)?.[0];
+            if(wkN){(byWeek[wkN]=byWeek[wkN]||[]).push(workH);}
+            const monLabel=resolved.toLocaleString("en-NZ",{month:"long",year:"numeric"});
+            (byMonth[monLabel]=byMonth[monLabel]||[]).push(workH);
+            counted++;
+          });
+          if(!counted){toast2("In Stay Ticket Stats: no In Stay Complaint rows matched (skipped "+skipped+").");return;}
+          const TEAM="Guest Support";
+          const stamp=nowNZ();
+          setData(prev=>{
+            const teamData={...(prev[TEAM]||{})};
+            const writeKpi=(pkey,arr)=>{
+              if(!arr.length)return;
+              const v=Math.round(median(arr)*100)/100;
+              teamData[pkey]=mg(teamData[pkey]||{},{in_stay_resolved:v,_in_stay_n:arr.length,_in_stay_at:stamp});
+            };
+            Object.entries(byWeek).forEach(([w,arr])=>writeKpi("w__"+w,arr));
+            Object.entries(byMonth).forEach(([m,arr])=>writeKpi("m__"+m,arr));
+            return{...prev,[TEAM]:teamData};
+          });
+          const wkSummary=Object.entries(byWeek).map(([w,a])=>`W${w}:${(Math.round(median(a)*100)/100).toFixed(2)}h`).join(", ");
+          const moSummary=Object.entries(byMonth).map(([m,a])=>`${m.split(" ")[0]}:${(Math.round(median(a)*100)/100).toFixed(2)}h`).join(", ");
+          toast2(`In Stay Ticket Stats: ${counted} tickets → ${Object.keys(byMonth).length} month(s), ${Object.keys(byWeek).length} week(s). Median work hrs — ${moSummary}${wkSummary?" | "+wkSummary:""}`);
+          addAudit("In Stay Ticket Stats Imported",`${counted} tickets, ${Object.keys(byMonth).length} months, ${Object.keys(byWeek).length} weeks`);
         }
 
         // ── TYPE C: Full conversation export (response times) ─────────────
@@ -7160,6 +7259,7 @@ function App(){
             <div><strong>Work Completed CSV</strong> ✅ Case Actions report<br/>→ Emails (Cases + Template combined)<br/>→ Case Actions shown as visual only (no productivity impact)<br/>→ WFs = configurable pts → added to productivity</div>
             <div><strong>Total Calls CSV</strong> ✅ Calls per person<br/>→ Calls per agent shown in Reports<br/>→ configurable pts → added to productivity</div>
             <div><strong>Answer Rate CSV</strong> ✅ Guest or Owner<br/>→ Auto-fills Call Answer Rate KPI on Dashboard<br/>→ Name file with 'Guest' or 'Owner' to detect team</div>
+            <div><strong>Ticket Stats CSV</strong> ✅ In Stay resolution times<br/>→ Auto-fills Median In Stay Resolution Time KPI (Guest Support)<br/>→ Computes <strong>work hours</strong> (8am–7pm × 7 days) per ticket, then median<br/>→ Filter Intercom report to "Ticket type = In Stay Complaint" before exporting</div>
           </div>
         </div>
 

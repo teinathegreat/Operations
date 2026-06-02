@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.5.8";
+const APP_VERSION="2.6.0";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -2763,6 +2763,67 @@ function IntercomDropzone({isAdmin,icFileRef,handleIcFile,toast2,icData}){
             <div style={{fontSize:11,color:"#6b7280"}}>Uploaded at {lastFile.time}</div>
           </div>
           {Object.keys(icData).length>0&&<span style={{marginLeft:"auto",fontSize:12,color:"#059669",fontWeight:600}}>{Object.keys(icData).length} agents loaded</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CsatDropzone({isAdmin,csatFileRef,handleCsatFile,toast2,csatData}){
+  const[dragging,setDragging]=React.useState(false);
+  const[lastFile,setLastFile]=React.useState(null);
+  const handleDrop=(e)=>{
+    e.preventDefault();e.stopPropagation();setDragging(false);
+    const file=e.dataTransfer.files[0];if(!file)return;
+    setLastFile({name:file.name,time:new Date().toLocaleTimeString("en-NZ")});
+    handleCsatFile({target:{files:[file],value:""}});
+  };
+  const handleDragOver=(e)=>{e.preventDefault();setDragging(true);};
+  const handleDragLeave=(e)=>{e.preventDefault();setDragging(false);};
+  // Backward compat: old shape was {responses:[...]} (all post case). New shape: {post_case, claim}.
+  const postCase=Array.isArray(csatData?.post_case)?csatData.post_case:(Array.isArray(csatData?.responses)?csatData.responses:[]);
+  const claim=Array.isArray(csatData?.claim)?csatData.claim:[];
+  const pcN=postCase.length,clN=claim.length;
+  const pcAvg=pcN?Math.round(postCase.reduce((s,r)=>s+(r.percent||0),0)/pcN):0;
+  const clAvg=clN?Math.round(claim.reduce((s,r)=>s+(r.percent||0),0)/clN):0;
+  return(
+    <div style={{marginBottom:14}}>
+      <div
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onClick={()=>{if(!isAdmin)return toast2("Only admins can upload reports.");csatFileRef.current.click();}}
+        style={{background:dragging?"#fef3c7":"#fff",border:`2px dashed ${dragging?"#d97706":"#d1d5db"}`,borderRadius:12,padding:"32px 24px",textAlign:"center",cursor:"pointer",transition:"all .2s",boxShadow:dragging?"0 0 0 4px rgba(217,119,6,.08)":"none"}}>
+        <div style={{fontSize:38,marginBottom:12}}>{dragging?"📂":"⭐"}</div>
+        <div style={{fontWeight:700,fontSize:16,color:"#111827",marginBottom:6}}>
+          {dragging?"Drop your file here":"Drag & drop a CSAT Satisfaction Form here"}
+        </div>
+        <div style={{fontSize:13,color:"#9ca3af",marginBottom:14}}>
+          or <span style={{color:"#d97706",fontWeight:600}}>click to browse</span> &nbsp;·&nbsp; .xlsx files only &nbsp;·&nbsp; auto-detects Post Case File vs Claim Resolution
+        </div>
+        <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",fontSize:11,color:"#6b7280"}}>
+          {["Post Case File CSAT","CSAT for Owners after Claim"].map(t=>(
+            <span key={t} style={{background:"#fef3c7",borderRadius:4,padding:"2px 8px"}}>{t}</span>
+          ))}
+        </div>
+      </div>
+      <input ref={csatFileRef} type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>{
+        const file=e.target.files[0];if(!file)return;
+        setLastFile({name:file.name,time:new Date().toLocaleTimeString("en-NZ")});
+        handleCsatFile(e);
+      }}/>
+      {(lastFile||pcN>0||clN>0)&&(
+        <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 14px",flexWrap:"wrap"}}>
+          <span style={{fontSize:16}}>{lastFile?"✅":"⭐"}</span>
+          <div style={{flex:"1 1 auto",minWidth:200}}>
+            {lastFile&&<div style={{fontSize:13,fontWeight:600,color:"#92400e"}}>{lastFile.name}</div>}
+            {lastFile&&<div style={{fontSize:11,color:"#6b7280"}}>Uploaded at {lastFile.time}</div>}
+            {!lastFile&&<div style={{fontSize:13,fontWeight:600,color:"#92400e"}}>Stored CSAT data</div>}
+          </div>
+          <div style={{display:"flex",gap:12,fontSize:12,fontWeight:600,color:"#92400e"}}>
+            {pcN>0&&<span>{pcN} Post Case · avg {pcAvg}%</span>}
+            {clN>0&&<span>{clN} Claim · avg {clAvg}%</span>}
+          </div>
         </div>
       )}
     </div>
@@ -3815,6 +3876,7 @@ function App(){
   const[editHours,setEditHours]=useState(null);
   const[editHoursVal,setEditHoursVal]=useState("");
   const icFileRef=useRef();
+  const csatFileRef=useRef();
   const[icData,setIcData]=useState(()=>{return{};});
   const[icPPT,setIcPPT]=useState(()=>{return{};});
   // Abandoned Calls (Rejected/Missed call events from Intercom report, UK→NZ converted)
@@ -3827,6 +3889,11 @@ function App(){
   // Shape: { "PersonName": { "2026-05-26": [ {type,time,minutes,label,detail,source} ] } }
   // Populated by a future timestamped export; abandoned calls are merged in live.
   const[dailyTimelineData,setDailyTimelineData]=useState(()=>{return{};});
+  // v2.5.9 — Post Case File CSAT responses uploaded from the resolution-satisfaction form.
+  // Shape: { responses: [{id, date, email, caseNumber, q1, q2, q3, q4, percent, feedback, overallStay}] }
+  // Each q is 1-5; percent = (q1+q2+q3+q4)/20 * 100 (rounded). Aggregated by FY25 week into
+  // data["Reputation and Resolutions"][w__N].post_case_csat for the R&R dashboard KPI tile.
+  const[csatData,setCsatData]=useState(()=>{return{responses:[]};});
   const[icFilter,setIcFilter]=useState("week");
   const[icWeek,setIcWeek]=useState(AUTO_WEEK);
   const[icMonth,setIcMonth]=useState("March 2026");
@@ -4222,7 +4289,7 @@ function App(){
     setSbMsg("Loading from Supabase...");
     try{
       // Load row-level tables + config from config_rows
-      const[cr2,ai2,td2,dr2,mn2,fm2,ah2,gl2,au2,nf2,aa2,pb2,pc2,ms2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence,rc_tgt,rc_rej,rc_tl]=await Promise.all([
+      const[cr2,ai2,td2,dr2,mn2,fm2,ah2,gl2,au2,nf2,aa2,pb2,pc2,ms2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence,rc_tgt,rc_rej,rc_tl,rc_csat]=await Promise.all([
         dbLoadAll("call_reviews"),dbLoadAll("action_items"),dbLoadAll("todos"),dbLoadAll("daily_reports"),
         dbLoadAll("meeting_notes"),dbLoadAll("formal_meetings"),dbLoadAll("assess_history"),dbLoadAll("goals"),
         dbLoadAll("audit_entries"),dbLoadAll("notif_entries"),dbLoadAll("alert_entries"),
@@ -4231,7 +4298,7 @@ function App(){
         dbLoadConfig("perms"),dbLoadConfig("dailycfg"),dbLoadConfig("snooze"),
         dbLoadConfig("sched"),dbLoadConfig("ic"),dbLoadConfig("icppt"),
         dbLoadConfig("weights"),dbLoadConfig("revcrit"),dbLoadConfig("sys"),dbLoadConfig("presence"),dbLoadConfig("tgt"),
-        dbLoadConfig("rejcalls"),dbLoadConfig("timeline")
+        dbLoadConfig("rejcalls"),dbLoadConfig("timeline"),dbLoadConfig("csat")
       ]);
       // sys config holds app_data, accounts, api_keys, quick_refs, update_notes, etc.
       const sysConf=rc_sys||{};
@@ -4331,6 +4398,8 @@ function App(){
       if(f_ip&&typeof f_ip==="object")setIcPPT(f_ip);
       if(rc_rej&&typeof rc_rej==="object")setRejectedCallsData(rc_rej);
       if(rc_tl&&typeof rc_tl==="object")setDailyTimelineData(rc_tl);
+      // v2.5.9 — csat is stored as a single key (csat:data), so rc_csat is {data: {responses:[...]}}.
+      if(rc_csat&&rc_csat.data&&Array.isArray(rc_csat.data.responses))setCsatData(rc_csat.data);
       if(f_wt&&typeof f_wt==="object"){
         // v2.4.4: Skip teams whose weights have an unsaved local edit in flight,
         // otherwise the stale DB read clobbers the user's change and the weight
@@ -4528,6 +4597,7 @@ function App(){
           const sdv=await dbLoadConfig("sched");if(sdv&&typeof sdv==="object")setSchedData(sdv);
           const rjv=await dbLoadConfig("rejcalls");if(rjv&&typeof rjv==="object")setRejectedCallsData(rjv);
           const tlv=await dbLoadConfig("timeline");if(tlv&&typeof tlv==="object")setDailyTimelineData(tlv);
+          const csv2=await dbLoadConfig("csat");if(csv2&&csv2.data&&Array.isArray(csv2.data.responses))setCsatData(csv2.data);
           // Backfill call reviews a stranded session may have missed. MERGE (not replace): server rows win,
           // but any review created locally and not yet returned by the read is preserved — so this can never
           // make a just-submitted review vanish.
@@ -4667,6 +4737,7 @@ function App(){
           else if(prefix==="weights")objMerge(setAllWeights);
           else if(prefix==="revcrit")objMerge(setReviewCriteriaConfig);
           else if(prefix==="tgt")objMerge(setTgtOwners);
+          else if(prefix==="csat"){if(key==="data"&&value&&Array.isArray(value.responses)){setCsatData(value);try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}}}
           else if(prefix==="sys"){
             if(key==="app_data"&&value&&typeof value==="object"){
               // v2.4.3: app_data is now JUST data (no _tc/_r). Strip them in case an old client wrote them.
@@ -4723,6 +4794,9 @@ function App(){
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(alertSnooze).forEach(([k,v])=>dbSaveConfigKey("snooze",k,v));},[alertSnooze]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(schedData).forEach(([k,v])=>dbSaveConfigKey("sched",k,v));},[schedData]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(rejectedCallsData).forEach(([k,v])=>dbSaveConfigKey("rejcalls",k,v));},[rejectedCallsData]);
+  // v2.5.9 — CSAT responses stored as a single key (csat:data) since they're all one logical
+  // collection and small enough not to warrant per-row config rows.
+  useEffect(()=>{if(!saveEnabled.current)return;if(!csatData||!Array.isArray(csatData.responses))return;dbSaveConfigKey("csat","data",csatData);},[csatData]);
   useEffect(()=>{if(!saveEnabled.current)return;Object.entries(dailyTimelineData).forEach(([k,v])=>dbSaveConfigKey("timeline",k,v));},[dailyTimelineData]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(allWeights).forEach(([k,v])=>dbSaveConfigKey("weights",k,v));},[allWeights]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;dbSaveConfigKey("sys","call_review_teams",callReviewTeams);},[callReviewTeams]);
@@ -5531,6 +5605,134 @@ function App(){
     if(leadHrs>0)updates.productivity_lead=leadPts>0?Math.round(leadPts/leadHrs*100)/100:0;
     if(Object.keys(updates).length){autoFillKPIs(teamName,wkNum,updates);return Object.keys(updates).length;}
     return 0;
+  };
+
+    // v2.5.9 / 2.6.0 — CSAT importer for the Resolution Satisfaction Forms. Two flavors auto-
+    // detected by question wording:
+    //   • Post Case File CSAT (4 questions, 1-5 each) → KPI post_case_csat. /25 max becomes /20.
+    //   • CSAT for Owners after Claim (5 questions, 1-5 each) → KPI csat_owner_claim. /25 max.
+    // Per-response percent = sum / (5 × Nquestions) × 100. Responses deduped by form ID, stored
+    // separately per type in csatData, aggregated by FY25 week and pushed into
+    // data["Reputation and Resolutions"][w__N][kpiKey] so the existing dashboard tile picks it up.
+  const handleCsatFile=(e)=>{
+    if(!isAdmin)return toast2("Only admins can upload reports.");
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=(ev)=>{
+      try{
+        const data2=new Uint8Array(ev.target.result);
+        const wb=window.XLSX.read(data2,{type:"array",cellDates:true});
+        const sh=wb.Sheets[wb.SheetNames[0]];
+        if(!sh){toast2("Empty workbook.");return;}
+        const rows=window.XLSX.utils.sheet_to_json(sh,{header:1,defval:""});
+        if(!rows.length){toast2("No rows found.");return;}
+        // Find header row by signature: must contain an "ID" cell + at least one "satisfied"/"fair" cell.
+        let headerIdx=-1;
+        for(let i=0;i<Math.min(rows.length,20);i++){
+          const r=rows[i].map(x=>String(x||"").toLowerCase());
+          if(r.some(x=>x==="id")&&r.some(x=>x.includes("satisfied")||x.includes("fair"))){headerIdx=i;break;}
+        }
+        if(headerIdx<0){toast2("Could not find a header row with rating columns.");return;}
+        const hdr=rows[headerIdx].map(c=>String(c||"").toLowerCase().replace(/\s+/g," ").trim());
+        // Detect form type from distinctive question phrases.
+        const isClaim=hdr.some(h=>h.includes("compensation request")||h.includes("fair did you feel the outcome")||h.includes("clear was the compensation process"));
+        const isPostCase=!isClaim&&hdr.some(h=>h.includes("how we handled your concern")||h.includes("resolution provided")||h.includes("overall stay"));
+        if(!isClaim&&!isPostCase){toast2("Couldn't tell which CSAT form this is. Expected Post Case File or Claim Resolution Satisfaction.");return;}
+        const type=isClaim?"claim":"post_case";
+        const formLabel=isClaim?"CSAT for Owners after Claim":"Post Case File CSAT";
+        const kpiKey=isClaim?"csat_owner_claim":"post_case_csat";
+        // Map every column we care about. Questions differ between forms — only one set will match.
+        const colsMap={};
+        rows[headerIdx].forEach((c,j)=>{
+          const cl=String(c||"").toLowerCase().replace(/\s+/g," ").trim();
+          if(cl==="id")colsMap.id=j;
+          else if(cl.includes("completion time"))colsMap.date=j;
+          else if(cl==="email")colsMap.email=j;
+          else if(cl.includes("case file number"))colsMap.caseNum=j;
+          // Post Case File questions
+          else if(cl.includes("how we handled your concern"))colsMap.q1=j;
+          else if(cl.includes("resolution provided"))colsMap.q2=j;
+          else if(cl.includes("communication and updates")&&!isClaim)colsMap.q3=j;
+          else if(cl.includes("time taken to resolve")&&!isClaim)colsMap.q4=j;
+          else if(cl.includes("overall stay"))colsMap.overall=j;
+          // Claim questions
+          else if(cl.includes("how we handled your compensation"))colsMap.q1=j;
+          else if(cl.includes("fair did you feel the outcome"))colsMap.q2=j;
+          else if(cl.includes("communication and updates")&&isClaim)colsMap.q3=j;
+          else if(cl.includes("time taken to resolve")&&isClaim)colsMap.q4=j;
+          else if(cl.includes("clear was the compensation process"))colsMap.q5=j;
+          // Free-text shared
+          else if(cl.includes("done better"))colsMap.feedback=j;
+        });
+        const numQ=isClaim?5:4;
+        for(let qi=1;qi<=numQ;qi++){
+          if(colsMap["q"+qi]==null){toast2(`Could not locate rating column ${qi} of ${numQ} in this ${formLabel} file.`);return;}
+        }
+        const W1_START=Date.UTC(2025,9,4);
+        const fyWeek=(d)=>{if(!(d instanceof Date)||isNaN(d))return null;const ms=Date.UTC(d.getFullYear(),d.getMonth(),d.getDate());if(ms<W1_START)return null;const w=Math.floor((ms-W1_START)/(7*86400000))+1;return w>=1&&w<=52?w:null;};
+        const parsed=[];
+        for(let i=headerIdx+1;i<rows.length;i++){
+          const r=rows[i];if(!r||!r.length)continue;
+          const id=String(r[colsMap.id]||"").trim();if(!id)continue;
+          const dRaw=r[colsMap.date];
+          let dt=null;
+          if(dRaw instanceof Date)dt=dRaw;
+          else if(dRaw){try{const d=new Date(dRaw);if(!isNaN(d))dt=d;}catch{}}
+          const qs=[];
+          for(let qi=1;qi<=numQ;qi++)qs.push(Number(r[colsMap["q"+qi]])||0);
+          if(qs.every(v=>v<1))continue;
+          const total=qs.reduce((s,v)=>s+v,0);
+          const percent=Math.round((total/(numQ*5))*100);
+          const entry={
+            id,type,
+            date:dt?dt.toISOString():"",
+            email:String(r[colsMap.email]||"").trim(),
+            caseNumber:String(r[colsMap.caseNum]||"").trim(),
+            q1:qs[0]||0,q2:qs[1]||0,q3:qs[2]||0,q4:qs[3]||0,
+            percent,
+            feedback:String(r[colsMap.feedback]||"").trim(),
+          };
+          if(isClaim)entry.q5=qs[4]||0;
+          else if(colsMap.overall!=null)entry.overallStay=String(r[colsMap.overall]||"").trim();
+          parsed.push(entry);
+        }
+        if(!parsed.length){toast2("No valid rating rows found in this file.");return;}
+        let added=0,updated=0;
+        setCsatData(prev=>{
+          // Backward compat: older shipped shape was { responses:[...] } (all Post Case).
+          let postCase=Array.isArray(prev?.post_case)?prev.post_case:[];
+          let claim=Array.isArray(prev?.claim)?prev.claim:[];
+          if(!prev?.post_case&&!prev?.claim&&Array.isArray(prev?.responses)){postCase=prev.responses;}
+          const targetArr=type==="claim"?claim:postCase;
+          const byId={};targetArr.forEach(r=>{if(r&&r.id)byId[r.id]=r;});
+          parsed.forEach(r=>{if(byId[r.id])updated++;else added++;byId[r.id]=r;});
+          const merged=Object.values(byId).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+          if(type==="claim")claim=merged;else postCase=merged;
+          // Aggregate the corresponding type by FY25 week into the appropriate KPI.
+          const RR="Reputation and Resolutions";
+          const byWeek={};
+          merged.forEach(r=>{if(!r.date)return;const d=new Date(r.date);const w=fyWeek(d);if(!w)return;(byWeek[w]=byWeek[w]||[]).push(r.percent);});
+          setData(prevData=>{
+            const teamData={...(prevData[RR]||{})};
+            Object.entries(byWeek).forEach(([w,arr])=>{
+              if(!arr.length)return;
+              const avg=Math.round(arr.reduce((s,v)=>s+v,0)/arr.length);
+              const pkey="w__"+w;
+              const update={};update[kpiKey]=avg;update["_"+kpiKey+"_n"]=arr.length;update["_"+kpiKey+"_at"]=nowNZ();
+              teamData[pkey]=mg(teamData[pkey]||{},update);
+            });
+            return{...prevData,[RR]:teamData};
+          });
+          return{post_case:postCase,claim:claim};
+        });
+        setTimeout(()=>{toast2(`${formLabel} · ${added} new, ${updated} updated`);},10);
+      }catch(err){
+        console.error("CSAT parse error:",err);
+        toast2("Could not parse the file. Make sure it's a Resolution Satisfaction Form .xlsx.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value="";
   };
 
     // Handle ANY Intercom file — detects type automatically
@@ -6854,6 +7056,7 @@ function App(){
       <div>
         {/* Drag & drop upload zone */}
         <IntercomDropzone isAdmin={isAdmin} icFileRef={icFileRef} handleIcFile={handleIcFile} toast2={toast2} icData={icData}/>
+        <CsatDropzone isAdmin={isAdmin} csatFileRef={csatFileRef} handleCsatFile={handleCsatFile} toast2={toast2} csatData={csatData}/>
         
 
         {Object.keys(byTeam).length===0&&(

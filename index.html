@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.6.1";
+const APP_VERSION="2.6.2";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -5180,7 +5180,7 @@ function App(){
   useEffect(()=>{setInlineKpi(null);recalculateAllProductivity();},[team,pk]);
   const tDef=tc[team]||{kpis:[],color:"#6b7280",lightBg:"#f3f4f6"};
   const tR=roster[team]||{lead:"",members:[]};
-  const pData=(()=>{const raw=data[team]?.[pk]||{};if(raw.avg_first_response!=null&&raw.avg_response!=null)return raw;const enriched={...raw};const wkN=pk.startsWith("w__")?parseInt(pk.replace("w__","")):null;if(wkN&&!enriched.avg_first_response){const mems=(roster[team]?.members||[]).map(m=>m.name);const frs=[];const lcs=[];mems.forEach(mn=>{const s=icData[mn]?.weeks?.[wkN];if(s?.medReply)frs.push(s.medReply);if(s?.medClose)lcs.push(s.medClose);});if(frs.length)enriched.avg_first_response=Math.round(frs.reduce((a,b)=>a+b,0)/frs.length*100)/100;if(lcs.length)enriched.avg_response=Math.round(lcs.reduce((a,b)=>a+b,0)/lcs.length*100)/100;}return enriched;})();
+  const pData=(()=>{const raw=data[team]?.[pk]||{};if(raw.avg_first_response!=null&&raw.avg_response!=null)return raw;const enriched={...raw};const wkN=pk.startsWith("w__")?parseInt(pk.replace("w__","")):null;const monLabel=pk.startsWith("m__")?pk.slice(3):null;if(wkN&&!enriched.avg_first_response){const mems=(roster[team]?.members||[]).map(m=>m.name);const frs=[];const lcs=[];mems.forEach(mn=>{const s=icData[mn]?.weeks?.[wkN];if(s?.medReply)frs.push(s.medReply);if(s?.medClose)lcs.push(s.medClose);});if(frs.length)enriched.avg_first_response=Math.round(frs.reduce((a,b)=>a+b,0)/frs.length*100)/100;if(lcs.length)enriched.avg_response=Math.round(lcs.reduce((a,b)=>a+b,0)/lcs.length*100)/100;}else if(monLabel&&!enriched.avg_first_response){const mems=(roster[team]?.members||[]).map(m=>m.name);const frs=[];const lcs=[];FY25_WK_RANGES.forEach(([w,,end])=>{const s=new Date(end+"T00:00:00Z");const counts={};for(let i=0;i<7;i++){const dt=new Date(s);dt.setUTCDate(dt.getUTCDate()-i);const m=dt.toLocaleString("en-NZ",{month:"long",year:"numeric",timeZone:"UTC"});counts[m]=(counts[m]||0)+1;}const dom=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0]?.[0];if(dom!==monLabel)return;mems.forEach(mn=>{const stat=icData[mn]?.weeks?.[w];if(stat?.medReply)frs.push(stat.medReply);if(stat?.medClose)lcs.push(stat.medClose);});});if(frs.length)enriched.avg_first_response=Math.round(frs.reduce((a,b)=>a+b,0)/frs.length*100)/100;if(lcs.length)enriched.avg_response=Math.round(lcs.reduce((a,b)=>a+b,0)/lcs.length*100)/100;}return enriched;})();
   const kpis=tDef.kpis||[];
   const passN=kpis.filter(k=>isPass(pData[k.key],k)===true).length;
   const failN=kpis.filter(k=>isPass(pData[k.key],k)===false).length;

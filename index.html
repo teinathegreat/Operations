@@ -2433,7 +2433,19 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.5.7";
+const APP_VERSION="2.5.8";
+// v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
+// itself is defined inside App (it needs closure access to dozens of App-scope state values and
+// helpers), so its function reference changes on every App re-render. Rendered directly, React
+// sees the new reference as a different component each time and unmounts+remounts — the visible
+// flicker users see as "the profile keeps refreshing." Wrapping it in a stable module-scope
+// component, and pairing the call site with a key tied to the person, gives us:
+//   • App re-render (realtime event, self-heal, etc.) → key unchanged → no remount, just re-render.
+//   • Person change → key changes → clean remount with fresh internal state, which is what we want.
+// ProfileView's hooks become this wrapper's hooks at render time; they are all unconditional
+// (early return doesn't fire because we only mount this when profilePerson is set), so the hook
+// count is stable across renders and React error #310 cannot occur.
+function StableProfilePanel({render}){return render();}
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -12335,7 +12347,7 @@ const teamMap={
       </Modal>}
 
       {iMember&&<IndivPanel/>}
-      {profilePerson&&<ProfileView/>}
+      {profilePerson&&<StableProfilePanel key={profilePerson.name} render={ProfileView}/>}
       {monRevModal&&<MonthlyReviewModal
         config={monRevModal}
         onClose={()=>{delete window["_cancelReview_"+(monRevModal.key||"cr")+"_"+(monRevModal.pk||"")];setMonRevModal(null);}}

@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.6.6";
+const APP_VERSION="2.6.7";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -4415,7 +4415,20 @@ function App(){
         let resolvedTc=tcStandalone||_tc||null;
         let resolvedR=rStandalone||_r||null;
         if(resolvedR){const mr=migrateRoster(fixRosterNames(resolvedR));setRoster(mr);resolvedR=mr;}
-        if(resolvedTc){const mt=migrateTeamColors(resolvedTc);setTc(mt);resolvedTc=mt;}
+        if(resolvedTc){
+          const origTcJson=JSON.stringify(resolvedTc);
+          const mt=migrateTeamColors(resolvedTc);
+          setTc(mt);resolvedTc=mt;
+          // v2.6.7: if migration actually changed anything, persist back to cloud so other clients
+          // and future sessions get the corrected shape. Without this, the auto-save effect (which
+          // is gated off during loadFromSupabase to prevent save-on-load) never fires for the
+          // migrated value, and the cloud stays on the old shape — meaning realtime broadcasts
+          // and polling fetches keep re-introducing it. Gated on isOwner since only owners save tc.
+          if(isOwner&&JSON.stringify(mt)!==origTcJson){
+            console.log("v2.6.7: persisting KPI migration to cloud");
+            dbSaveConfigKey("sys","team_config",mt);
+          }
+        }
         setData(rest);
         // Mark as loaded so saves can begin
         _tcLoaded.current=true;
@@ -4604,7 +4617,7 @@ function App(){
           // the tab-change re-fetch landed before the in-flight POST committed, so the read
           // returned the OLD value and overwrote the fresh local state.
           if(d&&!dirtyConfigRef.current.has("sys:app_data")){const{_r,_tc,...rest}=d;setData(rest);}
-          if(tcVal&&typeof tcVal==="object"&&!dirtyConfigRef.current.has("sys:team_config"))setTc(tcVal);
+          if(tcVal&&typeof tcVal==="object"&&!dirtyConfigRef.current.has("sys:team_config"))setTc(migrateTeamColors(tcVal));
           if(rVal&&typeof rVal==="object"&&!dirtyConfigRef.current.has("sys:team_roster"))setRoster(migrateRoster(fixRosterNames(rVal)));
           {let pmv=sysConf?.phone_mask;if(pmv&&typeof pmv==="object"&&"_v" in pmv)pmv=pmv._v;if(typeof pmv==="boolean")setPhoneMaskOn(pmv);}
         }catch(e){console.error("Dashboard refresh failed:",e);}
@@ -4632,7 +4645,7 @@ function App(){
           const sysConf=await dbLoadConfig("sys");
           let tcVal=sysConf?.team_config;if(tcVal&&typeof tcVal==="object"&&"_v" in tcVal&&"_origin" in tcVal)tcVal=tcVal._v;
           let rVal=sysConf?.team_roster;if(rVal&&typeof rVal==="object"&&"_v" in rVal&&"_origin" in rVal)rVal=rVal._v;
-          if(tcVal&&typeof tcVal==="object")setTc(tcVal);
+          if(tcVal&&typeof tcVal==="object")setTc(migrateTeamColors(tcVal));
           if(rVal&&typeof rVal==="object")setRoster(migrateRoster(fixRosterNames(rVal)));
           {let pmv=sysConf?.phone_mask;if(pmv&&typeof pmv==="object"&&"_v" in pmv)pmv=pmv._v;if(typeof pmv==="boolean")setPhoneMaskOn(pmv);}
           const dc=await dbLoadConfig("dailycfg");if(dc&&typeof dc==="object")setDailyConfig(dc);
@@ -4790,8 +4803,12 @@ function App(){
             }
             else if(key==="team_config"&&value&&typeof value==="object"){
               // v2.4.3: dedicated tc handler — no more cross-contamination from daily data saves
-              setTc(value);
-              try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}
+              // v2.6.7: route through migrateTeamColors so realtime updates from other clients
+              // don't re-introduce old KPI shapes (was clobbering the in_stay_resolved %→hrs
+              // migration whenever another tab broadcast a save).
+              const mt=migrateTeamColors(value);
+              setTc(mt);
+              try{lastSavedConfigRef.current.set(row.id,JSON.stringify(mt));}catch{}
             }
             else if(key==="team_roster"&&value&&typeof value==="object"){
               const mr=migrateRoster(fixRosterNames(value));

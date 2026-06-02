@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.6.0";
+const APP_VERSION="2.6.1";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -5708,19 +5708,29 @@ function App(){
           parsed.forEach(r=>{if(byId[r.id])updated++;else added++;byId[r.id]=r;});
           const merged=Object.values(byId).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
           if(type==="claim")claim=merged;else postCase=merged;
-          // Aggregate the corresponding type by FY25 week into the appropriate KPI.
+          // Aggregate the corresponding type by both FY25 WEEK and calendar MONTH into the
+          // appropriate KPI key. Each response counts toward its week's average AND its month's
+          // average — so the dashboard shows the correct value whether the period filter is set
+          // to week or month.
           const RR="Reputation and Resolutions";
-          const byWeek={};
-          merged.forEach(r=>{if(!r.date)return;const d=new Date(r.date);const w=fyWeek(d);if(!w)return;(byWeek[w]=byWeek[w]||[]).push(r.percent);});
+          const byWeek={},byMonth={};
+          merged.forEach(r=>{
+            if(!r.date)return;
+            const d=new Date(r.date);if(isNaN(d))return;
+            const w=fyWeek(d);if(w)(byWeek[w]=byWeek[w]||[]).push(r.percent);
+            const m=d.toLocaleString("en-NZ",{month:"long",year:"numeric"});
+            if(m)(byMonth[m]=byMonth[m]||[]).push(r.percent);
+          });
           setData(prevData=>{
             const teamData={...(prevData[RR]||{})};
-            Object.entries(byWeek).forEach(([w,arr])=>{
+            const writeAvg=(pkey,arr)=>{
               if(!arr.length)return;
               const avg=Math.round(arr.reduce((s,v)=>s+v,0)/arr.length);
-              const pkey="w__"+w;
               const update={};update[kpiKey]=avg;update["_"+kpiKey+"_n"]=arr.length;update["_"+kpiKey+"_at"]=nowNZ();
               teamData[pkey]=mg(teamData[pkey]||{},update);
-            });
+            };
+            Object.entries(byWeek).forEach(([w,arr])=>writeAvg("w__"+w,arr));
+            Object.entries(byMonth).forEach(([m,arr])=>writeAvg("m__"+m,arr));
             return{...prevData,[RR]:teamData};
           });
           return{post_case:postCase,claim:claim};

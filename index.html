@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.6.9";
+const APP_VERSION="2.6.10";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -4656,8 +4656,8 @@ function App(){
           const sysConf=await dbLoadConfig("sys");
           let tcVal=sysConf?.team_config;if(tcVal&&typeof tcVal==="object"&&"_v" in tcVal&&"_origin" in tcVal)tcVal=tcVal._v;
           let rVal=sysConf?.team_roster;if(rVal&&typeof rVal==="object"&&"_v" in rVal&&"_origin" in rVal)rVal=rVal._v;
-          if(tcVal&&typeof tcVal==="object")setTc(migrateTeamColors(tcVal));
-          if(rVal&&typeof rVal==="object")setRoster(migrateRoster(fixRosterNames(rVal)));
+          if(tcVal&&typeof tcVal==="object"&&!dirtyConfigRef.current.has("sys:team_config"))setTc(migrateTeamColors(tcVal));
+          if(rVal&&typeof rVal==="object"&&!dirtyConfigRef.current.has("sys:team_roster"))setRoster(migrateRoster(fixRosterNames(rVal)));
           {let pmv=sysConf?.phone_mask;if(pmv&&typeof pmv==="object"&&"_v" in pmv)pmv=pmv._v;if(typeof pmv==="boolean")setPhoneMaskOn(pmv);}
           const dc=await dbLoadConfig("dailycfg");if(dc&&typeof dc==="object")setDailyConfig(dc);
           const icv=await dbLoadConfig("ic");if(icv&&typeof icv==="object")setIcData(icv);
@@ -4808,23 +4808,35 @@ function App(){
           else if(prefix==="sys"){
             if(key==="app_data"&&value&&typeof value==="object"){
               // v2.4.3: app_data is now JUST data (no _tc/_r). Strip them in case an old client wrote them.
-              const{_r,_tc,...rest}=value;
-              setData(rest);
-              try{lastSavedConfigRef.current.set(row.id,JSON.stringify(rest));}catch{}
+              // v2.6.10: gate on dirtyConfigRef the same way the polling fetch in fetchAppData does
+              // (v2.5.6 fix). Without this, a realtime broadcast that arrives mid-edit can clobber
+              // the user's latest local change — which is what made "Dashboard reverts my KPIs"
+              // come back after we thought it was fixed.
+              if(!dirtyConfigRef.current.has("sys:app_data")){
+                const{_r,_tc,...rest}=value;
+                setData(rest);
+                try{lastSavedConfigRef.current.set(row.id,JSON.stringify(rest));}catch{}
+              }
             }
             else if(key==="team_config"&&value&&typeof value==="object"){
               // v2.4.3: dedicated tc handler — no more cross-contamination from daily data saves
               // v2.6.7: route through migrateTeamColors so realtime updates from other clients
-              // don't re-introduce old KPI shapes (was clobbering the in_stay_resolved %→hrs
-              // migration whenever another tab broadcast a save).
-              const mt=migrateTeamColors(value);
-              setTc(mt);
-              try{lastSavedConfigRef.current.set(row.id,JSON.stringify(mt));}catch{}
+              // don't re-introduce old KPI shapes.
+              // v2.6.10: gate on dirty so a stale broadcast (own previous save or another client's
+              // older state) doesn't overwrite the local in-flight edit.
+              if(!dirtyConfigRef.current.has("sys:team_config")){
+                const mt=migrateTeamColors(value);
+                setTc(mt);
+                try{lastSavedConfigRef.current.set(row.id,JSON.stringify(mt));}catch{}
+              }
             }
             else if(key==="team_roster"&&value&&typeof value==="object"){
-              const mr=migrateRoster(fixRosterNames(value));
-              setRoster(mr);
-              try{lastSavedConfigRef.current.set(row.id,JSON.stringify(mr));}catch{}
+              // v2.6.10: dirty guard (same reason as team_config above).
+              if(!dirtyConfigRef.current.has("sys:team_roster")){
+                const mr=migrateRoster(fixRosterNames(value));
+                setRoster(mr);
+                try{lastSavedConfigRef.current.set(row.id,JSON.stringify(mr));}catch{}
+              }
             }
             else if(key==="quick_refs"&&Array.isArray(value))setQuickRefs(value);
             else if(key==="expectations_config"&&Array.isArray(value))setExpectationsConfig(value);

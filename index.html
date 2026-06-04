@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.6.10";
+const APP_VERSION="2.6.11";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -4526,6 +4526,16 @@ function App(){
   const sbDataReceived=useRef(false);
   const saveEnabled=useRef(false);
   const saveEnabledSet=useRef(false);
+  // v2.6.11 — refcount-based suppression. Multiple concurrent reads (tab change kicks off
+  // fetchAppData + 5 directFetchConfigs in parallel) each used to do `const prev=saveEnabled.current;
+  // saveEnabled.current=false; ... setTimeout(()=>{saveEnabled.current=prev;},300)` which races:
+  // second read captures `prev=false` (set by first), then its restore overwrites the first's true,
+  // leaving saveEnabled stuck false. Then user edits don't save → tab change later reads stale
+  // cloud → setData clobbers local → the edit silently reverts. The refcount fixes this: only
+  // re-enable saves when EVERY pending suppression has released.
+  const saveSuppressRef=useRef(0);
+  const suppressSaves=()=>{saveSuppressRef.current++;saveEnabled.current=false;};
+  const releaseSaves=(delayMs=300)=>{setTimeout(()=>{saveSuppressRef.current=Math.max(0,saveSuppressRef.current-1);if(saveSuppressRef.current===0&&saveEnabledSet.current)saveEnabled.current=true;},delayMs);};
   // True while a CSV import is mid-save. Blocks the auto-refresh on tab change
   // from clobbering local state with the not-yet-saved server data.
   const schedSavingRef=useRef(false);
@@ -4608,12 +4618,12 @@ function App(){
   // Targeted refresh on tab change (direct fetches below handle specific data)
   useEffect(()=>{if(tab==="accounts")setOnlineUsers({...onlineUsersRef.current});},[tab]);
   // Direct daily reports fetch - bypasses all loading guards
-  useEffect(()=>{if(tab!=="daily"&&tab!=="home")return;const fetchDaily=async()=>{const prev=saveEnabled.current;saveEnabled.current=false;const rows=await dbLoadAll("daily_reports");if(rows.length>0)setDailyReports(rows);setTimeout(()=>{saveEnabled.current=prev;},300);};fetchDaily();},[tab]);
+  useEffect(()=>{if(tab!=="daily"&&tab!=="home")return;const fetchDaily=async()=>{suppressSaves();try{const rows=await dbLoadAll("daily_reports");if(rows.length>0)setDailyReports(rows);}finally{releaseSaves();}};fetchDaily();},[tab]);
   // Direct fetch for todos, actions, notifications on relevant tabs
-  useEffect(()=>{const url=sbUrlRef.current||sbUrl;const key=sbKeyRef.current||sbKey;if(!url||!key)return;const headers={"apikey":key,"Authorization":"Bearer "+key};const directFetch=async(sbKey2,setter)=>{try{const resp=await fetch(url+"/rest/v1/bc_store?key=eq."+sbKey2+"&select=value",{headers});if(!resp.ok)return;const d=await resp.json();if(d&&d[0]&&d[0].value){const parsed=JSON.parse(d[0].value);const prev=saveEnabled.current;saveEnabled.current=false;if(Array.isArray(parsed))setter(parsed);else if(typeof parsed==="object")setter(parsed);setTimeout(()=>{saveEnabled.current=prev;},300);}}catch(e){console.error("Refresh "+sbKey2+" failed:",e);}};const directFetchRows=async(table,setter)=>{const prev=saveEnabled.current;saveEnabled.current=false;const rows=await dbLoadAll(table);if(rows.length>0)setter(rows);setTimeout(()=>{saveEnabled.current=prev;},300);};if(tab==="to-do list"||tab==="home"){directFetchRows("todos",setTodos);directFetchRows("notif_entries",setNotifications);directFetchRows("alert_entries",setAdminAlerts);}if(tab==="action list"||tab==="home"){directFetchRows("action_items",setActionItems);}if(tab==="call reviews"){directFetchRows("call_reviews",setCallReviews);}if(tab==="dashboard"||tab==="people"){
+  useEffect(()=>{const url=sbUrlRef.current||sbUrl;const key=sbKeyRef.current||sbKey;if(!url||!key)return;const headers={"apikey":key,"Authorization":"Bearer "+key};const directFetch=async(sbKey2,setter)=>{try{const resp=await fetch(url+"/rest/v1/bc_store?key=eq."+sbKey2+"&select=value",{headers});if(!resp.ok)return;const d=await resp.json();if(d&&d[0]&&d[0].value){const parsed=JSON.parse(d[0].value);suppressSaves();try{if(Array.isArray(parsed))setter(parsed);else if(typeof parsed==="object")setter(parsed);}finally{releaseSaves();}}}catch(e){console.error("Refresh "+sbKey2+" failed:",e);}};const directFetchRows=async(table,setter)=>{suppressSaves();try{const rows=await dbLoadAll(table);if(rows.length>0)setter(rows);}finally{releaseSaves();}};if(tab==="to-do list"||tab==="home"){directFetchRows("todos",setTodos);directFetchRows("notif_entries",setNotifications);directFetchRows("alert_entries",setAdminAlerts);}if(tab==="action list"||tab==="home"){directFetchRows("action_items",setActionItems);}if(tab==="call reviews"){directFetchRows("call_reviews",setCallReviews);}if(tab==="dashboard"||tab==="people"){
       // Fetch app_data from config_rows (not bc_store)
       const fetchAppData=async()=>{
-        const prev=saveEnabled.current;saveEnabled.current=false;
+        suppressSaves();
         try{
           const sysConf=await dbLoadConfig("sys");
           // v2.4.3: load app_data, team_config, team_roster from independent keys
@@ -4632,9 +4642,9 @@ function App(){
           if(rVal&&typeof rVal==="object"&&!dirtyConfigRef.current.has("sys:team_roster"))setRoster(migrateRoster(fixRosterNames(rVal)));
           {let pmv=sysConf?.phone_mask;if(pmv&&typeof pmv==="object"&&"_v" in pmv)pmv=pmv._v;if(typeof pmv==="boolean")setPhoneMaskOn(pmv);}
         }catch(e){console.error("Dashboard refresh failed:",e);}
-        setTimeout(()=>{saveEnabled.current=prev;},300);
+        finally{releaseSaves();}
       };
-      fetchAppData();const directFetchConfig=async(prefix,setter)=>{const prev2=saveEnabled.current;saveEnabled.current=false;const obj=await dbLoadConfig(prefix);if(obj)setter(obj);setTimeout(()=>{saveEnabled.current=prev2;},300);};if(!icSavingRef.current)directFetchConfig("ic",setIcData);if(!schedSavingRef.current)directFetchConfig("sched",setSchedData);if(!rejSavingRef.current)directFetchConfig("rejcalls",setRejectedCallsData);if(!tlSavingRef.current)directFetchConfig("timeline",setDailyTimelineData);if(!isOwner)directFetchConfig("dailycfg",setDailyConfig);}},[tab]);
+      fetchAppData();const directFetchConfig=async(prefix,setter)=>{suppressSaves();try{const obj=await dbLoadConfig(prefix);if(obj)setter(obj);}finally{releaseSaves();}};if(!icSavingRef.current)directFetchConfig("ic",setIcData);if(!schedSavingRef.current)directFetchConfig("sched",setSchedData);if(!rejSavingRef.current)directFetchConfig("rejcalls",setRejectedCallsData);if(!tlSavingRef.current)directFetchConfig("timeline",setDailyTimelineData);if(!isOwner)directFetchConfig("dailycfg",setDailyConfig);}},[tab]);
     useEffect(()=>{if(sbUrl&&sbKey)loadFromSupabase();},[]);
     // Periodic read-only self-heal for non-admins. Realtime only delivers changes made while a
     // client stays connected (no backfill), and the per-tab refreshes need a tab switch — so a
@@ -4651,7 +4661,7 @@ function App(){
       const selfHeal=async()=>{
         if(typeof document!=="undefined"&&document.hidden)return;
         if(icSavingRef.current||schedSavingRef.current||rejSavingRef.current||tlSavingRef.current)return;
-        const prev=saveEnabled.current;saveEnabled.current=false;
+        suppressSaves();
         try{
           const sysConf=await dbLoadConfig("sys");
           let tcVal=sysConf?.team_config;if(tcVal&&typeof tcVal==="object"&&"_v" in tcVal&&"_origin" in tcVal)tcVal=tcVal._v;
@@ -4670,7 +4680,7 @@ function App(){
           // make a just-submitted review vanish.
           try{const crRows=await dbLoadAll("call_reviews");if(Array.isArray(crRows)&&crRows.length>0){setCallReviews(prev=>{const byId={};crRows.forEach(r=>{if(r&&r.id!=null)byId[r.id]=r;});(Array.isArray(prev)?prev:[]).forEach(r=>{if(r&&r.id!=null&&!(r.id in byId))byId[r.id]=r;});return Object.values(byId);});}}catch(e){}
         }catch(e){console.error("self-heal failed:",e);}
-        setTimeout(()=>{saveEnabled.current=prev;},800);
+        releaseSaves(800);
       };
       const iv=setInterval(selfHeal,30000);
       return()=>clearInterval(iv);

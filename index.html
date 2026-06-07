@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.7.1";
+const APP_VERSION="2.7.2";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -6523,7 +6523,7 @@ function App(){
               const closedTickets=agents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.closed||0),0);
               const emailPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.emails||0),0);
               const wfPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.wfs||0),0);
-              const totalPoints=closedTickets*weights.tickets+emailPoints*weights.emails+wfPoints*weights.wfs;
+              const reviewPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.reviews||0),0);const totalPoints=closedTickets*weights.tickets+emailPoints*weights.emails+wfPoints*weights.wfs+reviewPoints*(weights.reviews||1);
               const teamHrs=Object.values(schedData).filter(p=>p.group===tname).reduce((s,p)=>{const h=p.overrides?.["w_"+wkN]??p.weeks?.[wkN]??0;return s+h;},0);
               const leadName=TEAM_LEADS[tname];
               const leadHrs=schedData[leadName]?((schedData[leadName].overrides?.["w_"+wkN]??schedData[leadName].weeks?.[wkN])??0):0;
@@ -6632,7 +6632,7 @@ function App(){
             const wfPoints=Object.entries(bucket)
               .filter(([n])=>getPersonTeam(n)===tname)
               .reduce((s,[,d])=>s+(d.weeks?.[wkN]?.wfs||0),0);
-            const totalPoints=closedTickets*weights.tickets+emailPoints*weights.emails+wfPoints*weights.wfs;
+            const reviewPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.reviews||0),0);const totalPoints=closedTickets*weights.tickets+emailPoints*weights.emails+wfPoints*weights.wfs+reviewPoints*(weights.reviews||1);
             const teamHrs=Object.values(schedData).filter(p=>p.group===tname)
               .reduce((s,p)=>{const h=p.overrides?.[`w_${wkN}`]??p.weeks?.[wkN]??0;return s+h;},0);
             const leadName=TEAM_LEADS[tname];
@@ -7078,6 +7078,7 @@ function App(){
       {key:"caseActions",label:"Case Actions",icon:"\ud83d\udccb",color:"#7c3aed"},
       {key:"wfs",label:"Workflows",icon:"\u26a1",color:"#ea580c"},
       {key:"calls",label:"Calls",icon:"\ud83d\udcde",color:"#db2777"},
+      {key:"reviews",label:"Reviews",icon:"\u2b50",color:"#ca8a04"},
       {key:"hours",label:"Hrs Worked",icon:"\u23f1\ufe0f",color:"#475569"},
       {key:"productivity",label:"Productivity",icon:"\ud83d\udcc8",color:"#15803d"}
     ];
@@ -7103,7 +7104,7 @@ function App(){
       if(lbStat==="productivity"){
         if(!stats||!hrs)return 0;
         const tw=getW(team);
-        return Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10;
+        return Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0)+(stats.reviews||0)*(tw.reviews||1))/hrs*10)/10;
       }
       return stats?.[lbStat]||0;
     };
@@ -7182,7 +7183,7 @@ function App(){
             if(statKey==="productivity"){
               if(!stats||!hrs)return 0;
               const tw=getW(team);
-              return Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10;
+              return Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0)+(stats.reviews||0)*(tw.reviews||1))/hrs*10)/10;
             }
             return stats?.[statKey]||0;
           };
@@ -7487,11 +7488,11 @@ function App(){
                   </div>
                   {/* Agent rows */}
                   <div style={{overflowX:"auto"}}>
-                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"auto"}}>
                       <thead>
                         <tr style={{background:"#f9fafb"}}>
-                          {["Agent","Tickets Closed","Emails","Case Actions","WFs","Calls","Abandoned","Med. First Reply","Med. Close Time","Hrs Worked","Productivity"].map(h=>(
-                            <th key={h} style={{padding:"7px 12px",textAlign:h==="Agent"?"left":"center",fontWeight:600,color:tColor,borderBottom:"2px solid "+tColor,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
+                          {["Agent","Tickets","Emails","Cases","WFs","Calls","Reviews","Aban.","Med. 1st","Med. Close","Hrs","Prod."].map(h=>(
+                            <th key={h} style={{padding:"7px 8px",textAlign:h==="Agent"?"left":"center",fontWeight:600,color:tColor,borderBottom:"2px solid "+tColor,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -7500,20 +7501,21 @@ function App(){
                           const isLead=name===roster[tname]?.lead;
                           const stats=getIcStats(name,icFilter,icWeek,icMonth);
                           const hrs=getSchedHours(name,icFilter,icWeek,icMonth);
-                          const tw=getW(tname);const prodScore=stats&&hrs?(Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10):null;
+                          const tw=getW(tname);const prodScore=stats&&hrs?(Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0)+(stats.reviews||0)*(tw.reviews||1))/hrs*10)/10):null;
                           return(
                             <tr key={name} style={{background:isLead?tBg:i%2?tBg+"88":"#fff",borderBottom:"1px solid #f3f4f6",borderLeft:isLead?"3px solid "+tColor:"none"}}>
-                              <td style={{padding:"8px 12px",color:isLead?tColor:"#111827",fontWeight:isLead?700:500,whiteSpace:"nowrap"}}>{name}{isLead&&<span style={{fontSize:10,marginLeft:5,background:tColor,color:"#fff",borderRadius:3,padding:"1px 5px",fontWeight:600,verticalAlign:"middle"}}>Lead</span>}</td>
-                              <td style={{padding:"8px 12px",textAlign:"center",fontWeight:600,color:stats?.closed?"#111827":"#d1d5db"}}>{stats?.closed??"—"}</td>
-                              <td style={{padding:"8px 12px",textAlign:"center",color:stats?.emails?"#111827":"#d1d5db"}}>{stats?.emails??"—"}</td>
-                              <td style={{padding:"8px 12px",textAlign:"center",color:stats?.caseActions?"#111827":"#d1d5db"}}>{stats?.caseActions??"—"}</td>
-                              <td style={{padding:"8px 12px",textAlign:"center",color:stats?.wfs?"#111827":"#d1d5db"}}>{stats?.wfs??("—")}</td>
-                              <td style={{padding:"8px 12px",textAlign:"center",color:stats?.calls?"#111827":"#d1d5db"}}>{stats?.calls??("—")}</td>
-                              {(()=>{try{const ab=getAbandonedCalls(name,icFilter,icWeek,icMonth);const lbl=icFilter==="week"?`Week ${icWeek}`:icMonth;if(!ab||ab.count===0)return<td style={{padding:"8px 12px",textAlign:"center",color:"#d1d5db"}}>—</td>;return<td style={{padding:"8px 12px",textAlign:"center"}}><button onClick={()=>setAbandonedModal({name,events:Array.isArray(ab.events)?ab.events:[],periodLabel:lbl})} style={{background:"#fee2e2",color:"#991b1b",border:"1px solid #fecaca",borderRadius:12,padding:"2px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"transform .12s"}} onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.06)";}} onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}} title="Click to see each missed call">{ab.count}</button></td>;}catch(err){console.error("Abandoned cell err",name,err);return<td style={{padding:"8px 12px",textAlign:"center",color:"#d1d5db"}}>—</td>;}})()}
-                              <td style={{padding:"8px 12px",textAlign:"center",color:stats?.medReply?"#111827":"#d1d5db"}}>{stats?.medReply?Math.round(stats.medReply*100)/100+"h":"—"}</td>
-                              <td style={{padding:"8px 12px",textAlign:"center",color:stats?.medClose?"#111827":"#d1d5db"}}>{stats?.medClose?Math.round(stats.medClose*100)/100+"h":"—"}</td>
-                              <td style={{padding:"8px 12px",textAlign:"center",color:hrs?"#111827":"#d1d5db"}}>{hrs?hrs+"h":"—"}</td>
-                              <td style={{padding:"8px 12px",textAlign:"center",fontWeight:prodScore?600:400,color:prodScore?"#111827":"#d1d5db"}}>{prodScore??("—")}</td>
+                              <td style={{padding:"8px 10px",color:isLead?tColor:"#111827",fontWeight:isLead?700:500,whiteSpace:"nowrap"}}>{name}{isLead&&<span style={{fontSize:10,marginLeft:5,background:tColor,color:"#fff",borderRadius:3,padding:"1px 5px",fontWeight:600,verticalAlign:"middle"}}>Lead</span>}</td>
+                              <td style={{padding:"8px 6px",textAlign:"center",fontWeight:600,color:stats?.closed?"#111827":"#d1d5db"}}>{stats?.closed??"—"}</td>
+                              <td style={{padding:"8px 6px",textAlign:"center",color:stats?.emails?"#111827":"#d1d5db"}}>{stats?.emails??"—"}</td>
+                              <td style={{padding:"8px 6px",textAlign:"center",color:stats?.caseActions?"#111827":"#d1d5db"}}>{stats?.caseActions??"—"}</td>
+                              <td style={{padding:"8px 6px",textAlign:"center",color:stats?.wfs?"#111827":"#d1d5db"}}>{stats?.wfs??("—")}</td>
+                              <td style={{padding:"8px 6px",textAlign:"center",color:stats?.calls?"#111827":"#d1d5db"}}>{stats?.calls??("—")}</td>
+                              <td style={{padding:"8px 6px",textAlign:"center",color:stats?.reviews?"#111827":"#d1d5db",fontWeight:stats?.reviews?600:400}}>{stats?.reviews??("—")}</td>
+                              {(()=>{try{const ab=getAbandonedCalls(name,icFilter,icWeek,icMonth);const lbl=icFilter==="week"?`Week ${icWeek}`:icMonth;if(!ab||ab.count===0)return<td style={{padding:"8px 6px",textAlign:"center",color:"#d1d5db"}}>—</td>;return<td style={{padding:"8px 6px",textAlign:"center"}}><button onClick={()=>setAbandonedModal({name,events:Array.isArray(ab.events)?ab.events:[],periodLabel:lbl})} style={{background:"#fee2e2",color:"#991b1b",border:"1px solid #fecaca",borderRadius:12,padding:"2px 8px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"transform .12s"}} onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.06)";}} onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}} title="Click to see each missed call">{ab.count}</button></td>;}catch(err){console.error("Abandoned cell err",name,err);return<td style={{padding:"8px 6px",textAlign:"center",color:"#d1d5db"}}>—</td>;}})()}
+                              <td style={{padding:"8px 6px",textAlign:"center",color:stats?.medReply?"#111827":"#d1d5db"}}>{stats?.medReply?Math.round(stats.medReply*100)/100+"h":"—"}</td>
+                              <td style={{padding:"8px 6px",textAlign:"center",color:stats?.medClose?"#111827":"#d1d5db"}}>{stats?.medClose?Math.round(stats.medClose*100)/100+"h":"—"}</td>
+                              <td style={{padding:"8px 6px",textAlign:"center",color:hrs?"#111827":"#d1d5db"}}>{hrs?hrs+"h":"—"}</td>
+                              <td style={{padding:"8px 6px",textAlign:"center",fontWeight:prodScore?700:400,color:prodScore?"#111827":"#d1d5db"}}>{prodScore??("—")}</td>
                             </tr>
                           );
                         })}
@@ -7561,7 +7563,7 @@ function App(){
       const md=getID(leadId,iPt,iMo,iWk);
       const icStats=getIcStats(tR.lead,iPt,iWk,iMo);
       const hrs=getSchedHours(tR.lead,iPt,iWk,iMo);
-      if(icStats&&hrs&&hrs>0)return Math.round(((icStats.closed||0)*weights.tickets+(icStats.emails||0)*weights.emails+(icStats.wfs||0)*weights.wfs+(icStats.calls||0)*weights.calls+(icStats.caseActions||0)*(weights.case_actions||0))/hrs*10)/10;
+      if(icStats&&hrs&&hrs>0)return Math.round(((icStats.closed||0)*weights.tickets+(icStats.emails||0)*weights.emails+(icStats.wfs||0)*weights.wfs+(icStats.calls||0)*weights.calls+(icStats.caseActions||0)*(weights.case_actions||0)+(icStats.reviews||0)*(weights.reviews||1))/hrs*10)/10;
       if(md.productivity&&!isNaN(+md.productivity))return +md.productivity;
       return null;
     })();
@@ -7572,7 +7574,7 @@ function App(){
       const icStats=getIcStats(m.name,iPt,iWk,iMo);
       const hrs=getSchedHours(m.name,iPt,iWk,iMo);
       let prod=null;
-      if(icStats&&hrs&&hrs>0)prod=Math.round(((icStats.closed||0)*weights.tickets+(icStats.emails||0)*weights.emails+(icStats.wfs||0)*weights.wfs+(icStats.calls||0)*weights.calls+(icStats.caseActions||0)*(weights.case_actions||0))/hrs*10)/10;
+      if(icStats&&hrs&&hrs>0)prod=Math.round(((icStats.closed||0)*weights.tickets+(icStats.emails||0)*weights.emails+(icStats.wfs||0)*weights.wfs+(icStats.calls||0)*weights.calls+(icStats.caseActions||0)*(weights.case_actions||0)+(icStats.reviews||0)*(weights.reviews||1))/hrs*10)/10;
       else if(md.productivity&&!isNaN(+md.productivity))prod=+md.productivity;
       return{...m,isLead:false,prod};
     }).sort((a,b)=>{
@@ -8905,13 +8907,13 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const[fmOther,setFmOther]=React.useState("");
     const stats=getIcStats(name,pt,wk,mo);
     const hrs=getSchedHours(name,pt,wk,mo);
-    const prod=stats&&hrs&&hrs>0?Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10:null;
+    const prod=stats&&hrs&&hrs>0?Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0)+(stats.reviews||0)*(tw.reviews||1))/hrs*10)/10:null;
     const tAvg=avgProd(teamName,pt,mo,wk);
     const mems=[...(roster[teamName]?.members||[]).map(m2=>m2.name)];if(roster[teamName]?.lead)mems.push(roster[teamName].lead);
     const mStats=mems.map(n=>{const s=getIcStats(n,pt,wk,mo);const h=getSchedHours(n,pt,wk,mo);return{name:n,stats:s,hrs:h};}).filter(m2=>m2.stats&&m2.hrs&&m2.hrs>0);
-    const tAvgs={};["closed","emails","caseActions","wfs","calls"].forEach(k=>{const vs=mStats.map(m2=>(m2.stats[k]||0)/m2.hrs).filter(v=>v>0);tAvgs[k]=vs.length?vs.reduce((s,v)=>s+v,0)/vs.length:0;});
-    const myR={};if(stats&&hrs&&hrs>0)["closed","emails","caseActions","wfs","calls"].forEach(k=>{myR[k]=(stats[k]||0)/hrs;});
-    const mets=[{key:"closed",label:"Tickets Closed",icon:"🎫"},{key:"emails",label:"Emails",icon:"✉️"},{key:"caseActions",label:"Case Actions",icon:"📋"},{key:"wfs",label:"Workflows",icon:"⚡"},{key:"calls",label:"Calls",icon:"📞"}];
+    const tAvgs={};["closed","emails","caseActions","wfs","calls","reviews"].forEach(k=>{const vs=mStats.map(m2=>(m2.stats[k]||0)/m2.hrs).filter(v=>v>0);tAvgs[k]=vs.length?vs.reduce((s,v)=>s+v,0)/vs.length:0;});
+    const myR={};if(stats&&hrs&&hrs>0)["closed","emails","caseActions","wfs","calls","reviews"].forEach(k=>{myR[k]=(stats[k]||0)/hrs;});
+    const mets=[{key:"closed",label:"Tickets Closed",icon:"🎫"},{key:"emails",label:"Emails",icon:"✉️"},{key:"caseActions",label:"Case Actions",icon:"📋"},{key:"wfs",label:"Workflows",icon:"⚡"},{key:"calls",label:"Calls",icon:"📞"},{key:"reviews",label:"Reviews",icon:"⭐"}];
     const ana=mets.map(m2=>{const actual=stats?.[m2.key]||0;const rate=tAvgs[m2.key]||0;const expected=hrs?Math.round(rate*hrs):0;const pct=expected>0?Math.round(actual/expected*100):0;return{...m2,actual,expected,pct,str:pct>=110&&expected>0,wk2:pct<=85&&expected>0};});
     const pRevs=callReviews.filter(r=>r.agentName===name).sort((a,b)=>new Date(b.date)-new Date(a.date));
     const pdRevs=pt==="month"?pRevs.filter(r=>r.month===mo):pRevs;

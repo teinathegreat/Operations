@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.7.2";
+const APP_VERSION="2.7.3";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -2586,6 +2586,31 @@ const ini=(n)=>(n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2
 const uid=()=>Math.random().toString(36).slice(2,8);
 const nowNZ=()=>new Date().toLocaleString("en-NZ",{timeZone:"Pacific/Auckland",dateStyle:"medium",timeStyle:"short"});
 const todayNZ=()=>{const d=new Date();const nz=new Date(d.toLocaleString("en-US",{timeZone:"Pacific/Auckland"}));return nz.getFullYear()+"-"+String(nz.getMonth()+1).padStart(2,"0")+"-"+String(nz.getDate()).padStart(2,"0");};
+
+// v2.7.3 — proper CSV row parser. Existing code uses `text.split(",")` which works for simple
+// reports but breaks on the per-row Review Tracker export where ReviewComment / AdditionalComment
+// fields contain quoted strings with embedded commas and even embedded newlines. RFC-style:
+// double-quote starts a quoted field, "" inside a quoted field is a literal ", end-of-field
+// is a comma (outside quotes), end-of-row is \n (outside quotes). Returns Array<Array<string>>.
+const parseCsvText=(text)=>{
+  const rows=[];let row=[];let cur="";let inQuotes=false;
+  const t=text.replace(/^\uFEFF/,"");// strip BOM
+  for(let i=0;i<t.length;i++){
+    const c=t[i];
+    if(inQuotes){
+      if(c==='"'){if(t[i+1]==='"'){cur+='"';i++;}else inQuotes=false;}
+      else cur+=c;
+    }else{
+      if(c==='"')inQuotes=true;
+      else if(c===','){row.push(cur);cur="";}
+      else if(c==='\n'){row.push(cur);rows.push(row);row=[];cur="";}
+      else if(c==='\r'){/* skip */}
+      else cur+=c;
+    }
+  }
+  if(cur.length||row.length){row.push(cur);rows.push(row);}
+  return rows;
+};
 const toNZDate=(isoStr)=>{if(!isoStr)return null;try{const d=new Date(isoStr);const nz=new Date(d.toLocaleString("en-US",{timeZone:"Pacific/Auckland"}));return nz.getFullYear()+"-"+String(nz.getMonth()+1).padStart(2,"0")+"-"+String(nz.getDate()).padStart(2,"0");}catch{return null;}};
 const drNZDate=(r)=>toNZDate(r.submittedAt)||r.date;
 const fmtNZDate=(iso)=>{try{const d=new Date(iso+"T00:00:00Z");return d.toLocaleDateString("en-NZ",{day:"2-digit",month:"short",year:"numeric",timeZone:"UTC"});}catch{return iso;}};
@@ -6112,6 +6137,103 @@ function App(){
           toast2(`Replies imported: ${Object.keys(newIc).length} agents (W${wk}).`);
         }
 
+        // ── TYPE K: Bachcare Review Tracker (per-row export with full review details) ──
+        // Newer export shape — one row per review with Title, Customer, PropertyName, Rating,
+        // Status, Channel, Comment, Assigned (first OR last name), Modified (date+time). Stores
+        // both the per-week count (drives productivity, same as TYPE J pivot) AND the individual
+        // review records (drives the per-day display in People → Daily Record). The Assigned
+        // column has first-name values like "Kenneth" / "Ricky" / "Shane" plus "Kishan" which is
+        // Janendra Kishan's LAST name — so the lookup tries first name, then falls back to last
+        // name, then logs unmatched. Detection signature is the trio "ThirdPartyReference" +
+        // "Assigned" + "Modified" which doesn't appear in the pivot format.
+        else if(firstLine.includes("ThirdPartyReference")&&firstLine.includes("Assigned")&&firstLine.includes("Modified")){
+          const allRows=parseCsvText(text);
+          if(allRows.length<2){toast2("Review Tracker: no data rows.");return;}
+          const headers=allRows[0].map(h=>(h||"").trim());
+          const col=(name)=>headers.indexOf(name);
+          const cTitle=col("Title"),cCust=col("Customer"),cProp=col("PropertyName"),cReg=col("Region"),cRat=col("Rating"),cCom=col("ReviewComment"),cAdd=col("AdditionalComment"),cStat=col("ReviewStatus"),cChan=col("Channel"),cLink=col("ReviewLink"),cAsgn=col("Assigned"),cMod=col("Modified");
+          if(cAsgn<0||cMod<0){toast2("Review Tracker: missing Assigned/Modified columns.");return;}
+          // First-name OR last-name lookup against roster (members + leads).
+          const allMembers=[];
+          Object.entries(roster||{}).forEach(([tn,td])=>{if(!td)return;(td.members||[]).forEach(m=>{if(m&&m.name)allMembers.push(m.name);});if(td.lead)allMembers.push(td.lead);});
+          const findFullName=(token)=>{
+            if(!token)return null;
+            const t=token.toLowerCase().trim();
+            // Try first name
+            let m=allMembers.find(n=>n.split(" ")[0].toLowerCase()===t);
+            if(m)return m;
+            // Try last name (e.g. "Kishan" → "Janendra Kishan")
+            m=allMembers.find(n=>{const parts=n.split(" ");return parts.length>1&&parts[parts.length-1].toLowerCase()===t;});
+            return m||null;
+          };
+          const byPerson={};let parsedRows=0,unassigned=0;const unmatched={};
+          for(let i=1;i<allRows.length;i++){
+            const row=allRows[i];
+            if(!row||row.length<3)continue;
+            const asgnToken=((cAsgn>=0?row[cAsgn]:"")||"").trim();
+            const modStr=((cMod>=0?row[cMod]:"")||"").trim();
+            if(!asgnToken){unassigned++;continue;}
+            if(!modStr)continue;
+            // Parse DD/MM/YYYY [HH:MM]
+            const dm=modStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+            if(!dm)continue;
+            const dd=+dm[1],mm=+dm[2],yy=+dm[3];
+            const modDate=yy+"-"+String(mm).padStart(2,"0")+"-"+String(dd).padStart(2,"0");
+            const wkN=FY25_WK_RANGES.find(([,s,e])=>modDate>=s&&modDate<=e)?.[0];
+            const full=findFullName(asgnToken);
+            if(!full){unmatched[asgnToken]=(unmatched[asgnToken]||0)+1;continue;}
+            if(!byPerson[full])byPerson[full]={records:[],weekCounts:{}};
+            byPerson[full].records.push({
+              title:(row[cTitle]||"").trim(),
+              customer:(cCust>=0?(row[cCust]||""):"").trim(),
+              property:(cProp>=0?(row[cProp]||""):"").trim(),
+              region:(cReg>=0?(row[cReg]||""):"").trim(),
+              rating:cRat>=0&&row[cRat]&&!isNaN(+row[cRat])?+row[cRat]:null,
+              status:(cStat>=0?(row[cStat]||""):"").trim(),
+              channel:(cChan>=0?(row[cChan]||""):"").trim(),
+              comment:(cCom>=0?(row[cCom]||""):"").trim(),
+              addComment:(cAdd>=0?(row[cAdd]||""):"").trim(),
+              modified:modStr,
+              modDate:modDate,
+              link:(cLink>=0?(row[cLink]||""):"").trim(),
+            });
+            if(wkN)byPerson[full].weekCounts[wkN]=(byPerson[full].weekCounts[wkN]||0)+1;
+            parsedRows++;
+          }
+          if(!Object.keys(byPerson).length){
+            const unmsg=Object.keys(unmatched).length?" Unmatched: "+Object.keys(unmatched).join(", "):"";
+            toast2("Review Tracker: no rows matched roster."+unmsg);
+            return;
+          }
+          // Merge into icData. weeks[wkN].reviews carries the productivity count;
+          // reviewRecords carries the per-review details for Daily Record. Dedup by title so
+          // re-importing an overlapping file refreshes (latest wins) instead of duplicating.
+          setIcDataWithMonths(prev=>{
+            const next={...prev};
+            Object.entries(byPerson).forEach(([name,data])=>{
+              const person={...(next[name]||{weeks:{},months:{}})};
+              person.weeks={...(person.weeks||{})};
+              Object.entries(data.weekCounts).forEach(([wkN,count])=>{
+                person.weeks[wkN]={...(person.weeks[wkN]||{}),reviews:count};
+              });
+              const existing=Array.isArray(person.reviewRecords)?person.reviewRecords:[];
+              const byTitle={};
+              existing.forEach(r=>{if(r&&r.title)byTitle[r.title]=r;});
+              data.records.forEach(r=>{if(r&&r.title)byTitle[r.title]=r;});// latest wins
+              person.reviewRecords=Object.values(byTitle).sort((a,b)=>(b.modDate||"").localeCompare(a.modDate||""));
+              next[name]=person;
+            });
+            return next;
+          });
+          setTimeout(()=>recalculateAllProductivity(),100);
+          const recordCount=Object.values(byPerson).reduce((s,d)=>s+d.records.length,0);
+          const wkCount=new Set(Object.values(byPerson).flatMap(d=>Object.keys(d.weekCounts))).size;
+          const unmsg=Object.keys(unmatched).length?` · unmatched: ${Object.keys(unmatched).join(", ")}`:"";
+          const skipMsg=unassigned?` · ${unassigned} unassigned skipped`:"";
+          toast2(`Review Tracker: ${recordCount} reviews across ${Object.keys(byPerson).length} agent(s), ${wkCount} week(s)${skipMsg}${unmsg}`);
+          addAudit("Review Tracker Imported (per-row)",`${recordCount} reviews, ${Object.keys(byPerson).length} agents, ${wkCount} weeks`);
+        }
+
         // ── TYPE J: Bachcare Review Tracker (pivot-table by date × first name) ──
         // CSV first line is pivot metadata: "Count of ReviewStatus,Column Labels,,,,". The names
         // are first names only on row 2 (e.g. "Row Labels,Kenneth,Ricky,Shane,(blank),Grand Total")
@@ -9555,6 +9677,44 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
               ?<div style={{padding:"30px 20px",textAlign:"center",color:"#9ca3af",fontSize:13}}>No activity recorded for {fmtNZDate(activeDate)}.</div>
               :events.map((e,i)=>{const t=_DR_TYPES[e.type]||_DR_TYPES.ticket_closed;const oh=e.minutes<START*60||e.minutes>END*60;const turl=e.type==="ticket_closed"&&e.cid?ticketUrl(e.cid):null;return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 14px",borderTop:i?"1px solid #f3f4f6":"none"}}><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:12,color:"#6b7280",width:64,flexShrink:0,textAlign:"right"}}>{fmt12(e.minutes)}</span><span style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700,flexShrink:0,minWidth:118,boxSizing:"border-box"}}>{t.ic} {t.label}</span><span style={{color:"#374151",fontSize:13,flex:1,minWidth:0,wordBreak:"break-word"}}>{turl?<React.Fragment>{e.detail?dShow(e.detail)+" · ":""}<a href={turl} target="_blank" rel="noopener noreferrer" style={{color:"#059669",fontWeight:700,textDecoration:"none"}}>Open ticket #{e.cid} ↗</a></React.Fragment>:(dShow(e.detail)||"—")}</span>{oh&&<span style={{fontSize:10,color:"#9ca3af",flexShrink:0,fontStyle:"italic"}}>outside hours</span>}</div>;})}
           </div>}
+          {/* v2.7.3 — Reviews actioned on this day. Reads icData[name].reviewRecords (populated
+              by the per-row Review Tracker CSV importer) and filters by modDate === activeDate.
+              Shows channel badge, rating, status, guest, property, comment, link. */}
+          {(()=>{
+            const recs=(icData?.[name]?.reviewRecords||[]).filter(r=>r&&r.modDate===activeDate);
+            if(!recs.length)return null;
+            const channelClr=(ch)=>ch==="Airbnb"?"#F83056":ch==="VRBO"?"#1A3C7E":ch==="Booking.com"?"#012864":"#7838E3";
+            const statusClr=(st)=>st==="Resolved"?"#059669":st==="Escalated"?"#dc2626":st==="New"?"#0284c7":st==="Team Reviewed Guest"?"#0d9488":"#6b7280";
+            return(
+              <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden",marginTop:12}}>
+                <div style={{padding:"10px 14px",background:"#fffbeb",borderBottom:"1px solid #fde68a",fontSize:13,fontWeight:700,color:"#92400e",display:"flex",alignItems:"center",gap:8}}>
+                  <span>{"\u2b50"} Reviews actioned on {fmtNZDate(activeDate)}</span>
+                  <span style={{fontSize:11,color:"#a16207",fontWeight:600}}>· {recs.length} review{recs.length!==1?"s":""}</span>
+                </div>
+                <div>
+                  {recs.map((r,i)=>(
+                    <div key={r.title||i} style={{padding:"12px 14px",borderTop:i?"1px solid #f3f4f6":"none"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+                        <span style={{fontSize:11,fontWeight:700,color:"#fff",background:channelClr(r.channel),padding:"2px 8px",borderRadius:4}}>{r.channel||"\u2014"}</span>
+                        <span style={{fontSize:13,fontWeight:700,color:"#111827"}}>{r.title}</span>
+                        {r.rating!=null&&<span style={{fontSize:11,fontWeight:700,color:r.rating>=8?"#059669":r.rating>=5?"#d97706":"#dc2626",background:r.rating>=8?"#ecfdf5":r.rating>=5?"#fffbeb":"#fef2f2",padding:"2px 8px",borderRadius:4}}>{"\u2605 "+r.rating+"/10"}</span>}
+                        <span style={{fontSize:11,fontWeight:600,color:statusClr(r.status),background:"#f9fafb",border:"1px solid #e5e7eb",padding:"2px 8px",borderRadius:4}}>{r.status||"\u2014"}</span>
+                        <span style={{fontSize:11,color:"#6b7280",marginLeft:"auto",fontFamily:"ui-monospace,Menlo,monospace"}}>{r.modified}</span>
+                      </div>
+                      {(r.customer||r.property||r.region)&&<div style={{fontSize:12,color:"#6b7280",marginBottom:r.comment?6:0}}>
+                        {r.customer&&<span><b>Guest:</b> {r.customer}</span>}
+                        {r.property&&<span>{r.customer?" \u00b7 ":""}<b>Property:</b> {r.property}</span>}
+                        {r.region&&<span>{" \u00b7 "+r.region}</span>}
+                      </div>}
+                      {r.comment&&<div style={{fontSize:12.5,color:"#374151",background:"#fafafa",border:"1px solid #f3f4f6",borderRadius:6,padding:"8px 11px",lineHeight:1.5,fontStyle:"italic"}}>{"\u201c"+r.comment+"\u201d"}</div>}
+                      {r.addComment&&<div style={{fontSize:11,color:"#6b7280",marginTop:4}}><b>Additional:</b> {r.addComment}</div>}
+                      {r.link&&<div style={{marginTop:6}}><a href={r.link} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#0d9488",fontWeight:600,textDecoration:"none"}}>Open review {"\u2197"}</a></div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>;
       })()}
     </div></div>);

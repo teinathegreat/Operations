@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.6.12";
+const APP_VERSION="2.6.13";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -9480,8 +9480,6 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
       :[...GROUP_ORDER.filter(g=>schedTeamF.includes(g)&&groupMap[g]&&!SCHED_EXCLUDED.includes(g)),...Object.keys(groupMap).filter(g=>!GROUP_ORDER.includes(g)&&schedTeamF.includes(g)&&!SCHED_EXCLUDED.includes(g))];
     const filtPeople=filtGroups.flatMap(g=>(groupMap[g]||[])).filter(n=>schedPerson.length===0||schedPerson.includes(n));
 
-    const hoursFor=(name)=>getSchedHours(name,schedFilter,schedWeek,schedMonth);
-
     // flag if over 40h
     const flagHigh=(h)=>h!==null&&h>40;
 
@@ -9496,6 +9494,30 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const fmtDayLabel=(d)=>d.toLocaleString("en-NZ",{weekday:"short",day:"numeric",month:"short"});
 
     const daysInView=schedFilter==="week"?getDaysInWeek(schedWeek):[];
+
+    // v2.6.13 — totals were reading a pre-computed `person.weeks[wkNum]` value that could drift
+    // from the per-day cells (Adriana's 12 total vs day cells 8+4+8=20, Ashlee's 8 total vs
+    // 4+4+8=16). The day cells ARE the truth — they're what the importer wrote and what the
+    // user edits inline. Sum them so the Total Hours column actually reflects what's shown.
+    // Override (manual edit on the total) still wins. Fallback to the stored weekly value only
+    // when no per-day data exists at all (which happens for older monthly-only imports).
+    const hoursFor=(name)=>{
+      if(schedFilter!=="week")return getSchedHours(name,schedFilter,schedWeek,schedMonth);
+      const person=schedData[name]||schedData[name.replace(/\s*-\s*/g,"-").trim().toLowerCase()]||Object.entries(schedData).find(([k])=>k.replace(/\s*-\s*/g,"-").trim().toLowerCase()===name.replace(/\s*-\s*/g,"-").trim().toLowerCase())?.[1]||null;
+      if(!person)return null;
+      const ovKey=`w_${schedWeek}`;
+      if(person.overrides&&person.overrides[ovKey]!==undefined)return person.overrides[ovKey];
+      // Sum the per-day cells inside the visible week. Same lookup the cell render uses.
+      let daySum=0;let anyDay=false;
+      for(const d of daysInView){
+        const ds=fmtDate(d);
+        const dh=person.days?.[ds]?.hours;
+        if(typeof dh==="number"){daySum+=dh;anyDay=true;}
+      }
+      if(anyDay)return Math.round(daySum*100)/100;// trim floating-point dust like 19.99999
+      // No per-day data → trust the legacy weekly value if present.
+      return person.weeks?.[schedWeek]??null;
+    };
 
     return(
       <div>

@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.6.13";
+const APP_VERSION="2.7.1";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -2788,7 +2788,7 @@ function IntercomDropzone({isAdmin,icFileRef,handleIcFile,toast2,icData}){
           or <span style={{color:"#0d9488",fontWeight:600}}>click to browse</span> &nbsp;·&nbsp; CSV files only &nbsp;·&nbsp; auto-detects report type
         </div>
         <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",fontSize:11,color:"#6b7280"}}>
-          {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate","Activity Time","Abandoned Calls","Detailed work log","Call handle times","Ticket Stats (In Stay)"].map(t=>(
+          {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate","Activity Time","Abandoned Calls","Detailed work log","Call handle times","Ticket Stats (In Stay)","Review Tracker"].map(t=>(
             <span key={t} style={{background:"#f3f4f6",borderRadius:4,padding:"2px 8px"}}>{t}</span>
           ))}
         </div>
@@ -3038,12 +3038,12 @@ function WeeklySummaryModalBuilder({sm,onClose,roster,callReviews,setCallReviews
   const icStats=getIcStats(sName,sm.iPt,sm.iWk,sm.iMo);
   const hrs=getSchedHours(sName,sm.iPt,sm.iWk,sm.iMo);
   const tw=getW(sTn);
-  const autoScore=icStats&&hrs?Math.round(((icStats.closed||0)*tw.tickets+(icStats.emails||0)*tw.emails+(icStats.wfs||0)*tw.wfs+(icStats.calls||0)*tw.calls+(icStats.caseActions||0)*(tw.case_actions||0))/hrs*10)/10:null;
+  const autoScore=icStats&&hrs?Math.round(((icStats.closed||0)*tw.tickets+(icStats.emails||0)*tw.emails+(icStats.wfs||0)*tw.wfs+(icStats.calls||0)*tw.calls+(icStats.caseActions||0)*(tw.case_actions||0)+(icStats.reviews||0)*(tw.reviews||1))/hrs*10)/10:null;
   const ap=avgProd(sTn,sm.iPt,sm.iMo,sm.iWk,false);
 
   // Team ranking
   const teamMems2=(roster[sTn]?.members||[]).map(m=>m.name);
-  const rankings=teamMems2.map(n=>{const s=getIcStats(n,sm.iPt,sm.iWk,sm.iMo);const h=getSchedHours(n,sm.iPt,sm.iWk,sm.iMo);const p=s&&h&&h>0?Math.round(((s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0))/h*10)/10:0;return{name:n,prod:p};}).sort((a,b)=>b.prod-a.prod);
+  const rankings=teamMems2.map(n=>{const s=getIcStats(n,sm.iPt,sm.iWk,sm.iMo);const h=getSchedHours(n,sm.iPt,sm.iWk,sm.iMo);const p=s&&h&&h>0?Math.round(((s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0)+(s.reviews||0)*(tw.reviews||1))/h*10)/10:0;return{name:n,prod:p};}).sort((a,b)=>b.prod-a.prod);
   const myRank=rankings.findIndex(r=>r.name===sName)+1;
 
   // Call reviews — filter out reviews already used in past summaries unless toggled
@@ -3373,7 +3373,19 @@ function RichTextEditor({value, onChange, minHeight}) {
 }
 
 function App(){
-  const init={data:{},roster:migrateRoster({...DEFAULT_ROSTER}),tc:migrateTeamColors({...DEFAULT_TEAMS})};
+  // v2.7 — localStorage mirror. Every change to critical state is also written to localStorage,
+  // and on first paint we restore from that mirror so the dashboard is populated immediately
+  // (before Supabase responds, and even when Supabase is completely unreachable). Supabase
+  // remains authoritative — its data layers on top when it returns — but if the network is
+  // down, an API key is revoked, or the project is paused, your last-known state is still on
+  // screen and editable. New edits go into the offline queue and the localStorage mirror;
+  // they sync to Supabase the moment it's reachable again.
+  const mirrorRead=(key,fallback)=>{try{const v=localStorage.getItem("bc_mirror_"+key);if(v){const parsed=JSON.parse(v);if(parsed&&typeof parsed==="object")return parsed;}}catch{}return fallback;};
+  const init={
+    data:mirrorRead("data",{}),
+    roster:migrateRoster(mirrorRead("roster",{...DEFAULT_ROSTER})),
+    tc:migrateTeamColors(mirrorRead("tc",{...DEFAULT_TEAMS})),
+  };
   const[currentUser,setCurrentUser]=useState(()=>{try{const u=sessionStorage.getItem("bc_user");return u?JSON.parse(u):null;}catch{return null;}});
   const currentUserRef=useRef(currentUser);useEffect(()=>{currentUserRef.current=currentUser;},[currentUser]);
   const auth=!!currentUser;
@@ -3440,8 +3452,8 @@ function App(){
   const darkMode=false;// "avg"=team average "target"=KPI target// {key,teamName,pk,existing}
   const[inlineKpiVal,setInlineKpiVal]=useState("");
   const[auditLog,setAuditLog]=useState([]);
-  const DEFAULT_WEIGHTS={tickets:1,emails:1,wfs:1,calls:1,case_actions:0};
-  const[allWeights,setAllWeights]=useState({});
+  const DEFAULT_WEIGHTS={tickets:1,emails:1,wfs:1,calls:1,case_actions:0,reviews:1};
+  const[allWeights,setAllWeights]=useState(()=>mirrorRead("weights",{}));
   const getW=(tn)=>allWeights[tn]||DEFAULT_WEIGHTS;
   // Keep "weights" as a convenience alias for the currently selected dashboard team
   const weights=getW(team);
@@ -3917,7 +3929,7 @@ function App(){
   const[exPt,setExPt]=useState("month");const[exMo,setExMo]=useState("March 2026");const[exWk,setExWk]=useState(25);
   const fileRef=useRef();
   const schedFileRef=useRef();
-  const[schedData,setSchedData]=useState(()=>{return{};});
+  const[schedData,setSchedData]=useState(()=>mirrorRead("sched",{}));
   const[schedFilter,setSchedFilter]=useState("week");
   const[schedWeek,setSchedWeek]=useState(AUTO_WEEK);
   const[schedMonth,setSchedMonth]=useState("March 2026");
@@ -3931,23 +3943,23 @@ function App(){
   const[editHoursVal,setEditHoursVal]=useState("");
   const icFileRef=useRef();
   const csatFileRef=useRef();
-  const[icData,setIcData]=useState(()=>{return{};});
+  const[icData,setIcData]=useState(()=>mirrorRead("ic",{}));
   const[icPPT,setIcPPT]=useState(()=>{return{};});
   // Abandoned Calls (Rejected/Missed call events from Intercom report, UK→NZ converted)
   // Shape: { "PersonName": { team, weeks: {N: {count, events: [...]}}, months: {"May 2026": {count, events: [...]}} } }
   // Each event: {nzIso, nzTime, nzWeekday, nzDateStr, nzFullDate, queue, ukDate, ukTime, hour, tod}
-  const[rejectedCallsData,setRejectedCallsData]=useState(()=>{return{};});
+  const[rejectedCallsData,setRejectedCallsData]=useState(()=>mirrorRead("rejcalls",{}));
   // Modal state for the "view missed calls for X" popup
   const[abandonedModal,setAbandonedModal]=useState(null);
   // Daily Record timeline events (per-event timestamps for the 7am–9pm day view).
   // Shape: { "PersonName": { "2026-05-26": [ {type,time,minutes,label,detail,source} ] } }
   // Populated by a future timestamped export; abandoned calls are merged in live.
-  const[dailyTimelineData,setDailyTimelineData]=useState(()=>{return{};});
+  const[dailyTimelineData,setDailyTimelineData]=useState(()=>mirrorRead("timeline",{}));
   // v2.5.9 — Post Case File CSAT responses uploaded from the resolution-satisfaction form.
   // Shape: { responses: [{id, date, email, caseNumber, q1, q2, q3, q4, percent, feedback, overallStay}] }
   // Each q is 1-5; percent = (q1+q2+q3+q4)/20 * 100 (rounded). Aggregated by FY25 week into
   // data["Reputation and Resolutions"][w__N].post_case_csat for the R&R dashboard KPI tile.
-  const[csatData,setCsatData]=useState(()=>{return{responses:[]};});
+  const[csatData,setCsatData]=useState(()=>mirrorRead("csat",{responses:[]}));
   const[icFilter,setIcFilter]=useState("week");
   const[icWeek,setIcWeek]=useState(AUTO_WEEK);
   const[icMonth,setIcMonth]=useState("March 2026");
@@ -4031,7 +4043,7 @@ function App(){
     const id=prefix+":"+key;const body={id,data:wrapped,updated_at:new Date().toISOString()};
     try{await fetch(url+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(body)});}catch{}
   };
-  const addToQueue=(op)=>{offlineQueue.current.push({...op,attempts:0,addedAt:new Date().toISOString()});updateSaveStatus();};
+  const addToQueue=(op)=>{offlineQueue.current.push({...op,attempts:0,addedAt:new Date().toISOString()});try{localStorage.setItem("bc_offline_queue",JSON.stringify(offlineQueue.current));}catch{}updateSaveStatus();};
   // Retry queue every 15 seconds
   useEffect(()=>{const iv=setInterval(async()=>{if(!offlineQueue.current.length||!sbUrlRef.current)return;
     const batch=[...offlineQueue.current];offlineQueue.current=[];let failed=[];
@@ -4132,7 +4144,14 @@ function App(){
     // v2.5.5: cache:"no-store" — see dbLoadAll comment. This is the function that powers the
     // dailycfg/call_review_teams/sched/etc. reads that team leaders were seeing stale.
     try{const resp=await fetch(url+"/rest/v1/config_rows?id=like."+encodeURIComponent(prefix+":*").replace("*","%25")+"&select=id,data",{cache:"no-store",headers:{"apikey":key,"Authorization":"Bearer "+key,"Cache-Control":"no-cache","Pragma":"no-cache"}});
-    if(!resp.ok)return null;const rows=await resp.json();if(!rows.length)return null;
+    if(!resp.ok)return null;
+    // v2.7.1 — mark this prefix as cloud-confirmed even if rows are empty. An empty cloud is
+    // a VALID state (e.g. brand new install). What we MUST distinguish is "cloud said empty"
+    // (safe to save into) vs "cloud read failed" (NOT safe to save — pushing localStorage
+    // mirror would overwrite real data on the next successful retry). Gating saves on
+    // cloudConfirmedRef.current.has(prefix) closes the stale-mirror-clobber gap.
+    cloudConfirmedRef.current.add(prefix);
+    const rows=await resp.json();if(!rows.length)return null;
     const obj={};rows.forEach(r=>{const k=r.id.slice(prefix.length+1);const d=r.data;obj[k]=(d&&typeof d==="object"&&"_v" in d&&"_origin" in d)?d._v:d;});return obj;}catch(e){console.error("dbLoadConfig "+prefix+" error:",e);return null;}
   };
   const dbSaveConfigKey=async(prefix,key,value)=>{
@@ -4526,6 +4545,16 @@ function App(){
   const sbDataReceived=useRef(false);
   const saveEnabled=useRef(false);
   const saveEnabledSet=useRef(false);
+  // v2.7.1 — cloud-confirmed gate. The localStorage mirror means state appears instantly on
+  // page load, even when Supabase is down — but that creates a stale-data clobber risk: if
+  // saveEnabled flips on while state is still mirror-only (cloud load failed for that prefix),
+  // the next edit would push stale local data over fresh cloud data on retry. Every successful
+  // dbLoadConfig adds its prefix to this set; every critical auto-save effect checks that the
+  // prefix is in the set before pushing. If the cloud read failed for a prefix, that prefix is
+  // effectively read-only until a self-heal or tab-change refresh succeeds. Closes the gap
+  // that re-introduced "stale data overwrites cloud" — the bug we'd just finished killing.
+  const cloudConfirmedRef=useRef(new Set());
+  const isCloudConfirmed=(prefix)=>cloudConfirmedRef.current.has(prefix);
   // v2.6.11 — refcount-based suppression. Multiple concurrent reads (tab change kicks off
   // fetchAppData + 5 directFetchConfigs in parallel) each used to do `const prev=saveEnabled.current;
   // saveEnabled.current=false; ... setTimeout(()=>{saveEnabled.current=prev;},300)` which races:
@@ -4644,7 +4673,9 @@ function App(){
         }catch(e){console.error("Dashboard refresh failed:",e);}
         finally{releaseSaves();}
       };
-      fetchAppData();const directFetchConfig=async(prefix,setter)=>{suppressSaves();try{const obj=await dbLoadConfig(prefix);if(obj)setter(obj);}finally{releaseSaves();}};if(!icSavingRef.current)directFetchConfig("ic",setIcData);if(!schedSavingRef.current)directFetchConfig("sched",setSchedData);if(!rejSavingRef.current)directFetchConfig("rejcalls",setRejectedCallsData);if(!tlSavingRef.current)directFetchConfig("timeline",setDailyTimelineData);if(!isOwner)directFetchConfig("dailycfg",setDailyConfig);}},[tab]);
+      fetchAppData();const directFetchConfig=async(prefix,setter)=>{suppressSaves();try{const obj=await dbLoadConfig(prefix);if(obj){// v2.6.15: skip the replace if any key under this prefix is dirty (in-flight save). Same protection as self-heal — without it, switching tabs right after a CSV import could clobber the local state before the save lands.
+        let dirty=false;for(const id of dirtyConfigRef.current)if(id.startsWith(prefix+":")){dirty=true;break;}
+        if(!dirty)setter(obj);}}finally{releaseSaves();}};if(!icSavingRef.current)directFetchConfig("ic",setIcData);if(!schedSavingRef.current)directFetchConfig("sched",setSchedData);if(!rejSavingRef.current)directFetchConfig("rejcalls",setRejectedCallsData);if(!tlSavingRef.current)directFetchConfig("timeline",setDailyTimelineData);if(!isOwner)directFetchConfig("dailycfg",setDailyConfig);}},[tab]);
     useEffect(()=>{if(sbUrl&&sbKey)loadFromSupabase();},[]);
     // Periodic read-only self-heal for non-admins. Realtime only delivers changes made while a
     // client stays connected (no backfill), and the per-tab refreshes need a tab switch — so a
@@ -4669,12 +4700,20 @@ function App(){
           if(tcVal&&typeof tcVal==="object"&&!dirtyConfigRef.current.has("sys:team_config"))setTc(migrateTeamColors(tcVal));
           if(rVal&&typeof rVal==="object"&&!dirtyConfigRef.current.has("sys:team_roster"))setRoster(migrateRoster(fixRosterNames(rVal)));
           {let pmv=sysConf?.phone_mask;if(pmv&&typeof pmv==="object"&&"_v" in pmv)pmv=pmv._v;if(typeof pmv==="boolean")setPhoneMaskOn(pmv);}
-          const dc=await dbLoadConfig("dailycfg");if(dc&&typeof dc==="object")setDailyConfig(dc);
-          const icv=await dbLoadConfig("ic");if(icv&&typeof icv==="object")setIcData(icv);
-          const sdv=await dbLoadConfig("sched");if(sdv&&typeof sdv==="object")setSchedData(sdv);
-          const rjv=await dbLoadConfig("rejcalls");if(rjv&&typeof rjv==="object")setRejectedCallsData(rjv);
-          const tlv=await dbLoadConfig("timeline");if(tlv&&typeof tlv==="object")setDailyTimelineData(tlv);
-          const csv2=await dbLoadConfig("csat");if(csv2&&csv2.data&&typeof csv2.data==="object"&&(Array.isArray(csv2.data.responses)||Array.isArray(csv2.data.post_case)||Array.isArray(csv2.data.claim)||Array.isArray(csv2.data.in_stay)))setCsatData(csv2.data);
+          // v2.6.15 — every wholesale-replace in self-heal now checks if any key under that
+          // prefix is dirty (in-flight save). If so, skip the replace — a CSV import that just
+          // wrote new data and is waiting for the POST to land would otherwise be clobbered when
+          // self-heal lands with the pre-import cloud state. Same protection as the realtime
+          // guards above. dirtyHasPrefix returns true if ANY key in dirtyConfigRef starts with
+          // `${prefix}:` — needed because ic/sched/etc store per-person, so any one save in
+          // flight means the whole map is mid-write.
+          const dirtyHasPrefix=(p)=>{for(const id of dirtyConfigRef.current)if(id.startsWith(p+":"))return true;return false;};
+          const dc=await dbLoadConfig("dailycfg");if(dc&&typeof dc==="object"&&!dirtyHasPrefix("dailycfg"))setDailyConfig(dc);
+          const icv=await dbLoadConfig("ic");if(icv&&typeof icv==="object"&&!dirtyHasPrefix("ic"))setIcData(icv);
+          const sdv=await dbLoadConfig("sched");if(sdv&&typeof sdv==="object"&&!dirtyHasPrefix("sched"))setSchedData(sdv);
+          const rjv=await dbLoadConfig("rejcalls");if(rjv&&typeof rjv==="object"&&!dirtyHasPrefix("rejcalls"))setRejectedCallsData(rjv);
+          const tlv=await dbLoadConfig("timeline");if(tlv&&typeof tlv==="object"&&!dirtyHasPrefix("timeline"))setDailyTimelineData(tlv);
+          const csv2=await dbLoadConfig("csat");if(csv2&&csv2.data&&typeof csv2.data==="object"&&(Array.isArray(csv2.data.responses)||Array.isArray(csv2.data.post_case)||Array.isArray(csv2.data.claim)||Array.isArray(csv2.data.in_stay))&&!dirtyConfigRef.current.has("csat:data"))setCsatData(csv2.data);
           // Backfill call reviews a stranded session may have missed. MERGE (not replace): server rows win,
           // but any review created locally and not yet returned by the read is preserved — so this can never
           // make a just-submitted review vanish.
@@ -4800,7 +4839,17 @@ function App(){
           // The auto-save useEffect will see hash match and skip the redundant save.
           try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}
           // Route to the right state setter based on prefix
-          const objMerge=(setter)=>{if(ev==="DELETE")setter(prev=>{const n={...prev};delete n[key];return n;});else setter(prev=>({...prev,[key]:value}));};
+          // v2.6.15 — every objMerge route now checks dirtyConfigRef.current.has(row.id) so an
+          // in-flight save isn't clobbered by a stale broadcast (own previous save echo or another
+          // client's earlier write). This is the same protection we added to sys:app_data /
+          // sys:team_config / sys:team_roster in 2.6.10, generalised to every config prefix —
+          // so icData (Review Tracker imports), schedData (per-day hours), allWeights (productivity
+          // weights including the new reviews:1 weight), etc. are all protected.
+          const objMerge=(setter)=>{
+            if(dirtyConfigRef.current.has(row.id))return;
+            if(ev==="DELETE")setter(prev=>{const n={...prev};delete n[key];return n;});
+            else setter(prev=>({...prev,[key]:value}));
+          };
           if(prefix==="caps")objMerge(setCapabilities);
           else if(prefix==="capcrit")objMerge(setCapCriteria);
           else if(prefix==="perms")objMerge(setPermissions);
@@ -4814,7 +4863,7 @@ function App(){
           else if(prefix==="weights")objMerge(setAllWeights);
           else if(prefix==="revcrit")objMerge(setReviewCriteriaConfig);
           else if(prefix==="tgt")objMerge(setTgtOwners);
-          else if(prefix==="csat"){if(key==="data"&&value&&typeof value==="object"&&(Array.isArray(value.responses)||Array.isArray(value.post_case)||Array.isArray(value.claim)||Array.isArray(value.in_stay))){setCsatData(value);try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}}}
+          else if(prefix==="csat"){if(key==="data"&&value&&typeof value==="object"&&(Array.isArray(value.responses)||Array.isArray(value.post_case)||Array.isArray(value.claim)||Array.isArray(value.in_stay))){if(!dirtyConfigRef.current.has(row.id)){setCsatData(value);try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}}}}
           else if(prefix==="sys"){
             if(key==="app_data"&&value&&typeof value==="object"){
               // v2.4.3: app_data is now JUST data (no _tc/_r). Strip them in case an old client wrote them.
@@ -4874,43 +4923,122 @@ function App(){
 
 
 
-  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(capabilities).forEach(([k,v])=>dbSaveConfigKey("caps",k,v));},[capabilities]);
-  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(capCriteria).forEach(([k,v])=>dbSaveConfigKey("capcrit",k,v));},[capCriteria]);
-  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(permissions).forEach(([k,v])=>dbSaveConfigKey("perms",k,v));},[permissions]);
-  useEffect(()=>{if(!saveEnabled.current||!isOwner||!dailyConfig)return;Object.entries(dailyConfig).forEach(([k,v])=>dbSaveConfigKey("dailycfg",k,v));},[dailyConfig]);
-  useEffect(()=>{if(!saveEnabled.current)return;Object.entries(quickNotes).forEach(([k,v])=>dbSaveConfigKey("notes",k,v));},[quickNotes]);
-  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;dbSaveConfigKey("sys","quick_refs",quickRefs);},[quickRefs]);
-  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;dbSaveConfigKey("sys","update_notes",updateNotes);},[updateNotes]);
-  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(reviewCriteriaConfig).forEach(([k,v])=>dbSaveConfigKey("revcrit",k,v));},[reviewCriteriaConfig]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("caps"))return;Object.entries(capabilities).forEach(([k,v])=>dbSaveConfigKey("caps",k,v));},[capabilities]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("capcrit"))return;Object.entries(capCriteria).forEach(([k,v])=>dbSaveConfigKey("capcrit",k,v));},[capCriteria]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("perms"))return;Object.entries(permissions).forEach(([k,v])=>dbSaveConfigKey("perms",k,v));},[permissions]);
+  useEffect(()=>{if(!saveEnabled.current||!isOwner||!dailyConfig||!isCloudConfirmed("dailycfg"))return;Object.entries(dailyConfig).forEach(([k,v])=>dbSaveConfigKey("dailycfg",k,v));},[dailyConfig]);
+  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("notes"))return;Object.entries(quickNotes).forEach(([k,v])=>dbSaveConfigKey("notes",k,v));},[quickNotes]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("sys"))return;dbSaveConfigKey("sys","quick_refs",quickRefs);},[quickRefs]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("sys"))return;dbSaveConfigKey("sys","update_notes",updateNotes);},[updateNotes]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("revcrit"))return;Object.entries(reviewCriteriaConfig).forEach(([k,v])=>dbSaveConfigKey("revcrit",k,v));},[reviewCriteriaConfig]);
 
-  useEffect(()=>{if(!saveEnabled.current)return;Object.entries(onboarding).forEach(([k,v])=>dbSaveConfigKey("onboard",k,v));},[onboarding]);
-  useEffect(()=>{if(!saveEnabled.current)return;Object.entries(alertSnooze).forEach(([k,v])=>dbSaveConfigKey("snooze",k,v));},[alertSnooze]);
-  useEffect(()=>{if(!saveEnabled.current)return;Object.entries(schedData).forEach(([k,v])=>dbSaveConfigKey("sched",k,v));},[schedData]);
-  useEffect(()=>{if(!saveEnabled.current)return;Object.entries(rejectedCallsData).forEach(([k,v])=>dbSaveConfigKey("rejcalls",k,v));},[rejectedCallsData]);
+  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("onboard"))return;Object.entries(onboarding).forEach(([k,v])=>dbSaveConfigKey("onboard",k,v));},[onboarding]);
+  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("snooze"))return;Object.entries(alertSnooze).forEach(([k,v])=>dbSaveConfigKey("snooze",k,v));},[alertSnooze]);
+  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("sched"))return;Object.entries(schedData).forEach(([k,v])=>dbSaveConfigKey("sched",k,v));},[schedData]);
+  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("rejcalls"))return;Object.entries(rejectedCallsData).forEach(([k,v])=>dbSaveConfigKey("rejcalls",k,v));},[rejectedCallsData]);
   // v2.5.9 — CSAT responses stored as a single key (csat:data) since they're all one logical
   // collection and small enough not to warrant per-row config rows.
   // v2.6.9 — auto-save was gated on csatData.responses being an array (the old single-bucket shape).
   // Since 2.5.9/2.6.0/2.6.8 we use {post_case,claim,in_stay} buckets, so the old gate never fired
   // and CSAT uploads were silently dropped on refresh. Now we accept either shape.
-  useEffect(()=>{if(!saveEnabled.current)return;if(!csatData||typeof csatData!=="object")return;const hasResponses=Array.isArray(csatData.responses);const hasBuckets=Array.isArray(csatData.post_case)||Array.isArray(csatData.claim)||Array.isArray(csatData.in_stay);if(!hasResponses&&!hasBuckets)return;dbSaveConfigKey("csat","data",csatData);},[csatData]);
-  useEffect(()=>{if(!saveEnabled.current)return;Object.entries(dailyTimelineData).forEach(([k,v])=>dbSaveConfigKey("timeline",k,v));},[dailyTimelineData]);
-  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;Object.entries(allWeights).forEach(([k,v])=>dbSaveConfigKey("weights",k,v));},[allWeights]);
-  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;dbSaveConfigKey("sys","call_review_teams",callReviewTeams);},[callReviewTeams]);
+  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("csat"))return;if(!csatData||typeof csatData!=="object")return;const hasResponses=Array.isArray(csatData.responses);const hasBuckets=Array.isArray(csatData.post_case)||Array.isArray(csatData.claim)||Array.isArray(csatData.in_stay);if(!hasResponses&&!hasBuckets)return;dbSaveConfigKey("csat","data",csatData);},[csatData]);
+  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("timeline"))return;Object.entries(dailyTimelineData).forEach(([k,v])=>dbSaveConfigKey("timeline",k,v));},[dailyTimelineData]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("weights"))return;Object.entries(allWeights).forEach(([k,v])=>dbSaveConfigKey("weights",k,v));},[allWeights]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("sys"))return;dbSaveConfigKey("sys","call_review_teams",callReviewTeams);},[callReviewTeams]);
   const _appDataLoaded=useRef(false);
   useEffect(()=>{if(data&&Object.keys(data).length>0&&roster&&Object.keys(roster).length>0)_appDataLoaded.current=true;},[data,roster]);
-  useEffect(()=>{if(!saveEnabled.current)return;if(!_appDataLoaded.current){console.warn("Blocked saving default app_data");return;}appDataLastSavedAt.current=Date.now();dbSaveConfigKey("sys","app_data",data);},[data]);
+  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("sys"))return;if(!_appDataLoaded.current){console.warn("Blocked saving default app_data");return;}appDataLastSavedAt.current=Date.now();dbSaveConfigKey("sys","app_data",data);},[data]);
   // v2.4.3: Separate autosave for tc (team config / KPIs) — protected from cross-contamination with daily data saves
   // v2.5: owner-only — KPI targets / team config are owner-edited; this prevents ANY other client
   // (including a second admin like Luke) whose session loaded stale config from writing them back.
-  useEffect(()=>{if(!saveEnabled.current||!isOwner)return;if(!_tcLoaded.current)return;dbSaveConfigKey("sys","team_config",tc);},[tc]);
+  useEffect(()=>{if(!saveEnabled.current||!isOwner||!isCloudConfirmed("sys"))return;if(!_tcLoaded.current)return;dbSaveConfigKey("sys","team_config",tc);},[tc]);
   // v2.4.3: Separate autosave for roster (owner-only for the same reason)
-  useEffect(()=>{if(!saveEnabled.current||!isOwner)return;if(!_rosterLoaded.current)return;dbSaveConfigKey("sys","team_roster",roster);},[roster]);
+  useEffect(()=>{if(!saveEnabled.current||!isOwner||!isCloudConfirmed("sys"))return;if(!_rosterLoaded.current)return;dbSaveConfigKey("sys","team_roster",roster);},[roster]);
 
 
   // All saves handled by syncToSupabase (3-second debounce after any state change)
-  useEffect(()=>{if(!saveEnabled.current||!isAdmin)return;dbSaveConfigAll("weights",allWeights);},[allWeights]);
-  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("ic",icData);},[icData]);
-  useEffect(()=>{if(!saveEnabled.current)return;dbSaveConfigAll("icppt",icPPT);},[icPPT]);
+  useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("weights"))return;dbSaveConfigAll("weights",allWeights);},[allWeights]);
+  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("ic"))return;dbSaveConfigAll("ic",icData);},[icData]);
+  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("icppt"))return;dbSaveConfigAll("icppt",icPPT);},[icPPT]);
+
+  // v2.7 — localStorage mirror save effects. Mirror runs unconditionally (no saveEnabled gate)
+  // because we WANT the mirror to capture every state change, including ones that fail or queue
+  // for Supabase. JSON.stringify can throw on very large objects or when localStorage is full,
+  // so each write is wrapped — a failed mirror save logs a warning but never breaks the app.
+  // The 5MB localStorage quota fits Bachcare's data comfortably (icData + schedData are the
+  // biggest, and at ~30 people × 50 weeks they stay under 1MB combined).
+  useEffect(()=>{try{localStorage.setItem("bc_mirror_data",JSON.stringify(data));}catch(e){console.warn("data mirror failed:",e?.message);}},[data]);
+  useEffect(()=>{try{localStorage.setItem("bc_mirror_tc",JSON.stringify(tc));}catch(e){console.warn("tc mirror failed:",e?.message);}},[tc]);
+  useEffect(()=>{try{localStorage.setItem("bc_mirror_roster",JSON.stringify(roster));}catch(e){console.warn("roster mirror failed:",e?.message);}},[roster]);
+  useEffect(()=>{try{localStorage.setItem("bc_mirror_csat",JSON.stringify(csatData));}catch(e){console.warn("csat mirror failed:",e?.message);}},[csatData]);
+  useEffect(()=>{try{localStorage.setItem("bc_mirror_ic",JSON.stringify(icData));}catch(e){console.warn("ic mirror failed:",e?.message);}},[icData]);
+  useEffect(()=>{try{localStorage.setItem("bc_mirror_sched",JSON.stringify(schedData));}catch(e){console.warn("sched mirror failed:",e?.message);}},[schedData]);
+  useEffect(()=>{try{localStorage.setItem("bc_mirror_weights",JSON.stringify(allWeights));}catch(e){console.warn("weights mirror failed:",e?.message);}},[allWeights]);
+  useEffect(()=>{try{localStorage.setItem("bc_mirror_rejcalls",JSON.stringify(rejectedCallsData));}catch(e){console.warn("rejcalls mirror failed:",e?.message);}},[rejectedCallsData]);
+  useEffect(()=>{try{localStorage.setItem("bc_mirror_timeline",JSON.stringify(dailyTimelineData));}catch(e){console.warn("timeline mirror failed:",e?.message);}},[dailyTimelineData]);
+
+  // v2.7 — beforeunload guard. If the user tries to close the tab or refresh while a save is
+  // still in flight (activeSaves > 0) or items are queued from failed POSTs (offlineQueue not
+  // empty), the browser shows its native "Leave site?" confirmation. Modern browsers ignore the
+  // custom message string and show a generic prompt, but the prompt itself appears, giving the
+  // user a chance to cancel and let saves finish.
+  useEffect(()=>{
+    const handler=(e)=>{
+      if(activeSaves.current>0||offlineQueue.current.length>0){
+        e.preventDefault();
+        e.returnValue="";// required for the prompt to appear in modern browsers
+        return"";
+      }
+    };
+    window.addEventListener("beforeunload",handler);
+    return()=>window.removeEventListener("beforeunload",handler);
+  },[]);
+
+  // v2.7 — persist + restore the offline retry queue. Without this, a save that failed (network
+  // hiccup, Supabase paused, anything) queues in memory and then evaporates the moment the user
+  // refreshes — silent data loss. Now the queue survives reloads and is replayed on next mount
+  // once Supabase is reachable. Persists on every queue mutation by wrapping addToQueue.
+  const persistQueue=()=>{try{localStorage.setItem("bc_offline_queue",JSON.stringify(offlineQueue.current));}catch(e){console.warn("offline queue persist failed:",e?.message);}};
+  useEffect(()=>{
+    try{
+      const m=localStorage.getItem("bc_offline_queue");
+      if(m){const q=JSON.parse(m);if(Array.isArray(q)&&q.length){offlineQueue.current=q;updateSaveStatus();console.log("v2.7: restored "+q.length+" queued save(s) from localStorage");}}
+    }catch{}
+    // Attempt retry every 30s while items remain in the queue. Each item is one of the three
+    // shapes addToQueue creates: {type:"upsert",table,body}, {type:"delete",table,id}, or
+    // {type:"config",body}. We replay them by calling fetch directly with the same headers.
+    const retry=async()=>{
+      if(!offlineQueue.current.length)return;
+      const url=sbUrlRef.current;const key=sbKeyRef.current;
+      if(!url||!key)return;
+      const items=[...offlineQueue.current];
+      const stillFailed=[];
+      for(const item of items){
+        try{
+          let ok=false;
+          if(item.type==="config"){
+            const resp=await fetch(url+"/rest/v1/config_rows",{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(item.body)});
+            ok=resp.ok;
+          }else if(item.type==="upsert"){
+            const resp=await fetch(url+"/rest/v1/"+item.table,{method:"POST",headers:{...dbHeaders(),"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(item.body)});
+            ok=resp.ok;
+          }else if(item.type==="delete"){
+            const resp=await fetch(url+"/rest/v1/"+item.table+"?id=eq."+encodeURIComponent(item.id),{method:"DELETE",headers:dbHeaders()});
+            ok=resp.ok;
+          }
+          if(!ok)stillFailed.push({...item,attempts:(item.attempts||0)+1});
+        }catch{stillFailed.push({...item,attempts:(item.attempts||0)+1});}
+      }
+      offlineQueue.current=stillFailed;
+      persistQueue();
+      updateSaveStatus();
+      if(items.length>stillFailed.length){toast2("✓ Synced "+(items.length-stillFailed.length)+" queued save(s)");}
+    };
+    const iv=setInterval(retry,30000);
+    // Also retry once shortly after mount in case the queue is full on load.
+    setTimeout(retry,3000);
+    return()=>clearInterval(iv);
+  },[]);
   // app_data save handled by syncToSupabase
 
   // ── Auto-fill call review KPIs into dashboard ────────────────────────────
@@ -5170,7 +5298,7 @@ function App(){
           const s=stats[name]||stats[normName]||Object.entries(stats).find(([k])=>k.replace(/\s*-\s*/g,"-").trim().toLowerCase()===normName.toLowerCase())?.[1]||null;
           if(!s)return;
           const hrs=getSchedHours(name,filter,wkNum,monLabel);
-          const points=(s.closed||0)*weights.tickets+(s.emails||0)*weights.emails+(s.wfs||0)*weights.wfs+(s.calls||0)*weights.calls+(s.caseActions||0)*(weights.case_actions||0);
+          const points=(s.closed||0)*weights.tickets+(s.emails||0)*weights.emails+(s.wfs||0)*weights.wfs+(s.calls||0)*weights.calls+(s.caseActions||0)*(weights.case_actions||0)+(s.reviews||0)*(weights.reviews||1);
           const prod=hrs>0?Math.round(points/hrs*100)/100:null;
           const key=`_i_${id}`;
           const ex=(next[key]||{})[pk]||{};
@@ -5216,7 +5344,7 @@ function App(){
             const s=getIcStats(name,filter,wkN,mon);
             const h=getSchedHours(name,filter,wkN,mon);
             if(!s||!h||h<=0)return;
-            const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0);
+            const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0)+(s.reviews||0)*(tw.reviews||1);
             const rate=Math.round(pts/h*100)/100;
             if(rate>0){
               totalPts+=pts;totalHrs+=h;
@@ -5297,7 +5425,7 @@ function App(){
       allM.forEach(m=>{
         const s=getIcStats(m.name,p2,w2,m2);
         const h=getSchedHours(m.name,p2,w2,m2);
-        if(s&&h&&h>0){const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0);totalPts+=pts;totalHrs+=h;}
+        if(s&&h&&h>0){const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0)+(s.reviews||0)*(tw.reviews||1);totalPts+=pts;totalHrs+=h;}
       });
       if(totalHrs>0)return Math.round(totalPts/totalHrs*100)/100;
     }
@@ -5306,7 +5434,7 @@ function App(){
     allM.forEach(m=>{
       const s=getIcStats(m.name,p2,w2,m2);
       const h=getSchedHours(m.name,p2,w2,m2);
-      if(s&&h&&h>0){const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0);vs.push(Math.round(pts/h*100)/100);}
+      if(s&&h&&h>0){const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0)+(s.reviews||0)*(tw.reviews||1);vs.push(Math.round(pts/h*100)/100);}
     });
     if(vs.length)return Math.round(vs.reduce((s,v)=>s+v,0)/vs.length*100)/100;
     // Fallback: stored values
@@ -5935,7 +6063,7 @@ function App(){
                 const s=mergedIc[name]?.weeks?.[wkN];
                 const h=(schedData[name]?.overrides?.[`w_${wkN}`]??schedData[name]?.weeks?.[wkN])??0;
                 if(s&&h>0){
-                  const pts=(s.closed||0)*_tw3.tickets+(s.emails||0)*_tw3.emails+(s.wfs||0)*_tw3.wfs+(s.calls||0)*_tw3.calls+(s.caseActions||0)*(_tw3.case_actions||0);
+                  const pts=(s.closed||0)*_tw3.tickets+(s.emails||0)*_tw3.emails+(s.wfs||0)*_tw3.wfs+(s.calls||0)*_tw3.calls+(s.caseActions||0)*(_tw3.case_actions||0)+(s.reviews||0)*(_tw3.reviews||1);
                   const rate=Math.round(pts/h*100)/100;
                   if(rate>0){
                     tTotalPts+=pts;tTotalHrs+=h;
@@ -5982,6 +6110,87 @@ function App(){
             return merged;
           });
           toast2(`Replies imported: ${Object.keys(newIc).length} agents (W${wk}).`);
+        }
+
+        // ── TYPE J: Bachcare Review Tracker (pivot-table by date × first name) ──
+        // CSV first line is pivot metadata: "Count of ReviewStatus,Column Labels,,,,". The names
+        // are first names only on row 2 (e.g. "Row Labels,Kenneth,Ricky,Shane,(blank),Grand Total")
+        // and subsequent rows are DD/MM/YYYY dates with per-person counts. Each review counts as
+        // 1 point against the reviews weight (default 1) in the productivity formula, so
+        // importing this rolls the counts into productivity for that week automatically.
+        else if(firstLine.toLowerCase().includes("count of reviewstatus")||(firstLine.toLowerCase().includes("reviewstatus")&&text.toLowerCase().includes("row labels"))){
+          const allLines=text.split(/\r?\n/).filter(l=>l.trim());
+          if(allLines.length<3){toast2("Review Tracker: not enough rows.");return;}
+          // Row index 1 has the header with names. Strip the BOM if the file has one.
+          const hdrCols=allLines[1].replace(/^\uFEFF/,"").split(",").map(c=>c.trim().replace(/^"|"$/g,""));
+          const nameCols=[];
+          for(let j=1;j<hdrCols.length;j++){
+            const c=hdrCols[j];
+            if(!c)continue;
+            const cl=c.toLowerCase();
+            if(cl==="row labels"||cl==="grand total"||c==="(blank)")continue;
+            nameCols.push({idx:j,first:c});
+          }
+          if(!nameCols.length){toast2("Review Tracker: no agent name columns found.");return;}
+          // Build first-name → full-name lookup against the live roster (members + leads).
+          const allMembers=[];
+          Object.entries(roster||{}).forEach(([tn,td])=>{
+            if(!td)return;
+            (td.members||[]).forEach(m=>{if(m&&m.name)allMembers.push(m.name);});
+            if(td.lead)allMembers.push(td.lead);
+          });
+          const nameToFull={};
+          const unmatched=[];
+          nameCols.forEach(nc=>{
+            const match=allMembers.find(n=>n.split(" ")[0].toLowerCase()===nc.first.toLowerCase());
+            if(match)nameToFull[nc.first]=match;else unmatched.push(nc.first);
+          });
+          // Aggregate by full name + FY25 week. Resolved date is the date in column A.
+          const byPerson={};
+          let totalCount=0,parsedRows=0;
+          for(let i=2;i<allLines.length;i++){
+            const cols=allLines[i].split(",").map(c=>c.trim().replace(/^"|"$/g,""));
+            const dateStr=cols[0]||"";
+            if(!dateStr||dateStr.toLowerCase()==="grand total")continue;
+            const m=dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);// DD/MM/YYYY
+            if(!m)continue;
+            const iso=m[3]+"-"+String(+m[2]).padStart(2,"0")+"-"+String(+m[1]).padStart(2,"0");
+            const wkN=FY25_WK_RANGES.find(([,s,e])=>iso>=s&&iso<=e)?.[0];
+            if(!wkN)continue;
+            parsedRows++;
+            nameCols.forEach(nc=>{
+              const v=parseInt(cols[nc.idx],10);
+              if(!v||!isFinite(v))return;
+              const full=nameToFull[nc.first];if(!full)return;
+              if(!byPerson[full])byPerson[full]={};
+              byPerson[full][wkN]=(byPerson[full][wkN]||0)+v;
+              totalCount+=v;
+            });
+          }
+          if(!Object.keys(byPerson).length){
+            toast2("Review Tracker: no rows matched roster (unmatched names: "+unmatched.join(", ")+")");
+            return;
+          }
+          // Write into icData under the existing per-person/per-week shape. Productivity recalc
+          // reads s.reviews via getIcStats and applies the reviews weight automatically.
+          setIcDataWithMonths(prev=>{
+            const next={...prev};
+            Object.entries(byPerson).forEach(([fullName,wkMap])=>{
+              const person={...(next[fullName]||{weeks:{},months:{}})};
+              person.weeks={...(person.weeks||{})};
+              Object.entries(wkMap).forEach(([wkN,count])=>{
+                person.weeks[wkN]={...(person.weeks[wkN]||{}),reviews:count};
+              });
+              next[fullName]=person;
+            });
+            return next;
+          });
+          // Defer the productivity recalc until the icData write commits.
+          setTimeout(()=>recalculateAllProductivity(),100);
+          const wkCount=new Set(Object.values(byPerson).flatMap(wm=>Object.keys(wm))).size;
+          const note=unmatched.length?` · unmatched: ${unmatched.join(", ")}`:"";
+          toast2(`Review Tracker: ${totalCount} reviews across ${Object.keys(byPerson).length} agent(s), ${wkCount} week(s)${note}`);
+          addAudit("Review Tracker Imported",`${totalCount} reviews, ${Object.keys(byPerson).length} agents, ${wkCount} weeks`);
         }
 
         // ── TYPE I: In Stay Ticket Stats (work-hours median resolution) ────
@@ -12676,8 +12885,8 @@ const teamMap={
               </div>
               <div style={{padding:"16px 20px"}}>
                 {(()=>{const wTeam=isLeader?(allowedTeams.includes(weightsEditTeam)?weightsEditTeam:allowedTeams[0]||currentUser?.team):weightsEditTeam;const tw=getW(wTeam);return<>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10}}>
-                  {[{key:"tickets",label:"Tickets",icon:"\ud83c\udfab"},{key:"emails",label:"Emails",icon:"\u2709\ufe0f"},{key:"wfs",label:"WFs",icon:"\u26a1"},{key:"calls",label:"Calls",icon:"\ud83d\udcde"},{key:"case_actions",label:"Case Actions",icon:"\ud83d\udccb"}].map(({key,label,icon})=>(
+                <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>
+                  {[{key:"tickets",label:"Tickets",icon:"\ud83c\udfab"},{key:"emails",label:"Emails",icon:"\u2709\ufe0f"},{key:"wfs",label:"WFs",icon:"\u26a1"},{key:"calls",label:"Calls",icon:"\ud83d\udcde"},{key:"case_actions",label:"Case Actions",icon:"\ud83d\udccb"},{key:"reviews",label:"Reviews",icon:"\u2b50"}].map(({key,label,icon})=>(
                     <div key={key} style={{textAlign:"center"}}>
                       <div style={{fontSize:12,color:"#6b7280",marginBottom:6,fontWeight:500}}>{icon} {label}</div>
                       <input type="number" step="0.1" value={tw[key]??0} disabled={weightsLocked}
@@ -12686,7 +12895,7 @@ const teamMap={
                     </div>))}
                 </div>
                 <div style={{display:"flex",gap:8,marginTop:16}}>
-                  {!weightsLocked&&<button onClick={()=>{setWeightsLocked(true);const tw2=getW(wTeam);addAudit("Weights Updated",wTeam+": tickets="+tw2.tickets+" emails="+tw2.emails+" wfs="+tw2.wfs+" calls="+tw2.calls);toast2(wTeam+" weights saved.");}} style={S.p1}>Save & Lock</button>}
+                  {!weightsLocked&&<button onClick={()=>{setWeightsLocked(true);const tw2=getW(wTeam);addAudit("Weights Updated",wTeam+": tickets="+tw2.tickets+" emails="+tw2.emails+" wfs="+tw2.wfs+" calls="+tw2.calls+" case_actions="+(tw2.case_actions||0)+" reviews="+(tw2.reviews||0));toast2(wTeam+" weights saved.");}} style={S.p1}>Save & Lock</button>}
                 </div>
                 </>})()}
               </div>

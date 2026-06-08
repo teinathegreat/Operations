@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.7.7";
+const APP_VERSION="2.7.9";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -9099,11 +9099,11 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const delAct=(aid)=>{if(!window.confirm("Delete?"))return;setActionItems(p=>p.filter(a=>a.id!==aid));toast2("Deleted.");};
     const stEdit=(it)=>{setEditAi(it);setAiType(it.type);setAiTitle(it.title);setAiDesc(it.description||"");setAiPlan(it.actionPlan||"");setAiDue(it.dueDate||"");};
     const pMeetings=meetingNotes.filter(m=>m.personName===name&&m.teamName===teamName).sort((a,b)=>b.date.localeCompare(a.date));
-    const addMeeting=()=>{const p=(mtgDraft.personal||"").trim();const w=(mtgDraft.work||"").trim();const g=(mtgDraft.goals||"").trim();const f=(mtgDraft.followUp||"").trim();const l=(mtgDraft.leave||"").trim();const gn=(mtgDraft.general||"").trim();if(!p&&!w&&!g&&!f&&!l&&!gn)return;const wkStats=getIcStats(name,"week",wk);const wkHrs=getSchedHours(name,"week",wk);const wkProd=wkStats&&wkHrs&&wkHrs>0?Math.round(((wkStats.closed||0)*tw.tickets+(wkStats.emails||0)*tw.emails+(wkStats.wfs||0)*tw.wfs+(wkStats.calls||0)*tw.calls+(wkStats.caseActions||0)*(tw.case_actions||0))/wkHrs*10)/10:null;
+    const addMeeting=()=>{const p=(mtgDraft.personal||"").trim();const w=(mtgDraft.work||"").trim();const g=(mtgDraft.goals||"").trim();const f=(mtgDraft.followUp||"").trim();const l=(mtgDraft.leave||"").trim();const gn=(mtgDraft.general||"").trim();if(!p&&!w&&!g&&!f&&!l&&!gn)return;const wkStats=getIcStats(name,"week",wk);const wkHrs=getSchedHours(name,"week",wk);const wkProd=wkStats&&wkHrs&&wkHrs>0?Math.round(((wkStats.closed||0)*tw.tickets+(wkStats.emails||0)*tw.emails+(wkStats.wfs||0)*tw.wfs+(wkStats.calls||0)*tw.calls+(wkStats.caseActions||0)*(tw.case_actions||0)+(wkStats.reviews||0)*(tw.reviews||1))/wkHrs*10)/10:null;
     // Calculate ranking
-    var rank=null;const tMems=(roster[teamName]?.members||[]).map(m2=>{const s2=getIcStats(m2.name,"week",wk);const h2=getSchedHours(m2.name,"week",wk);const pr=s2&&h2&&h2>0?Math.round(((s2.closed||0)*tw.tickets+(s2.emails||0)*tw.emails+(s2.wfs||0)*tw.wfs+(s2.calls||0)*tw.calls+(s2.caseActions||0)*(tw.case_actions||0))/h2*10)/10:null;return{name:m2.name,prod:pr};}).filter(m2=>m2.prod!==null).sort((a,b)=>b.prod-a.prod);const ri=tMems.findIndex(m2=>m2.name===name);if(ri>=0)rank={position:ri+1,total:tMems.length};
+    var rank=null;const tMems=(roster[teamName]?.members||[]).map(m2=>{const s2=getIcStats(m2.name,"week",wk);const h2=getSchedHours(m2.name,"week",wk);const pr=s2&&h2&&h2>0?Math.round(((s2.closed||0)*tw.tickets+(s2.emails||0)*tw.emails+(s2.wfs||0)*tw.wfs+(s2.calls||0)*tw.calls+(s2.caseActions||0)*(tw.case_actions||0)+(s2.reviews||0)*(tw.reviews||1))/h2*10)/10:null;return{name:m2.name,prod:pr};}).filter(m2=>m2.prod!==null).sort((a,b)=>b.prod-a.prod);const ri=tMems.findIndex(m2=>m2.name===name);if(ri>=0)rank={position:ri+1,total:tMems.length};
     const nowTS=new Date();const mtgNote={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),personName:name,teamName,date:nowTS.toISOString(),personal:p,work:w,goalsDiscussed:g,followUp:f,leave:l,general:gn,stats:{prod:wkProd,hrs:wkHrs,tickets:wkStats?.closed||0,emails:wkStats?.emails||0,calls:wkStats?.calls||0,wfs:wkStats?.wfs||0,week:wk,rank:rank},createdBy:currentUser?.displayName||"Admin",createdAt:nowTS.toISOString()};setMeetingNotes(prev=>[mtgNote,...prev]);dbUpsert("meeting_notes",mtgNote);setMtgDraft({personal:"",work:"",goals:"",followUp:"",leave:"",general:""});toast2("Note saved.");};
-    const mCStats=getIcStats(name,"week",wk);const mCHrs=getSchedHours(name,"week",wk);const mCProd=mCStats&&mCHrs&&mCHrs>0?Math.round(((mCStats.closed||0)*tw.tickets+(mCStats.emails||0)*tw.emails+(mCStats.wfs||0)*tw.wfs+(mCStats.calls||0)*tw.calls+(mCStats.caseActions||0)*(tw.case_actions||0))/mCHrs*10)/10:null;
+    const mCStats=getIcStats(name,"week",wk);const mCHrs=getSchedHours(name,"week",wk);const mCProd=mCStats&&mCHrs&&mCHrs>0?Math.round(((mCStats.closed||0)*tw.tickets+(mCStats.emails||0)*tw.emails+(mCStats.wfs||0)*tw.wfs+(mCStats.calls||0)*tw.calls+(mCStats.caseActions||0)*(tw.case_actions||0)+(mCStats.reviews||0)*(tw.reviews||1))/mCHrs*10)/10:null;
     const mActiveGoals=goals.filter(g=>g.personName===name&&g.teamName===teamName&&g.status!=="complete");
     const pGoalsAll=goals.filter(g=>g.personName===name&&g.teamName===teamName).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
     const pGoalsOpen=pGoalsAll.filter(g=>g.status!=="complete");const pGoalsDone=pGoalsAll.filter(g=>g.status==="complete");
@@ -10200,7 +10200,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
       const wfPts=icStats?.wfs||0;
       const emailPts=icStats?.emails||0;
       const callPts=icStats?.calls||0;
-      const _tw=getW(teamName);const autoScore=icStats&&hrs&&hrs>0?Math.round(((icStats.closed||0)*_tw.tickets+(icStats.emails||0)*_tw.emails+(icStats.wfs||0)*_tw.wfs+(icStats.calls||0)*_tw.calls+(icStats.caseActions||0)*(_tw.case_actions||0))/hrs*10)/10:null;
+      const _tw=getW(teamName);const autoScore=icStats&&hrs&&hrs>0?Math.round(((icStats.closed||0)*_tw.tickets+(icStats.emails||0)*_tw.emails+(icStats.wfs||0)*_tw.wfs+(icStats.calls||0)*_tw.calls+(icStats.caseActions||0)*(_tw.case_actions||0)+(icStats.reviews||0)*(_tw.reviews||1))/hrs*10)/10:null;
 const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawProd>0)?rawProd:(!isNaN(autoScore)&&autoScore!==null&&autoScore>0?autoScore:NaN);const av=+ap;const bars=!isNaN(pv)&&pv>0&&!isNaN(av)&&av>0;const bMax=bars?Math.max(pv,av)*1.3:1;
     const iEmailTxt=()=>{
       const sk=d._kpis||[];const ps=sk.filter(k=>isPass(d[k.key],k)===true);const fl=sk.filter(k=>isPass(d[k.key],k)===false);
@@ -10246,7 +10246,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
           const wfPts2=icStats?.wfs||0;
           const emailPts2=icStats?.emails||0;
           const callPts2=icStats?.calls||0;
-          const _tw2=getW(tname);const autoScore=icStats&&hrs?Math.round((icStats.closed*_tw2.tickets+emailPts2*_tw2.emails+wfPts2*_tw2.wfs+callPts2*_tw2.calls+(icStats.caseActions||0)*(_tw2.case_actions||0))/hrs*10)/10:null;
+          const _tw2=getW(tname);const autoScore=icStats&&hrs?Math.round((icStats.closed*_tw2.tickets+emailPts2*_tw2.emails+wfPts2*_tw2.wfs+callPts2*_tw2.calls+(icStats.caseActions||0)*(_tw2.case_actions||0)+(icStats.reviews||0)*(_tw2.reviews||1))/hrs*10)/10:null;
           return(
             <>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(115px,1fr))",gap:9,marginBottom:icStats?10:14}}>
@@ -10810,7 +10810,12 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 if(k.key==="productivity_lead"){
                   const leadName=roster[team]?.lead;
                   if(leadName){const ls=getIcStats(leadName,pt,wk,mo);const lh=getSchedHours(leadName,pt,wk,mo);const tw5=getW(team);
-                  if(ls&&lh&&lh>0){v=Math.round(((ls.closed||0)*tw5.tickets+(ls.emails||0)*tw5.emails+(ls.wfs||0)*tw5.wfs+(ls.calls||0)*tw5.calls+(ls.caseActions||0)*(tw5.case_actions||0))/lh*100)/100;}
+                  // v2.7.8 — was missing reviews here. This live computation runs AFTER and
+                  // OVERRIDES the stored productivity_lead value, so even though recalc was
+                  // writing 3.3 to storage (with reviews), this line read it back as 1.63
+                  // (without). The "ls.X" variable name pattern was the only one I didn't grep
+                  // for when adding reviews to every productivity formula in earlier passes.
+                  if(ls&&lh&&lh>0){v=Math.round(((ls.closed||0)*tw5.tickets+(ls.emails||0)*tw5.emails+(ls.wfs||0)*tw5.wfs+(ls.calls||0)*tw5.calls+(ls.caseActions||0)*(tw5.case_actions||0)+(ls.reviews||0)*(tw5.reviews||1))/lh*100)/100;}
                   }
                 }
                 const p=isPass(v,k);return(
@@ -10925,7 +10930,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               </tbody>
             </table>
           </div>
-          {(()=>{const mems3=(roster[team]?.members||[]).map(m3=>m3.name);const tw3=getW(team);const tAvg2=avgProd(team,pt,mo,wk);if(!tAvg2||!mems3.length)return null;const rows=mems3.map(mn=>{const st=getIcStats(mn,pt,wk,mo);const hr=getSchedHours(mn,pt,wk,mo);const actual=st&&hr&&hr>0?Math.round(((st.closed||0)*tw3.tickets+(st.emails||0)*tw3.emails+(st.wfs||0)*tw3.wfs+(st.calls||0)*tw3.calls+(st.caseActions||0)*(tw3.case_actions||0))/hr*10)/10:null;const expected=hr?Math.round(tAvg2*hr*10)/10:null;return{name:mn,actual,expected,hrs:hr,diff:actual&&expected?Math.round((actual*hr-expected)*10)/10:null};}).filter(r=>r.actual!==null).sort((a,b)=>(b.diff||0)-(a.diff||0));if(!rows.length)return null;return<div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:16}}>
+          {(()=>{const mems3=(roster[team]?.members||[]).map(m3=>m3.name);const tw3=getW(team);const tAvg2=avgProd(team,pt,mo,wk);if(!tAvg2||!mems3.length)return null;const rows=mems3.map(mn=>{const st=getIcStats(mn,pt,wk,mo);const hr=getSchedHours(mn,pt,wk,mo);const actual=st&&hr&&hr>0?Math.round(((st.closed||0)*tw3.tickets+(st.emails||0)*tw3.emails+(st.wfs||0)*tw3.wfs+(st.calls||0)*tw3.calls+(st.caseActions||0)*(tw3.case_actions||0)+(st.reviews||0)*(tw3.reviews||1))/hr*10)/10:null;const expected=hr?Math.round(tAvg2*hr*10)/10:null;return{name:mn,actual,expected,hrs:hr,diff:actual&&expected?Math.round((actual*hr-expected)*10)/10:null};}).filter(r=>r.actual!==null).sort((a,b)=>(b.diff||0)-(a.diff||0));if(!rows.length)return null;return<div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:16}}>
             <div style={{padding:"12px 16px",borderBottom:"1px solid #e5e7eb",fontWeight:700,fontSize:13,color:"#111827"}}>{"Expected vs Actual (team avg: "+tAvg2+" pts/hr)"}</div>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead><tr style={{background:"#f9fafb"}}><th style={{padding:"7px 12px",textAlign:"left",color:"#6b7280",fontSize:11}}>Name</th><th style={{padding:"7px 12px",textAlign:"center",color:"#6b7280",fontSize:11}}>Hours</th><th style={{padding:"7px 12px",textAlign:"center",color:"#6b7280",fontSize:11}}>Expected Pts</th><th style={{padding:"7px 12px",textAlign:"center",color:"#6b7280",fontSize:11}}>Actual Pts</th><th style={{padding:"7px 12px",textAlign:"center",color:"#6b7280",fontSize:11}}>Diff</th></tr></thead>
@@ -10936,7 +10941,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             <button onClick={()=>dlCSV(team,pk)} style={S.out}>Download CSV</button>
             <button onClick={()=>printPDF(team,pk)} style={S.out}>Print / Save PDF</button>
             <button onClick={()=>copy(emailTxt(team,pk))} style={S.out}>Copy Email Summary</button>
-            <button onClick={()=>{const mems4=(roster[team]?.members||[]).map(m4=>m4.name);const tw4=getW(team);const tAvg3=avgProd(team,pt,mo,wk);let digest="WEEKLY DIGEST — "+team+" — FY25 Week "+wk+"\n"+"=".repeat(50)+"\n\n";digest+="Team Health: see dashboard\nTeam Avg Productivity: "+(tAvg3||"N/A")+" pts/hr\n\n";digest+="PERFORMANCE SUMMARY\n"+"-".repeat(30)+"\n";mems4.forEach(mn=>{const st=getIcStats(mn,"week",wk);const hr=getSchedHours(mn,"week",wk);const pr=st&&hr&&hr>0?Math.round(((st.closed||0)*tw4.tickets+(st.emails||0)*tw4.emails+(st.wfs||0)*tw4.wfs+(st.calls||0)*tw4.calls+(st.caseActions||0)*(tw4.case_actions||0))/hr*10)/10:null;digest+=mn+": "+(pr!=null?pr+" pts/hr":"No data")+(hr?" ("+hr+"h)":"")+"\n";});digest+="\nOPEN ACTIONS\n"+"-".repeat(30)+"\n";const oa=actionItems.filter(a=>a.teamName===team&&a.status!=="resolved");if(oa.length)oa.forEach(a=>{digest+=a.type+": "+a.title+" ("+a.personName+")\n";});else digest+="None\n";digest+="\n1:1 MEETINGS DUE\n"+"-".repeat(30)+"\n";const now2=new Date();const twoW=14*86400000;mems4.forEach(mn=>{const last1=meetingNotes.filter(m5=>m5.personName===mn&&m5.teamName===team).sort((a,b)=>new Date(b.date)-new Date(a.date))[0];if(!last1||now2-new Date(last1.date)>twoW)digest+=mn+(last1?" (last: "+new Date(last1.date).toLocaleDateString("en-NZ")+")":"  (never)")+"\n";});copy(digest);toast2("Weekly digest copied to clipboard.");}} style={S.out}>Copy Weekly Digest</button>
+            <button onClick={()=>{const mems4=(roster[team]?.members||[]).map(m4=>m4.name);const tw4=getW(team);const tAvg3=avgProd(team,pt,mo,wk);let digest="WEEKLY DIGEST — "+team+" — FY25 Week "+wk+"\n"+"=".repeat(50)+"\n\n";digest+="Team Health: see dashboard\nTeam Avg Productivity: "+(tAvg3||"N/A")+" pts/hr\n\n";digest+="PERFORMANCE SUMMARY\n"+"-".repeat(30)+"\n";mems4.forEach(mn=>{const st=getIcStats(mn,"week",wk);const hr=getSchedHours(mn,"week",wk);const pr=st&&hr&&hr>0?Math.round(((st.closed||0)*tw4.tickets+(st.emails||0)*tw4.emails+(st.wfs||0)*tw4.wfs+(st.calls||0)*tw4.calls+(st.caseActions||0)*(tw4.case_actions||0)+(st.reviews||0)*(tw4.reviews||1))/hr*10)/10:null;digest+=mn+": "+(pr!=null?pr+" pts/hr":"No data")+(hr?" ("+hr+"h)":"")+"\n";});digest+="\nOPEN ACTIONS\n"+"-".repeat(30)+"\n";const oa=actionItems.filter(a=>a.teamName===team&&a.status!=="resolved");if(oa.length)oa.forEach(a=>{digest+=a.type+": "+a.title+" ("+a.personName+")\n";});else digest+="None\n";digest+="\n1:1 MEETINGS DUE\n"+"-".repeat(30)+"\n";const now2=new Date();const twoW=14*86400000;mems4.forEach(mn=>{const last1=meetingNotes.filter(m5=>m5.personName===mn&&m5.teamName===team).sort((a,b)=>new Date(b.date)-new Date(a.date))[0];if(!last1||now2-new Date(last1.date)>twoW)digest+=mn+(last1?" (last: "+new Date(last1.date).toLocaleDateString("en-NZ")+")":"  (never)")+"\n";});copy(digest);toast2("Weekly digest copied to clipboard.");}} style={S.out}>Copy Weekly Digest</button>
           </div>
 
           <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"16px 20px",marginTop:16}}>

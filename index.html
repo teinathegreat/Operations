@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.7.10";
+const APP_VERSION="2.7.11";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -10023,7 +10023,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const setLocalAccounts=(updated)=>{setLiveAccounts(updated);saveAccountsToSupabase(updated);};
     const pending=pendingEdits.filter(r=>r.status==="pending");
     const resolved=pendingEdits.filter(r=>r.status!=="pending").slice(0,20);
-    const MENU_TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References","Expectations"];
+    const MENU_TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Reviews","Call Reviews","Owner Withdrawals","Quick References","Expectations"];
     const ADMIN_TABS=["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria","Expectations Config"];
     const ALL_TEAMS=["All Teams",...tNames];
     const getDefPerms=(acct)=>{
@@ -10644,13 +10644,13 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         <div className="bc-sidebar-scroll" style={{padding:sbCollapsed?"12px 6px":"12px 10px",flex:1,overflowY:"auto"}}>
           {(()=>{
             // Tab metadata: icon + which group it belongs to
-            const ICONS={"Home":"🏠","Daily":"📝","To-Do List":"✅","Action List":"📋","Planner":"🗂️","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","Call Reviews":"📞","Owner Withdrawals":"⚠️","Quick References":"📌","Expectations":"🎯","Settings":"⚙️","Export":"📤","Accounts":"🔑","Audit":"📜","Weights":"⚖️","KPI Targets":"🎯","Capabilities":"🎓","Daily Config":"📝","Review Criteria":"📋","Expectations Config":"🎯"};
+            const ICONS={"Home":"🏠","Daily":"📝","To-Do List":"✅","Action List":"📋","Planner":"🗂️","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","Reviews":"⭐","Call Reviews":"📞","Owner Withdrawals":"⚠️","Quick References":"📌","Expectations":"🎯","Settings":"⚙️","Export":"📤","Accounts":"🔑","Audit":"📜","Weights":"⚖️","KPI Targets":"🎯","Capabilities":"🎓","Daily Config":"📝","Review Criteria":"📋","Expectations Config":"🎯"};
             const DISPLAY={"Daily":"Daily Reports"};
             // Group definitions
             const GROUPS=[
               {id:"home",label:null,tabs:["Home"]},
               {id:"tasks",label:"Tasks",tabs:["Daily","To-Do List","Action List","Planner"]},
-              {id:"insights",label:"Insights",tabs:["Dashboard","People","Leaderboard","Schedule","Reports"]},
+              {id:"insights",label:"Insights",tabs:["Dashboard","People","Leaderboard","Schedule","Reports","Reviews"]},
               {id:"quality",label:"Quality",tabs:["Call Reviews","Owner Withdrawals"]},
               {id:"more",label:"More",tabs:["Quick References","Expectations"]}
             ];

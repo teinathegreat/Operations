@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.7.9";
+const APP_VERSION="2.7.10";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -3466,7 +3466,7 @@ function App(){
   React.useEffect(()=>{
     const TAB_GROUPS={
       "daily":"tasks","to-do list":"tasks","action list":"tasks","planner":"tasks",
-      "dashboard":"insights","people":"insights","leaderboard":"insights","schedule":"insights","reports":"insights",
+      "dashboard":"insights","people":"insights","leaderboard":"insights","schedule":"insights","reports":"insights","reviews":"insights",
       "call reviews":"quality","owner withdrawals":"quality",
       "quick references":"more",
       "settings":"admin","export":"admin","accounts":"admin","audit":"admin","weights":"admin","kpi targets":"admin","capabilities":"admin","daily config":"admin","review criteria":"admin"
@@ -4628,7 +4628,7 @@ function App(){
     const acct=liveAccounts.find(a=>a.username===username)||currentUser;
     const stored=permissions[username];
     const isOSLeader=(acct?.team==="Owner Support"&&acct?.role==="leader");
-    if(acct?.role==="admin")return{menu:["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References","Expectations"],teams:["All Teams"],admin:["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria","Expectations Config"]};
+    if(acct?.role==="admin")return{menu:["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Reviews","Call Reviews","Owner Withdrawals","Quick References","Expectations"],teams:["All Teams"],admin:["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria","Expectations Config"]};
     if(stored?.menu){
       // If they have stored perms but Owner Withdrawals isn't listed AND they're the OS leader, add it
       // (handles users whose perms were saved before the Owner Withdrawals tab existed)
@@ -4643,7 +4643,7 @@ function App(){
       return patched;
     }
     if(acct?.role==="guest")return{menu:["Home","Daily"],teams:acct?.team?[acct.team]:[],admin:[]};
-    const baseMenu=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Quick References","Expectations"];
+    const baseMenu=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Reviews","Call Reviews","Quick References","Expectations"];
     if(isOSLeader)baseMenu.splice(10,0,"Owner Withdrawals"); // insert before "Quick References"
     return{menu:baseMenu,teams:acct?.team?[acct.team]:[],admin:[]};
   };
@@ -7228,7 +7228,7 @@ function App(){
     );
   }
 
-  const TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Call Reviews","Owner Withdrawals","Quick References","Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"];
+  const TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Reviews","Call Reviews","Owner Withdrawals","Quick References","Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"];
   const ePK=exPt==="month"?`m__${exMo}`:`w__${exWk}`;
 
 
@@ -7719,6 +7719,252 @@ function App(){
           <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#fee2e2",border:"1px solid #fca5a5",display:"inline-block"}}/> Over target</span>
           <span style={{marginLeft:"auto",color:"#9ca3af"}}>Response times are medians for that period. Productivity requires schedule hours to be loaded.</span>
         </div>}
+      </div>
+    );
+  }
+
+
+  // v2.7.10 — Reviews tab. Aggregates every reviewRecord across all icData[name]
+  // entries (each person's array of guest review records imported from the per-row
+  // Review Tracker CSV) and presents them with filters, sortable table, summary
+  // cards, and click-to-expand for full comment text.
+  function ReviewsTab(){
+    const [rfTeam,setRfTeam]=React.useState("all");
+    const [rfAgent,setRfAgent]=React.useState("all");
+    const [rfChannel,setRfChannel]=React.useState("all");
+    const [rfStatus,setRfStatus]=React.useState("all");
+    const [rfMinRating,setRfMinRating]=React.useState(0);
+    const [rfSearch,setRfSearch]=React.useState("");
+    const [rfSortKey,setRfSortKey]=React.useState("modDate");
+    const [rfSortDir,setRfSortDir]=React.useState("desc");
+    const [rfExpand,setRfExpand]=React.useState(null);
+    const [rfScope,setRfScope]=React.useState("all"); // "period" | "all"
+
+    // Gather every review with agent + team attached
+    const allReviews=React.useMemo(()=>{
+      const list=[];
+      Object.entries(icData||{}).forEach(([name,p])=>{
+        const recs=p&&Array.isArray(p.reviewRecords)?p.reviewRecords:null;
+        if(!recs)return;
+        let team=null;
+        for(const [tn,td] of Object.entries(roster||{})){
+          if(td&&(td.lead===name||(td.members||[]).some(m=>m&&m.name===name))){team=tn;break;}
+        }
+        recs.forEach(r=>{if(r)list.push({...r,agent:name,team});});
+      });
+      return list;
+    },[icData,roster]);
+
+    // Period filter (from outer pt/wk/mo state)
+    const periodFiltered=React.useMemo(()=>{
+      if(rfScope==="all")return allReviews;
+      if(pt==="week"){
+        const wr=FY25_WK_RANGES.find(w=>w[0]===wk);
+        if(!wr)return allReviews;
+        const start=wr[1],end=wr[2];
+        return allReviews.filter(r=>r.modDate&&r.modDate>=start&&r.modDate<=end);
+      }
+      if(pt==="month"){
+        return allReviews.filter(r=>{
+          if(!r.modDate)return false;
+          try{const d=new Date(r.modDate+"T00:00:00");const ml=d.toLocaleString("en-NZ",{month:"long",year:"numeric"});return ml===mo;}catch(e){return false;}
+        });
+      }
+      return allReviews;
+    },[allReviews,pt,wk,mo,rfScope]);
+
+    // All other filters
+    const filtered=React.useMemo(()=>{
+      return periodFiltered.filter(r=>{
+        if(rfTeam!=="all"&&r.team!==rfTeam)return false;
+        if(rfAgent!=="all"&&r.agent!==rfAgent)return false;
+        if(rfChannel!=="all"&&(r.channel||"")!==rfChannel)return false;
+        if(rfStatus!=="all"&&(r.status||"")!==rfStatus)return false;
+        if(rfMinRating>0&&(Number(r.rating)||0)<rfMinRating)return false;
+        if(rfSearch){
+          const q=rfSearch.toLowerCase();
+          const hay=[r.title,r.customer,r.property,r.region,r.comment,r.addComment].filter(Boolean).join(" ").toLowerCase();
+          if(!hay.includes(q))return false;
+        }
+        return true;
+      });
+    },[periodFiltered,rfTeam,rfAgent,rfChannel,rfStatus,rfMinRating,rfSearch]);
+
+    const sorted=React.useMemo(()=>{
+      const arr=[...filtered];
+      arr.sort((a,b)=>{
+        let av=a[rfSortKey],bv=b[rfSortKey];
+        if(rfSortKey==="rating"){av=Number(av)||0;bv=Number(bv)||0;}
+        if(av==null)av="";if(bv==null)bv="";
+        if(av<bv)return rfSortDir==="asc"?-1:1;
+        if(av>bv)return rfSortDir==="asc"?1:-1;
+        return 0;
+      });
+      return arr;
+    },[filtered,rfSortKey,rfSortDir]);
+
+    // Summary stats from the filtered set
+    const stats=React.useMemo(()=>{
+      const total=filtered.length;
+      const withRating=filtered.filter(r=>Number(r.rating)>0);
+      const avgRating=withRating.length?Math.round(withRating.reduce((s,r)=>s+Number(r.rating),0)/withRating.length*10)/10:null;
+      const resolved=filtered.filter(r=>(r.status||"").toLowerCase().includes("resolved")).length;
+      const resolvedPct=total?Math.round(resolved/total*100):0;
+      const byChannel={};filtered.forEach(r=>{const c=r.channel||"Other";byChannel[c]=(byChannel[c]||0)+1;});
+      const topChannel=Object.entries(byChannel).sort((a,b)=>b[1]-a[1])[0];
+      const byAgent={};filtered.forEach(r=>{const a=r.agent||"—";byAgent[a]=(byAgent[a]||0)+1;});
+      const topAgent=Object.entries(byAgent).sort((a,b)=>b[1]-a[1])[0];
+      const byStatus={};filtered.forEach(r=>{const s=r.status||"—";byStatus[s]=(byStatus[s]||0)+1;});
+      const byRating={"≥8":0,"5-7":0,"<5":0,"none":0};
+      filtered.forEach(r=>{const n=Number(r.rating);if(!n)byRating.none++;else if(n>=8)byRating["≥8"]++;else if(n>=5)byRating["5-7"]++;else byRating["<5"]++;});
+      return{total,avgRating,resolved,resolvedPct,byChannel,topChannel,byAgent,topAgent,byStatus,byRating};
+    },[filtered]);
+
+    const channelClr=(c)=>{const cl=(c||"").toLowerCase();if(cl.includes("airbnb"))return"#F83056";if(cl.includes("vrbo"))return"#1A3C7E";if(cl.includes("booking"))return"#012864";return"#7838E3";};
+    const statusClr=(s)=>{const sl=(s||"").toLowerCase();if(sl.includes("resolved"))return"#059669";if(sl.includes("escalat"))return"#dc2626";if(sl.includes("new"))return"#0284c7";if(sl.includes("reviewed"))return"#0d9488";return"#6b7280";};
+    const ratingClr=(r)=>{const n=Number(r)||0;if(n>=8)return"#059669";if(n>=5)return"#d97706";if(n>0)return"#dc2626";return"#9ca3af";};
+
+    const allTeams=Object.keys(roster||{});
+    const allAgents=[...new Set(allReviews.map(r=>r.agent))].filter(Boolean).sort();
+    const allChannels=[...new Set(allReviews.map(r=>r.channel))].filter(Boolean).sort();
+    const allStatuses=[...new Set(allReviews.map(r=>r.status))].filter(Boolean).sort();
+
+    const toggleSort=(k)=>{if(rfSortKey===k)setRfSortDir(rfSortDir==="asc"?"desc":"asc");else{setRfSortKey(k);setRfSortDir("desc");}};
+    const sortInd=(k)=>rfSortKey===k?(rfSortDir==="asc"?" ▲":" ▼"):"";
+
+    const exportCSV=()=>{
+      const hdr=["Date","Time","Agent","Team","Channel","Title","Customer","Property","Region","Rating","Status","Comment","Additional Comment","Link"];
+      const esc=(v)=>v==null||v===""?"":'"'+String(v).replace(/"/g,'""')+'"';
+      const tm=(s)=>{const m=String(s||"").match(/(\d{1,2}):(\d{2})/);return m?m[0]:"";};
+      const rows=sorted.map(r=>[r.modDate||"",tm(r.modified),r.agent||"",r.team||"",r.channel||"",r.title||"",r.customer||"",r.property||"",r.region||"",r.rating||"",r.status||"",r.comment||"",r.addComment||"",r.link||""].map(esc).join(","));
+      const blob=new Blob([hdr.join(",")+"\n"+rows.join("\n")],{type:"text/csv;charset=utf-8;"});
+      const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="reviews_"+new Date().toISOString().slice(0,10)+".csv";document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    };
+
+    const cardSt={background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,padding:"12px 14px"};
+    const lblSt={fontSize:10,fontWeight:700,color:"#6b7280",letterSpacing:".04em",textTransform:"uppercase",marginBottom:4};
+    const thSt={padding:"9px 10px",fontWeight:600,fontSize:11,color:"#4b5563",textTransform:"uppercase",letterSpacing:".03em",borderBottom:"2px solid #e5e7eb",textAlign:"left",cursor:"pointer",userSelect:"none",whiteSpace:"nowrap"};
+    const tdSt={padding:"9px 10px",fontSize:12.5,color:"#1f2937",borderBottom:"1px solid #f3f4f6",verticalAlign:"top"};
+    const pill=(bg,fg,txt)=>(<span style={{display:"inline-block",padding:"2px 8px",borderRadius:6,background:bg,color:fg,fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{txt}</span>);
+
+    return(
+      <div>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",marginBottom:14,gap:12,flexWrap:"wrap"}}>
+          <h2 style={{margin:0,fontSize:22,fontWeight:700,color:"#111827"}}>Reviews</h2>
+          <span style={{fontSize:12.5,color:"#6b7280"}}>Showing <strong style={{color:"#111827"}}>{sorted.length}</strong> of {allReviews.length} total reviews</span>
+          <button onClick={exportCSV} style={{...S.out,marginLeft:"auto"}}>Export CSV</button>
+        </div>
+
+        {/* Filter row */}
+        <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",padding:12,background:"#f9fafb",borderRadius:10,border:"1px solid #f3f4f6",alignItems:"center"}}>
+          <div style={{display:"flex",gap:4,background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:3}}>
+            <button onClick={()=>setRfScope("period")} style={{padding:"5px 11px",fontSize:12,border:"none",borderRadius:6,fontWeight:600,cursor:"pointer",background:rfScope==="period"?"#0d9488":"transparent",color:rfScope==="period"?"#fff":"#6b7280"}}>{pt==="week"?`Week ${wk}`:mo}</button>
+            <button onClick={()=>setRfScope("all")} style={{padding:"5px 11px",fontSize:12,border:"none",borderRadius:6,fontWeight:600,cursor:"pointer",background:rfScope==="all"?"#0d9488":"transparent",color:rfScope==="all"?"#fff":"#6b7280"}}>All Time</button>
+          </div>
+          <select value={rfTeam} onChange={e=>setRfTeam(e.target.value)} style={S.sel}><option value="all">All teams</option>{allTeams.map(t=><option key={t} value={t}>{t}</option>)}</select>
+          <select value={rfAgent} onChange={e=>setRfAgent(e.target.value)} style={S.sel}><option value="all">All agents</option>{allAgents.map(a=><option key={a} value={a}>{a}</option>)}</select>
+          <select value={rfChannel} onChange={e=>setRfChannel(e.target.value)} style={S.sel}><option value="all">All channels</option>{allChannels.map(c=><option key={c} value={c}>{c}</option>)}</select>
+          <select value={rfStatus} onChange={e=>setRfStatus(e.target.value)} style={S.sel}><option value="all">All statuses</option>{allStatuses.map(s=><option key={s} value={s}>{s}</option>)}</select>
+          <select value={rfMinRating} onChange={e=>setRfMinRating(+e.target.value)} style={S.sel}><option value="0">Any rating</option><option value="8">★ 8+</option><option value="5">★ 5+</option><option value="1">★ 1+</option></select>
+          <input type="text" placeholder="Search title / customer / comment…" value={rfSearch} onChange={e=>setRfSearch(e.target.value)} style={{...S.inp,width:280,flex:"0 1 280px"}}/>
+          {(rfTeam!=="all"||rfAgent!=="all"||rfChannel!=="all"||rfStatus!=="all"||rfMinRating>0||rfSearch)&&<button onClick={()=>{setRfTeam("all");setRfAgent("all");setRfChannel("all");setRfStatus("all");setRfMinRating(0);setRfSearch("");}} style={S.ghost}>Clear filters</button>}
+        </div>
+
+        {/* Summary cards */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginBottom:14}}>
+          <div style={cardSt}><div style={lblSt}>Total Reviews</div><div style={{fontSize:26,fontWeight:700,color:"#111827"}}>{stats.total}</div></div>
+          <div style={cardSt}><div style={lblSt}>Avg Rating</div><div style={{fontSize:26,fontWeight:700,color:ratingClr(stats.avgRating)}}>{stats.avgRating!=null?stats.avgRating+" /10":"—"}</div></div>
+          <div style={cardSt}><div style={lblSt}>Resolved</div><div style={{fontSize:26,fontWeight:700,color:"#059669"}}>{stats.resolvedPct}%</div><div style={{fontSize:11,color:"#6b7280",marginTop:2}}>{stats.resolved} of {stats.total}</div></div>
+          <div style={cardSt}><div style={lblSt}>Top Channel</div><div style={{fontSize:16,fontWeight:700,color:channelClr(stats.topChannel&&stats.topChannel[0])}}>{stats.topChannel?stats.topChannel[0]:"—"}</div><div style={{fontSize:11,color:"#6b7280",marginTop:2}}>{stats.topChannel?stats.topChannel[1]+" reviews":""}</div></div>
+          <div style={cardSt}><div style={lblSt}>Top Agent</div><div style={{fontSize:16,fontWeight:700,color:"#111827"}}>{stats.topAgent?stats.topAgent[0]:"—"}</div><div style={{fontSize:11,color:"#6b7280",marginTop:2}}>{stats.topAgent?stats.topAgent[1]+" reviews":""}</div></div>
+          <div style={cardSt}><div style={lblSt}>Rating Mix</div><div style={{fontSize:11,color:"#6b7280",lineHeight:1.6,marginTop:2}}><span style={{color:"#059669",fontWeight:700}}>{stats.byRating["≥8"]}</span> ★ 8+ &nbsp; <span style={{color:"#d97706",fontWeight:700}}>{stats.byRating["5-7"]}</span> 5-7 &nbsp; <span style={{color:"#dc2626",fontWeight:700}}>{stats.byRating["<5"]}</span> {"<5"}</div></div>
+        </div>
+
+        {/* Channel distribution bar */}
+        {stats.total>0&&(
+          <div style={{marginBottom:14,padding:12,background:"#fff",borderRadius:10,border:"1px solid #e5e7eb"}}>
+            <div style={{...lblSt,marginBottom:8}}>Channel Distribution</div>
+            <div style={{display:"flex",height:24,borderRadius:6,overflow:"hidden",border:"1px solid #f3f4f6"}}>
+              {Object.entries(stats.byChannel).sort((a,b)=>b[1]-a[1]).map(([c,n])=>{
+                const pct=Math.round(n/stats.total*100);
+                return<div key={c} title={`${c}: ${n} (${pct}%)`} style={{flex:n,background:channelClr(c),color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",minWidth:pct>5?undefined:24}}>{pct>=8?`${c} ${pct}%`:""}</div>;
+              })}
+            </div>
+            <div style={{display:"flex",gap:14,marginTop:8,flexWrap:"wrap"}}>
+              {Object.entries(stats.byChannel).sort((a,b)=>b[1]-a[1]).map(([c,n])=>(
+                <div key={c} style={{display:"flex",alignItems:"center",gap:5,fontSize:11.5,color:"#4b5563"}}><span style={{width:10,height:10,borderRadius:2,background:channelClr(c)}}></span>{c}: <strong style={{color:"#111827"}}>{n}</strong></div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Table */}
+        <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,overflow:"hidden"}}>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:1100}}>
+              <thead style={{background:"#f9fafb"}}><tr>
+                <th style={thSt} onClick={()=>toggleSort("modDate")}>Date{sortInd("modDate")}</th>
+                <th style={thSt} onClick={()=>toggleSort("agent")}>Agent{sortInd("agent")}</th>
+                <th style={thSt} onClick={()=>toggleSort("channel")}>Channel{sortInd("channel")}</th>
+                <th style={thSt} onClick={()=>toggleSort("title")}>Title{sortInd("title")}</th>
+                <th style={thSt} onClick={()=>toggleSort("customer")}>Customer{sortInd("customer")}</th>
+                <th style={thSt} onClick={()=>toggleSort("property")}>Property{sortInd("property")}</th>
+                <th style={thSt} onClick={()=>toggleSort("region")}>Region{sortInd("region")}</th>
+                <th style={{...thSt,textAlign:"center"}} onClick={()=>toggleSort("rating")}>★{sortInd("rating")}</th>
+                <th style={thSt} onClick={()=>toggleSort("status")}>Status{sortInd("status")}</th>
+                <th style={thSt}>Comment</th>
+                <th style={{...thSt,textAlign:"center"}}>↗</th>
+              </tr></thead>
+              <tbody>{sorted.length===0?(
+                <tr><td colSpan={11} style={{padding:32,textAlign:"center",color:"#9ca3af",fontSize:13}}>No reviews match the current filters.</td></tr>
+              ):sorted.map((r,i)=>{
+                const expanded=rfExpand===i;
+                const tm=String(r.modified||"").match(/(\d{1,2}):(\d{2})/);
+                const truncatedComment=(r.comment||"").length>90?(r.comment||"").slice(0,90)+"…":(r.comment||"");
+                return(
+                  <React.Fragment key={(r.title||"r")+"|"+i}>
+                    <tr onClick={()=>setRfExpand(expanded?null:i)} style={{cursor:"pointer",background:expanded?"#f9fafb":i%2?"#fafbfc":"#fff"}}>
+                      <td style={tdSt}><div style={{fontWeight:600,color:"#111827"}}>{r.modDate||"—"}</div>{tm&&<div style={{fontSize:10.5,color:"#9ca3af"}}>{tm[0]}</div>}</td>
+                      <td style={{...tdSt,whiteSpace:"nowrap"}}>{r.agent||"—"}{r.team&&<div style={{fontSize:10,color:"#9ca3af",marginTop:1}}>{r.team}</div>}</td>
+                      <td style={tdSt}>{r.channel?pill(channelClr(r.channel)+"22",channelClr(r.channel),r.channel):"—"}</td>
+                      <td style={{...tdSt,fontWeight:600,whiteSpace:"nowrap"}}>{r.title||"—"}</td>
+                      <td style={tdSt}>{r.customer||"—"}</td>
+                      <td style={tdSt}>{r.property||"—"}</td>
+                      <td style={{...tdSt,fontSize:11.5,color:"#6b7280"}}>{r.region||"—"}</td>
+                      <td style={{...tdSt,textAlign:"center",fontWeight:700,color:ratingClr(r.rating),fontSize:14}}>{r.rating||"—"}</td>
+                      <td style={tdSt}>{r.status?pill(statusClr(r.status)+"22",statusClr(r.status),r.status):"—"}</td>
+                      <td style={{...tdSt,maxWidth:280,color:"#4b5563",fontSize:11.5,lineHeight:1.4}}>{truncatedComment||<span style={{color:"#9ca3af"}}>—</span>}</td>
+                      <td style={{...tdSt,textAlign:"center"}}>{r.link?<a href={r.link} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:"#0d9488",textDecoration:"none",fontWeight:700}}>↗</a>:<span style={{color:"#d1d5db"}}>—</span>}</td>
+                    </tr>
+                    {expanded&&(
+                      <tr style={{background:"#f9fafb"}}>
+                        <td colSpan={11} style={{padding:"14px 16px",borderBottom:"1px solid #e5e7eb"}}>
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,fontSize:12.5}}>
+                            <div>
+                              <div style={{...lblSt,marginBottom:4}}>Guest Comment</div>
+                              <div style={{color:"#1f2937",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{r.comment||<span style={{color:"#9ca3af",fontStyle:"italic"}}>No comment recorded.</span>}</div>
+                            </div>
+                            <div>
+                              <div style={{...lblSt,marginBottom:4}}>Agent Response / Additional</div>
+                              <div style={{color:"#1f2937",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{r.addComment||<span style={{color:"#9ca3af",fontStyle:"italic"}}>No additional comment.</span>}</div>
+                            </div>
+                          </div>
+                          <div style={{marginTop:10,display:"flex",gap:18,fontSize:11,color:"#6b7280",flexWrap:"wrap"}}>
+                            <span><strong style={{color:"#4b5563"}}>Modified:</strong> {r.modified||"—"}</span>
+                            {r.region&&<span><strong style={{color:"#4b5563"}}>Region:</strong> {r.region}</span>}
+                            {r.link&&<a href={r.link} target="_blank" rel="noreferrer" style={{color:"#0d9488",fontWeight:600}}>Open original ↗</a>}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}</tbody>
+            </table>
+          </div>
+        </div>
+        <div style={{marginTop:10,fontSize:11,color:"#9ca3af",textAlign:"right"}}>Click any row to expand the full guest comment + agent response.</div>
       </div>
     );
   }
@@ -10971,6 +11217,8 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         {tab==="schedule"&&<SchedTab/>}
 
         {tab==="reports"&&<ReportsTab/>}
+
+        {tab==="reviews"&&<ReviewsTab/>}
 
 
         {tab==="export"&&<div>

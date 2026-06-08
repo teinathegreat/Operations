@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.7.11";
+const APP_VERSION="2.7.12";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -7899,72 +7899,82 @@ function App(){
           </div>
         )}
 
-        {/* Table */}
-        <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,overflow:"hidden"}}>
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",minWidth:1100}}>
-              <thead style={{background:"#f9fafb"}}><tr>
-                <th style={thSt} onClick={()=>toggleSort("modDate")}>Date{sortInd("modDate")}</th>
-                <th style={thSt} onClick={()=>toggleSort("agent")}>Agent{sortInd("agent")}</th>
-                <th style={thSt} onClick={()=>toggleSort("channel")}>Channel{sortInd("channel")}</th>
-                <th style={thSt} onClick={()=>toggleSort("title")}>Title{sortInd("title")}</th>
-                <th style={thSt} onClick={()=>toggleSort("customer")}>Customer{sortInd("customer")}</th>
-                <th style={thSt} onClick={()=>toggleSort("property")}>Property{sortInd("property")}</th>
-                <th style={thSt} onClick={()=>toggleSort("region")}>Region{sortInd("region")}</th>
-                <th style={{...thSt,textAlign:"center"}} onClick={()=>toggleSort("rating")}>★{sortInd("rating")}</th>
-                <th style={thSt} onClick={()=>toggleSort("status")}>Status{sortInd("status")}</th>
-                <th style={thSt}>Comment</th>
-                <th style={{...thSt,textAlign:"center"}}>↗</th>
-              </tr></thead>
-              <tbody>{sorted.length===0?(
-                <tr><td colSpan={11} style={{padding:32,textAlign:"center",color:"#9ca3af",fontSize:13}}>No reviews match the current filters.</td></tr>
-              ):sorted.map((r,i)=>{
-                const expanded=rfExpand===i;
-                const tm=String(r.modified||"").match(/(\d{1,2}):(\d{2})/);
-                const truncatedComment=(r.comment||"").length>90?(r.comment||"").slice(0,90)+"…":(r.comment||"");
-                return(
-                  <React.Fragment key={(r.title||"r")+"|"+i}>
-                    <tr onClick={()=>setRfExpand(expanded?null:i)} style={{cursor:"pointer",background:expanded?"#f9fafb":i%2?"#fafbfc":"#fff"}}>
-                      <td style={tdSt}><div style={{fontWeight:600,color:"#111827"}}>{r.modDate||"—"}</div>{tm&&<div style={{fontSize:10.5,color:"#9ca3af"}}>{tm[0]}</div>}</td>
-                      <td style={{...tdSt,whiteSpace:"nowrap"}}>{r.agent||"—"}{r.team&&<div style={{fontSize:10,color:"#9ca3af",marginTop:1}}>{r.team}</div>}</td>
-                      <td style={tdSt}>{r.channel?pill(channelClr(r.channel)+"22",channelClr(r.channel),r.channel):"—"}</td>
-                      <td style={{...tdSt,fontWeight:600,whiteSpace:"nowrap"}}>{r.title||"—"}</td>
-                      <td style={tdSt}>{r.customer||"—"}</td>
-                      <td style={tdSt}>{r.property||"—"}</td>
-                      <td style={{...tdSt,fontSize:11.5,color:"#6b7280"}}>{r.region||"—"}</td>
-                      <td style={{...tdSt,textAlign:"center",fontWeight:700,color:ratingClr(r.rating),fontSize:14}}>{r.rating||"—"}</td>
-                      <td style={tdSt}>{r.status?pill(statusClr(r.status)+"22",statusClr(r.status),r.status):"—"}</td>
-                      <td style={{...tdSt,maxWidth:280,color:"#4b5563",fontSize:11.5,lineHeight:1.4}}>{truncatedComment||<span style={{color:"#9ca3af"}}>—</span>}</td>
-                      <td style={{...tdSt,textAlign:"center"}}>{r.link?<a href={r.link} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:"#0d9488",textDecoration:"none",fontWeight:700}}>↗</a>:<span style={{color:"#d1d5db"}}>—</span>}</td>
-                    </tr>
-                    {expanded&&(
-                      <tr style={{background:"#f9fafb"}}>
-                        <td colSpan={11} style={{padding:"14px 16px",borderBottom:"1px solid #e5e7eb"}}>
-                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,fontSize:12.5}}>
-                            <div>
-                              <div style={{...lblSt,marginBottom:4}}>Guest Comment</div>
-                              <div style={{color:"#1f2937",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{r.comment||<span style={{color:"#9ca3af",fontStyle:"italic"}}>No comment recorded.</span>}</div>
-                            </div>
-                            <div>
-                              <div style={{...lblSt,marginBottom:4}}>Agent Response / Additional</div>
-                              <div style={{color:"#1f2937",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{r.addComment||<span style={{color:"#9ca3af",fontStyle:"italic"}}>No additional comment.</span>}</div>
-                            </div>
-                          </div>
-                          <div style={{marginTop:10,display:"flex",gap:18,fontSize:11,color:"#6b7280",flexWrap:"wrap"}}>
-                            <span><strong style={{color:"#4b5563"}}>Modified:</strong> {r.modified||"—"}</span>
-                            {r.region&&<span><strong style={{color:"#4b5563"}}>Region:</strong> {r.region}</span>}
-                            {r.link&&<a href={r.link} target="_blank" rel="noreferrer" style={{color:"#0d9488",fontWeight:600}}>Open original ↗</a>}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}</tbody>
-            </table>
-          </div>
+        {/* Sort bar (since we no longer have clickable column headers) */}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,padding:"8px 12px",background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,fontSize:12}}>
+          <span style={{color:"#6b7280",fontWeight:600}}>Sort by:</span>
+          <select value={rfSortKey} onChange={e=>setRfSortKey(e.target.value)} style={S.sel}>
+            <option value="modDate">Date</option>
+            <option value="agent">Agent</option>
+            <option value="channel">Channel</option>
+            <option value="rating">Rating</option>
+            <option value="status">Status</option>
+            <option value="customer">Customer</option>
+            <option value="property">Property</option>
+          </select>
+          <button onClick={()=>setRfSortDir(rfSortDir==="asc"?"desc":"asc")} style={{...S.ghost,padding:"4px 10px",border:"1px solid #e5e7eb",borderRadius:6}}>{rfSortDir==="asc"?"↑ Asc":"↓ Desc"}</button>
         </div>
-        <div style={{marginTop:10,fontSize:11,color:"#9ca3af",textAlign:"right"}}>Click any row to expand the full guest comment + agent response.</div>
+
+        {/* Card list — every review fully expanded, all info inline. Two-column grid
+            on wide screens, single column on narrow. No click-to-expand. */}
+        {sorted.length===0?(
+          <div style={{padding:40,textAlign:"center",color:"#9ca3af",fontSize:13,background:"#fff",border:"1px solid #e5e7eb",borderRadius:10}}>No reviews match the current filters.</div>
+        ):(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(420px,1fr))",gap:12}}>
+            {sorted.map((r,i)=>{
+              const tm=String(r.modified||"").match(/(\d{1,2}):(\d{2})/);
+              const dateLabel=(()=>{
+                if(!r.modDate)return"—";
+                try{const d=new Date(r.modDate+"T00:00:00");return d.toLocaleDateString("en-NZ",{day:"numeric",month:"short",year:"numeric"});}catch(e){return r.modDate;}
+              })();
+              const cClr=channelClr(r.channel);
+              const sClr=statusClr(r.status);
+              const rClr=ratingClr(r.rating);
+              return(
+                <div key={(r.title||"r")+"|"+i} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,overflow:"hidden",borderLeft:`4px solid ${cClr}`,display:"flex",flexDirection:"column"}}>
+                  {/* Header strip: channel pill + title + rating + status */}
+                  <div style={{padding:"10px 14px",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:cClr+"08"}}>
+                    {r.channel&&pill(cClr,"#fff",r.channel)}
+                    <span style={{fontWeight:700,fontSize:13.5,color:"#111827"}}>{r.title||"—"}</span>
+                    <span style={{flex:1}}></span>
+                    {r.rating!=null&&r.rating!==""&&(
+                      <span style={{display:"inline-flex",alignItems:"center",gap:3,padding:"3px 9px",borderRadius:6,background:rClr+"15",color:rClr,fontWeight:700,fontSize:13}}>★ {r.rating}<span style={{fontSize:10,opacity:.7,marginLeft:1}}>/10</span></span>
+                    )}
+                    {r.status&&pill(sClr+"22",sClr,r.status)}
+                  </div>
+                  {/* Metadata row */}
+                  <div style={{padding:"9px 14px",display:"flex",flexWrap:"wrap",gap:"4px 14px",fontSize:11.5,color:"#4b5563",borderBottom:"1px solid #f3f4f6",background:"#fafbfc"}}>
+                    <span><strong style={{color:"#111827"}}>{dateLabel}</strong>{tm&&<span style={{color:"#9ca3af"}}> · {tm[0]}</span>}</span>
+                    <span>· <strong style={{color:"#111827"}}>{r.agent||"—"}</strong>{r.team&&<span style={{color:"#9ca3af"}}> ({r.team})</span>}</span>
+                  </div>
+                  {/* Customer + property block */}
+                  <div style={{padding:"10px 14px",display:"grid",gridTemplateColumns:"auto 1fr",gap:"4px 10px",fontSize:12,borderBottom:"1px solid #f3f4f6"}}>
+                    <span style={{color:"#9ca3af",fontWeight:600}}>Guest:</span><span style={{color:"#111827"}}>{r.customer||<span style={{color:"#d1d5db"}}>—</span>}</span>
+                    <span style={{color:"#9ca3af",fontWeight:600}}>Property:</span><span style={{color:"#111827"}}>{r.property||<span style={{color:"#d1d5db"}}>—</span>}</span>
+                    {r.region&&<><span style={{color:"#9ca3af",fontWeight:600}}>Region:</span><span style={{color:"#4b5563"}}>{r.region}</span></>}
+                  </div>
+                  {/* Guest comment */}
+                  <div style={{padding:"10px 14px",borderBottom:r.addComment?"1px solid #f3f4f6":"none"}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"#9ca3af",letterSpacing:".05em",textTransform:"uppercase",marginBottom:4}}>Guest Comment</div>
+                    <div style={{fontSize:12.5,color:"#1f2937",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{r.comment||<span style={{color:"#9ca3af",fontStyle:"italic"}}>No comment recorded.</span>}</div>
+                  </div>
+                  {/* Agent response — only render if present */}
+                  {r.addComment&&(
+                    <div style={{padding:"10px 14px",background:"#f9fafb"}}>
+                      <div style={{fontSize:10,fontWeight:700,color:"#0d9488",letterSpacing:".05em",textTransform:"uppercase",marginBottom:4}}>Agent Response</div>
+                      <div style={{fontSize:12.5,color:"#1f2937",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{r.addComment}</div>
+                    </div>
+                  )}
+                  {/* Footer: link */}
+                  {r.link&&(
+                    <div style={{padding:"7px 14px",borderTop:"1px solid #f3f4f6",fontSize:11.5,textAlign:"right",background:"#fafbfc"}}>
+                      <a href={r.link} target="_blank" rel="noreferrer" style={{color:"#0d9488",textDecoration:"none",fontWeight:600}}>Open original ↗</a>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }

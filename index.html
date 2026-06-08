@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.7.13";
+const APP_VERSION="2.8";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -7914,12 +7914,24 @@ function App(){
           <button onClick={()=>setRfSortDir(rfSortDir==="asc"?"desc":"asc")} style={{...S.ghost,padding:"4px 10px",border:"1px solid #e5e7eb",borderRadius:6}}>{rfSortDir==="asc"?"↑ Asc":"↓ Desc"}</button>
         </div>
 
-        {/* Compact row list — every review fully expanded, all info inline.
-            Full page width, no column constraint, each row maximizes horizontal space. */}
+        {/* Compact row list — fixed-column grid so every field aligns vertically
+            down the page. Each conceptual zone (channel/title/rating/status/date/
+            agent/customer/link) sits in its own grid column. */}
         {sorted.length===0?(
           <div style={{padding:40,textAlign:"center",color:"#9ca3af",fontSize:13,background:"#fff",border:"1px solid #e5e7eb",borderRadius:10}}>No reviews match the current filters.</div>
         ):(
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {/* Column header row — labels the grid below so it reads like a real table */}
+            <div style={{display:"grid",gridTemplateColumns:"88px 115px 80px 180px 110px 200px 1fr 50px",gap:10,alignItems:"center",padding:"6px 14px 6px 18px",fontSize:10,fontWeight:700,color:"#9ca3af",letterSpacing:".05em",textTransform:"uppercase"}}>
+              <div>Channel</div>
+              <div>Title</div>
+              <div>Rating</div>
+              <div>Status</div>
+              <div>Date · Time</div>
+              <div>Agent</div>
+              <div>Guest · Property · Region</div>
+              <div style={{textAlign:"right"}}>Link</div>
+            </div>
             {sorted.map((r,i)=>{
               const tm=String(r.modified||"").match(/(\d{1,2}):(\d{2})/);
               const dateLabel=(()=>{
@@ -7929,36 +7941,38 @@ function App(){
               const cClr=channelClr(r.channel);
               const sClr=statusClr(r.status);
               const rClr=ratingClr(r.rating);
+              // Team abbreviation so the agent column stays a predictable width
+              const teamAbbr=r.team==="Guest Support"?"GS":r.team==="Owner Support"?"OS":r.team==="Reputation and Resolutions"?"R&R":r.team==="Managed Services"?"MS":(r.team||"");
               return(
                 <div key={(r.title||"r")+"|"+i} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,borderLeft:`4px solid ${cClr}`,padding:"10px 14px",display:"flex",flexDirection:"column",gap:6}}>
-                  {/* Metadata strip — single horizontal line that wraps if needed */}
-                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",fontSize:12.5}}>
-                    {r.channel&&pill(cClr,"#fff",r.channel)}
-                    <span style={{fontWeight:700,color:"#111827",fontSize:13}}>{r.title||"—"}</span>
-                    {r.rating!=null&&r.rating!==""&&(
-                      <span style={{display:"inline-flex",alignItems:"center",gap:2,padding:"2px 8px",borderRadius:5,background:rClr+"18",color:rClr,fontWeight:700,fontSize:12.5}}>★ {r.rating}<span style={{fontSize:10,opacity:.7}}>/10</span></span>
-                    )}
-                    {r.status&&pill(sClr+"22",sClr,r.status)}
-                    <span style={{color:"#d1d5db"}}>│</span>
-                    <span style={{color:"#4b5563"}}><strong style={{color:"#111827"}}>{dateLabel}</strong>{tm&&<span style={{color:"#9ca3af"}}> · {tm[0]}</span>}</span>
-                    <span style={{color:"#4b5563"}}>· <strong style={{color:"#111827"}}>{r.agent||"—"}</strong>{r.team&&<span style={{color:"#9ca3af"}}> ({r.team})</span>}</span>
-                    <span style={{color:"#d1d5db"}}>│</span>
-                    {r.customer&&<span style={{color:"#4b5563"}}><span style={{color:"#9ca3af",fontWeight:600}}>Guest:</span> <strong style={{color:"#111827"}}>{r.customer}</strong></span>}
-                    {r.property&&<span style={{color:"#4b5563"}}><span style={{color:"#9ca3af",fontWeight:600}}>Property:</span> {r.property}</span>}
-                    {r.region&&<span style={{color:"#6b7280",fontSize:11.5}}>· {r.region}</span>}
-                    <span style={{flex:1}}></span>
-                    {r.link&&<a href={r.link} target="_blank" rel="noreferrer" style={{color:"#0d9488",textDecoration:"none",fontWeight:600,fontSize:11.5}}>Open ↗</a>}
+                  {/* Metadata grid — fixed columns so everything lines up across rows */}
+                  <div style={{display:"grid",gridTemplateColumns:"88px 115px 80px 180px 110px 200px 1fr 50px",gap:10,alignItems:"center",fontSize:12.5}}>
+                    <div>{r.channel?pill(cClr,"#fff",r.channel):<span style={{color:"#d1d5db"}}>—</span>}</div>
+                    <div style={{fontWeight:700,color:"#111827",fontSize:12.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.title}>{r.title||"—"}</div>
+                    <div>{r.rating!=null&&r.rating!==""?(
+                      <span style={{display:"inline-flex",alignItems:"center",gap:2,padding:"2px 7px",borderRadius:5,background:rClr+"18",color:rClr,fontWeight:700,fontSize:12}}>★ {r.rating}<span style={{fontSize:9.5,opacity:.7}}>/10</span></span>
+                    ):<span style={{color:"#d1d5db",fontSize:11}}>—</span>}</div>
+                    <div style={{overflow:"hidden"}}>{r.status?pill(sClr+"22",sClr,r.status):<span style={{color:"#d1d5db"}}>—</span>}</div>
+                    <div style={{color:"#4b5563",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}><strong style={{color:"#111827"}}>{dateLabel}</strong>{tm&&<span style={{color:"#9ca3af"}}> · {tm[0]}</span>}</div>
+                    <div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.agent+(r.team?" · "+r.team:"")}><strong style={{color:"#111827"}}>{r.agent||"—"}</strong>{teamAbbr&&<span style={{color:"#9ca3af",marginLeft:5,fontSize:11}}>{teamAbbr}</span>}</div>
+                    <div style={{color:"#4b5563",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={[r.customer,r.property,r.region].filter(Boolean).join(" · ")}>
+                      {r.customer&&<><strong style={{color:"#111827"}}>{r.customer}</strong></>}
+                      {r.property&&<span> · {r.property}</span>}
+                      {r.region&&<span style={{color:"#9ca3af",fontSize:11}}> · {r.region}</span>}
+                      {!r.customer&&!r.property&&!r.region&&<span style={{color:"#d1d5db"}}>—</span>}
+                    </div>
+                    <div style={{textAlign:"right"}}>{r.link?<a href={r.link} target="_blank" rel="noreferrer" style={{color:"#0d9488",textDecoration:"none",fontWeight:700,fontSize:13}}>↗</a>:<span style={{color:"#d1d5db"}}>—</span>}</div>
                   </div>
-                  {/* Comment line — full width */}
+                  {/* Comment line — full width below the grid */}
                   {r.comment&&(
-                    <div style={{fontSize:12.5,color:"#1f2937",lineHeight:1.5,paddingLeft:2}}>
+                    <div style={{fontSize:12.5,color:"#1f2937",lineHeight:1.5}}>
                       <span style={{color:"#9ca3af",fontWeight:700,fontSize:10,letterSpacing:".04em",textTransform:"uppercase",marginRight:6}}>Guest</span>
                       <span style={{whiteSpace:"pre-wrap"}}>{r.comment}</span>
                     </div>
                   )}
                   {/* Response line — only renders if present */}
                   {r.addComment&&(
-                    <div style={{fontSize:12.5,color:"#1f2937",lineHeight:1.5,paddingLeft:2,paddingTop:4,borderTop:"1px dashed #f3f4f6"}}>
+                    <div style={{fontSize:12.5,color:"#1f2937",lineHeight:1.5,paddingTop:4,borderTop:"1px dashed #f3f4f6"}}>
                       <span style={{color:"#0d9488",fontWeight:700,fontSize:10,letterSpacing:".04em",textTransform:"uppercase",marginRight:6}}>Response</span>
                       <span style={{whiteSpace:"pre-wrap"}}>{r.addComment}</span>
                     </div>

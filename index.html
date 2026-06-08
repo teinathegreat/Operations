@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.7.6";
+const APP_VERSION="2.7.7";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -5253,7 +5253,8 @@ function App(){
     workflow:{ic:"⚡",label:"Workflow resolved",c:"#db2777",bg:"#fdf2f8",bd:"#fbcfe8"},
     call_inbound:{ic:"📲",label:"Inbound call",c:"#2563eb",bg:"#eff6ff",bd:"#bfdbfe"},
     call_outbound:{ic:"📞",label:"Outbound call",c:"#0d9488",bg:"#f0fdfa",bd:"#99f6e4"},
-    call_abandoned:{ic:"📵",label:"Abandoned call",c:"#dc2626",bg:"#fef2f2",bd:"#fecaca"}
+    call_abandoned:{ic:"📵",label:"Abandoned call",c:"#dc2626",bg:"#fef2f2",bd:"#fecaca"},
+    review:{ic:"⭐",label:"Review",c:"#ca8a04",bg:"#fefce8",bd:"#fde68a"}
   };
   const _toMinutes=(t)=>{const m=(t||"").match(/^(\d{1,2}):(\d{2})/);return m?(+m[1]*60+ +m[2]):null;};
   // Returns a normalized, time-sorted list of events for a person on a given NZ date (YYYY-MM-DD).
@@ -5284,6 +5285,23 @@ function App(){
         });
       }
     }catch(e){console.error("getDayEvents timeline err",e);}
+    // v2.7.7 — reviews as timeline events. Pulled from icData[name].reviewRecords filtered by
+    // modDate, with minutes parsed from the "Modified" timestamp (DD/MM/YYYY HH:MM). Each review
+    // becomes a yellow ⭐ pill on the timeline so the user can see exactly when reviews were
+    // actioned vs the gaps between them. The detail shows the channel + title (e.g. "VRBO-1711").
+    try{
+      const recs=(icData&&icData[name]&&Array.isArray(icData[name].reviewRecords))?icData[name].reviewRecords:[];
+      recs.forEach(r=>{
+        if(!r||r.modDate!==isoDate)return;
+        const tm=String(r.modified||"").match(/(\d{1,2}):(\d{2})/);
+        if(!tm)return;
+        const hh=+tm[1],mm=+tm[2];
+        if(hh<0||hh>23||mm<0||mm>59)return;
+        const min=hh*60+mm;
+        const time=String(hh).padStart(2,"0")+":"+String(mm).padStart(2,"0");
+        events.push({type:"review",time,minutes:min,label:"Review",detail:(r.channel?r.channel+" ":"")+(r.title||""),source:"review_records",cid:r.title||""});
+      });
+    }catch(e){console.error("getDayEvents reviews err",e);}
     events.sort((a,b)=>a.minutes-b.minutes);
     return events;
   };
@@ -5292,6 +5310,8 @@ function App(){
     const set=new Set();
     try{const p=rejectedCallsData[name];if(p&&p.months)Object.values(p.months).forEach(mo=>(mo&&Array.isArray(mo.events)?mo.events:[]).forEach(ev=>{if(ev&&ev.nzIso)set.add(ev.nzIso);}));}catch(e){}
     try{const t=dailyTimelineData[name];if(t&&typeof t==="object")Object.keys(t).forEach(d=>{if(Array.isArray(t[d])&&t[d].length)set.add(d);});}catch(e){}
+    // v2.7.7 — also include dates where reviews were actioned so the date picker lists them.
+    try{const recs=icData&&icData[name]&&Array.isArray(icData[name].reviewRecords)?icData[name].reviewRecords:[];recs.forEach(r=>{if(r&&r.modDate)set.add(r.modDate);});}catch(e){}
     return [...set].sort();
   };
   // Rostered shifts for a person on a given NZ date → [{s:"09:00",e:"17:30",net,label}]

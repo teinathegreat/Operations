@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.7.4";
+const APP_VERSION="2.7.6";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -4002,6 +4002,15 @@ function App(){
 
   useEffect(()=>{try{localStorage.setItem("bc_sb_url",sbUrl);}catch{};},[sbUrl]);
   useEffect(()=>{setTimeout(recalculateAllProductivity,100);},[allWeights]);
+  // v2.7.5 — recalc on icData change too. Previously this only fired on weight changes, which
+  // meant a CSV importer's partial productivity formula (some only include tickets+emails+wfs,
+  // some include +calls but not case_actions or reviews) would write a limited number to
+  // productivity_team / productivity_lead and it would STICK until the next weight change.
+  // The bug surfaced as Janendra showing 1.63/hr on Dashboard but 3.3/hr on People view — the
+  // Dashboard read the limited value the Closed Conversations importer wrote, the People view
+  // recomputed live with the full formula. Now every icData mutation (any CSV upload) re-fires
+  // recalculateAllProductivity, which writes the FULL formula's value last and wins.
+  useEffect(()=>{const id=setTimeout(recalculateAllProductivity,150);return()=>clearTimeout(id);},[icData]);
 
   useEffect(()=>{try{localStorage.setItem("bc_sb_key",sbKey);}catch{};},[sbKey]);
   useEffect(()=>{if(!tNames.includes(team)&&tNames.length)setTeam(tNames[0]);},[tNames.join(",")]);
@@ -5789,20 +5798,37 @@ function App(){
     const pk=`w__${wk}`;
     // Also derive the matching month label so auto-fill works on both weekly + monthly views
     const wkRange=FY25_WK_RANGES.find(r=>r[0]===wk);
-    const monthPk=wkRange?(()=>{
-      const d=new Date(wkRange[1]);
-      return`m__${d.toLocaleString("en-NZ",{month:"long",year:"numeric"})}`;
-    })():null;
+    const monthLabel=wkRange?(()=>{const d=new Date(wkRange[1]);return d.toLocaleString("en-NZ",{month:"long",year:"numeric"});})():null;
+    const monthPk=monthLabel?`m__${monthLabel}`:null;
     setData(prev=>{
       const ex=prev[teamName]?.[pk]||{};
       const next={...prev,[teamName]:{...(prev[teamName]||{}),[pk]:{...ex,...updates,_autoFilled:nowNZ()}}};
-      // Also write to monthly period (merge, don't overwrite manual entries)
+      // v2.7.6 — monthly value is now AVERAGED across all weeks in the month, not last-write-wins.
+      // Previous bug: each new weekly import overwrote the monthly value with that ONE week's
+      // value. So Guest Support's Call Answer Rate showed 91.43% (last imported W35) instead of
+      // the actual May average across W31-W35. Same explanation for Avg Response Time jumping
+      // from 0.4hrs to 2.44hrs — those were also single weeks, not averages.
+      // Manual entries still win (recognised by absence of `_autoFilled`).
       if(monthPk){
+        const monthWeeks=FY25_WK_RANGES.filter(r=>{
+          const startDate=new Date(r[1]);
+          const startMonth=startDate.toLocaleString("en-NZ",{month:"long",year:"numeric"});
+          return startMonth===monthLabel;
+        }).map(r=>r[0]);
         const exM=next[teamName]?.[monthPk]||{};
         const mergedM={...exM};
         Object.entries(updates).forEach(([k,v])=>{
-          // Only write if not already manually set (no _autoFilled means manual)
-          if(!exM[k]||exM._autoFilled)mergedM[k]=v;
+          // Manual entry override: skip if monthly value exists AND wasn't auto-filled.
+          if(exM[k]!=null&&!exM._autoFilled)return;
+          // Collect all weekly values for this KPI across weeks in this month, including the just-written update.
+          const weeklyVals=monthWeeks.map(wkN=>{
+            if(wkN===wk)return v;// the value we're writing right now
+            const weekData=next[teamName]?.[`w__${wkN}`];
+            return weekData?.[k];
+          }).filter(val=>val!=null&&typeof val==="number"&&!isNaN(val));
+          if(weeklyVals.length>0){
+            mergedM[k]=Math.round(weeklyVals.reduce((s,v)=>s+v,0)/weeklyVals.length*100)/100;
+          }
         });
         mergedM._autoFilled=nowNZ();
         next[teamName][monthPk]=mergedM;
@@ -5831,7 +5857,7 @@ function App(){
     const leadEmails=icData[leadName]?.weeks?.[wkNum]?.emails||0;
     const leadWfs=icData[leadName]?.weeks?.[wkNum]?.wfs||0;
     const leadCalls=icData[leadName]?.weeks?.[wkNum]?.calls||0;
-    const leadPts=leadTickets*_w.tickets+leadEmails*_w.emails+leadWfs*_w.wfs+leadCalls*_w.calls;
+    const leadCaseActions=icData[leadName]?.weeks?.[wkNum]?.caseActions||0;const leadReviews=icData[leadName]?.weeks?.[wkNum]?.reviews||0;const leadPts=leadTickets*_w.tickets+leadEmails*_w.emails+leadWfs*_w.wfs+leadCalls*_w.calls+leadCaseActions*(_w.case_actions||0)+leadReviews*(_w.reviews||1);
     if(totalPts>0&&teamHrs>0)updates.productivity_team=Math.round(totalPts/teamHrs*100)/100;
     if(leadHrs>0)updates.productivity_lead=leadPts>0?Math.round(leadPts/leadHrs*100)/100:0;
     if(Object.keys(updates).length){autoFillKPIs(teamName,wkNum,updates);return Object.keys(updates).length;}
@@ -6647,14 +6673,14 @@ function App(){
               const closedTickets=agents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.closed||0),0);
               const emailPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.emails||0),0);
               const wfPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.wfs||0),0);
-              const reviewPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.reviews||0),0);const totalPoints=closedTickets*weights.tickets+emailPoints*weights.emails+wfPoints*weights.wfs+reviewPoints*(weights.reviews||1);
+              const reviewPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.reviews||0),0);const callPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.calls||0),0);const caPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.caseActions||0),0);const totalPoints=closedTickets*weights.tickets+emailPoints*weights.emails+wfPoints*weights.wfs+reviewPoints*(weights.reviews||1)+callPoints*weights.calls+caPoints*(weights.case_actions||0);
               const teamHrs=Object.values(schedData).filter(p=>p.group===tname).reduce((s,p)=>{const h=p.overrides?.["w_"+wkN]??p.weeks?.[wkN]??0;return s+h;},0);
               const leadName=TEAM_LEADS[tname];
               const leadHrs=schedData[leadName]?((schedData[leadName].overrides?.["w_"+wkN]??schedData[leadName].weeks?.[wkN])??0):0;
               const leadClosed=icData[leadName]?.weeks?.[wkN]?.closed||0;
               const leadEmails=agg[leadName]?.weeks?.[wkN]?.emails||0;
               const leadWfs=agg[leadName]?.weeks?.[wkN]?.wfs||0;
-              const leadPoints=leadClosed+leadEmails+leadWfs;
+              const leadCalls=icData[leadName]?.weeks?.[wkN]?.calls||0;const leadCaseActions=icData[leadName]?.weeks?.[wkN]?.caseActions||0;const leadReviews=icData[leadName]?.weeks?.[wkN]?.reviews||0;const leadPoints=leadClosed*weights.tickets+leadEmails*weights.emails+leadWfs*weights.wfs+leadCalls*weights.calls+leadCaseActions*(weights.case_actions||0)+leadReviews*(weights.reviews||1);
               if(totalPoints>0&&teamHrs>0)updates.productivity_team=Math.round(totalPoints/teamHrs*100)/100;
               if(leadPoints>0&&leadHrs>0)updates.productivity_lead=Math.round(leadPoints/leadHrs*100)/100;
               if(Object.keys(updates).length)autoFillKPIs(tname,wkN,updates);
@@ -6756,7 +6782,7 @@ function App(){
             const wfPoints=Object.entries(bucket)
               .filter(([n])=>getPersonTeam(n)===tname)
               .reduce((s,[,d])=>s+(d.weeks?.[wkN]?.wfs||0),0);
-            const reviewPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.reviews||0),0);const totalPoints=closedTickets*weights.tickets+emailPoints*weights.emails+wfPoints*weights.wfs+reviewPoints*(weights.reviews||1);
+            const reviewPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.reviews||0),0);const callPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.calls||0),0);const caPoints=Object.entries(agg).filter(([n])=>getPersonTeam(n)===tname).reduce((s,[,d])=>s+(d.weeks?.[wkN]?.caseActions||0),0);const totalPoints=closedTickets*weights.tickets+emailPoints*weights.emails+wfPoints*weights.wfs+reviewPoints*(weights.reviews||1)+callPoints*weights.calls+caPoints*(weights.case_actions||0);
             const teamHrs=Object.values(schedData).filter(p=>p.group===tname)
               .reduce((s,p)=>{const h=p.overrides?.[`w_${wkN}`]??p.weeks?.[wkN]??0;return s+h;},0);
             const leadName=TEAM_LEADS[tname];
@@ -6764,7 +6790,7 @@ function App(){
             const leadClosed=icData[leadName]?.weeks?.[wkN]?.closed||0;
             const leadEmails=bucket[leadName]?.weeks?.[wkN]?.emails||0;
             const leadWfs=bucket[leadName]?.weeks?.[wkN]?.wfs||0;
-            const leadPoints=leadClosed+leadEmails+leadWfs;
+            const leadCalls=icData[leadName]?.weeks?.[wkN]?.calls||0;const leadCaseActions=icData[leadName]?.weeks?.[wkN]?.caseActions||0;const leadReviews=icData[leadName]?.weeks?.[wkN]?.reviews||0;const leadPoints=leadClosed*weights.tickets+leadEmails*weights.emails+leadWfs*weights.wfs+leadCalls*weights.calls+leadCaseActions*(weights.case_actions||0)+leadReviews*(weights.reviews||1);
             if(totalPoints>0&&teamHrs>0){updates.productivity_team=Math.round(totalPoints/teamHrs*100)/100;filled++;}
             if(leadPoints>0&&leadHrs>0)updates.productivity_lead=Math.round(leadPoints/leadHrs*100)/100;
             if(Object.keys(updates).length)autoFillKPIs(tname,wkN,updates);
@@ -6915,7 +6941,7 @@ function App(){
               const leadName=TEAM_LEADS[tname];
               const leadHrs=schedData[leadName]?((schedData[leadName].overrides?.[`w_${wkN}`]??schedData[leadName].weeks?.[wkN])??0):0;
               const leadCalls=(newIc[leadName]?.weeks?.[wkN]?.calls||0)+(icData[leadName]?.weeks?.[wkN]?.calls||0);
-              const leadPts=(icData[leadName]?.weeks?.[wkN]?.closed||0)*weights.tickets+(icData[leadName]?.weeks?.[wkN]?.emails||0)*weights.emails+(icData[leadName]?.weeks?.[wkN]?.wfs||0)*weights.wfs+leadCalls*weights.calls;
+              const leadCaseActions=(newIc[leadName]?.weeks?.[wkN]?.caseActions||0)+(icData[leadName]?.weeks?.[wkN]?.caseActions||0);const leadReviews=icData[leadName]?.weeks?.[wkN]?.reviews||0;const leadPts=(icData[leadName]?.weeks?.[wkN]?.closed||0)*weights.tickets+(icData[leadName]?.weeks?.[wkN]?.emails||0)*weights.emails+(icData[leadName]?.weeks?.[wkN]?.wfs||0)*weights.wfs+leadCalls*weights.calls+leadCaseActions*(weights.case_actions||0)+leadReviews*(weights.reviews||1);
               const upd={};
               if(totalPts>0&&teamHrs>0)upd.productivity_team=Math.round(totalPts/teamHrs*100)/100;
               if(leadPts>0&&leadHrs>0)upd.productivity_lead=Math.round(leadPts/leadHrs*100)/100;
@@ -10659,7 +10685,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               </span>
               <span style={{fontSize:10,color:"#9ca3af",fontWeight:600}}>Health</span><span style={{fontSize:14,fontWeight:800,color:hc,background:health>=70?"#ecfdf5":health>=40?"#fffbeb":"#fef2f2",padding:"2px 10px",borderRadius:8}}>{health}</span></span>;})()}
           </div>
-          {(()=>{const lastUpload=auditLog.filter(a=>a.action&&(a.action.includes("CSV Imported")||a.action.includes("Uploaded"))).sort((a,b)=>new Date(b.timestamp||b.date||0)-new Date(a.timestamp||a.date||0))[0];if(!lastUpload)return<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 14px",marginBottom:12,fontSize:11,color:"#92400e",display:"flex",alignItems:"center",gap:6}}><span>{"\u26a0\ufe0f"}</span>No data uploaded yet. Import a CSV to get started.</div>;const uploadDate=new Date(lastUpload.timestamp||lastUpload.date);const daysAgo=Math.floor((new Date()-uploadDate)/(86400000));if(daysAgo<=2)return null;return<div style={{background:daysAgo>5?"#fef2f2":"#fffbeb",border:"1px solid "+(daysAgo>5?"#fecaca":"#fde68a"),borderRadius:8,padding:"8px 14px",marginBottom:12,fontSize:11,color:daysAgo>5?"#dc2626":"#92400e",display:"flex",alignItems:"center",gap:6}}><span>{"\u26a0\ufe0f"}</span>{"Data is "+daysAgo+" days old. Last upload: "+uploadDate.toLocaleDateString("en-NZ",{day:"2-digit",month:"short"})}</div>;})()}
+          {(()=>{const lastUpload=auditLog.filter(a=>a.action&&(a.action.includes("Imported")||a.action.includes("Uploaded"))).sort((a,b)=>new Date(b.timestamp||b.date||0)-new Date(a.timestamp||a.date||0))[0];if(!lastUpload)return<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 14px",marginBottom:12,fontSize:11,color:"#92400e",display:"flex",alignItems:"center",gap:6}}><span>{"\u26a0\ufe0f"}</span>No data uploaded yet. Import a CSV to get started.</div>;const uploadDate=new Date(lastUpload.timestamp||lastUpload.date);if(isNaN(uploadDate.getTime()))return null;/* v2.7.5: silently skip the staleness banner if the timestamp is unparseable. Previously this rendered "Data is NaN days old. Last upload: Invalid Date" which looked broken. */const daysAgo=Math.floor((new Date()-uploadDate)/(86400000));if(daysAgo<=2||daysAgo<0)return null;return<div style={{background:daysAgo>5?"#fef2f2":"#fffbeb",border:"1px solid "+(daysAgo>5?"#fecaca":"#fde68a"),borderRadius:8,padding:"8px 14px",marginBottom:12,fontSize:11,color:daysAgo>5?"#dc2626":"#92400e",display:"flex",alignItems:"center",gap:6}}><span>{"\u26a0\ufe0f"}</span>{"Data is "+daysAgo+" days old. Last upload: "+uploadDate.toLocaleDateString("en-NZ",{day:"2-digit",month:"short"})}</div>;})()}
           {(()=>{
             // Compute Owner Withdrawals count for current period.
             // Only show this tile when team is "Owner Support" or admin viewing "All Teams".

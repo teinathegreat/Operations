@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.7.3";
+const APP_VERSION="2.7.4";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -3106,6 +3106,7 @@ function WeeklySummaryModalBuilder({sm,onClose,roster,callReviews,setCallReviews
       if(checks.caseActions)t+=`  Case Actions: ${icStats.caseActions||0}\n`;
       if(checks.wfs)t+=`  Workflows: ${icStats.wfs||0}\n`;
       if(checks.calls)t+=`  Calls: ${icStats.calls||0}\n`;
+      if(icStats.reviews)t+=`  Reviews: ${icStats.reviews}\n`;
       if(checks.hours)t+=`  Hours worked: ${hrs||"—"}h\n`;
       if(checks.responseTimes){if(icStats.medFirstReply!=null)t+=`  Median first reply: ${Math.round(icStats.medFirstReply*100)/100}h\n`;if(icStats.medClose!=null)t+=`  Median close time: ${Math.round(icStats.medClose*100)/100}h\n`;}
       t+=`\n`;
@@ -3157,6 +3158,7 @@ function WeeklySummaryModalBuilder({sm,onClose,roster,callReviews,setCallReviews
       if(checks.caseActions)h+=`<tr><td style="padding:3px 16px 3px 0;color:#6b7280;">Case actions</td><td style="padding:3px 0;font-weight:700;">${icStats.caseActions||0}</td></tr>`;
       if(checks.wfs)h+=`<tr><td style="padding:3px 16px 3px 0;color:#6b7280;">Workflows</td><td style="padding:3px 0;font-weight:700;">${icStats.wfs||0}</td></tr>`;
       if(checks.calls)h+=`<tr><td style="padding:3px 16px 3px 0;color:#6b7280;">Calls</td><td style="padding:3px 0;font-weight:700;">${icStats.calls||0}</td></tr>`;
+      if(icStats.reviews)h+=`<tr><td style="padding:3px 16px 3px 0;color:#6b7280;">Reviews</td><td style="padding:3px 0;font-weight:700;">${icStats.reviews}</td></tr>`;
       if(checks.hours)h+=`<tr><td style="padding:3px 16px 3px 0;color:#6b7280;">Hours worked</td><td style="padding:3px 0;font-weight:700;">${hrs||"—"}h</td></tr>`;
       if(checks.responseTimes){
         if(icStats.medFirstReply!=null)h+=`<tr><td style="padding:3px 16px 3px 0;color:#6b7280;">Median first reply</td><td style="padding:3px 0;font-weight:700;">${Math.round(icStats.medFirstReply*100)/100}h</td></tr>`;
@@ -10219,10 +10221,15 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 <div style={{fontWeight:600,fontSize:12,color:"#4b5563",marginBottom:9}}>Stats — {lb}</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(125px,1fr))",gap:8}}>
                   <div><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>Tickets closed</div><div style={{fontSize:18,fontWeight:700,color:"#111827"}}>{icStats.closed??0}</div><div style={{fontSize:11,color:"#6b7280"}}>{getW(teamName).tickets} pt each</div></div>
-                  {icStats.emails!=null&&<div><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>Emails</div><div style={{fontSize:18,fontWeight:700,color:"#111827"}}>{icStats.emails}</div></div>}
-                  {icStats.caseActions!=null&&<div><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>Case Actions</div><div style={{fontSize:18,fontWeight:700,color:"#111827"}}>{icStats.caseActions}</div></div>}
+                  {icStats.emails!=null&&<div><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>Emails</div><div style={{fontSize:18,fontWeight:700,color:"#111827"}}>{icStats.emails}</div><div style={{fontSize:11,color:"#6b7280"}}>{getW(teamName).emails||0} pt each</div></div>}
+                  {icStats.caseActions!=null&&<div><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>Case Actions</div><div style={{fontSize:18,fontWeight:700,color:"#111827"}}>{icStats.caseActions}</div><div style={{fontSize:11,color:"#6b7280"}}>{getW(teamName).case_actions||0} pt each</div></div>}
                   {icStats.wfs!=null&&<div style={{background:"#f5f3ff",borderRadius:7,padding:"8px 10px"}}><div style={{fontSize:11,color:"#7c3aed",marginBottom:2}}>WFs</div><div style={{fontSize:18,fontWeight:700,color:"#7c3aed"}}>{icStats.wfs}</div><div style={{fontSize:11,color:"#7c3aed"}}>{getW(teamName).wfs} pt each</div></div>}
                   {icStats.calls!=null&&<div style={{background:"#fef3c7",borderRadius:7,padding:"8px 10px"}}><div style={{fontSize:11,color:"#92400e",marginBottom:2}}>Calls</div><div style={{fontSize:18,fontWeight:700,color:"#92400e"}}>{icStats.calls}</div><div style={{fontSize:11,color:"#92400e"}}>{getW(teamName).calls} pt each</div></div>}
+                  {/* v2.7.4 — Reviews tile. The user was seeing productivity 10.41/hr for Kenneth but
+                      only Tickets (39) + Case Actions (143) + zero WFs/Calls on the card — leaving
+                      151 points unaccounted for. Those 151 are his W35 reviews (Review Tracker import),
+                      which DID feed the productivity score correctly but were invisible here. */}
+                  {icStats.reviews!=null&&icStats.reviews>0&&<div style={{background:"#fffbeb",borderRadius:7,padding:"8px 10px",border:"1px solid #fde68a"}}><div style={{fontSize:11,color:"#92400e",marginBottom:2}}>{"\u2b50"} Reviews</div><div style={{fontSize:18,fontWeight:700,color:"#92400e"}}>{icStats.reviews}</div><div style={{fontSize:11,color:"#92400e"}}>{getW(teamName).reviews||1} pt each</div></div>}
                   {(()=>{try{const ab=getAbandonedCalls(name,iPt,iWk,iMo);if(!ab)return null;if(ab.count===0&&!rejectedCallsData[name])return null;const onClick=ab.count>0?(()=>setAbandonedModal({name,events:Array.isArray(ab.events)?ab.events:[],periodLabel:lb})):null;return<div onClick={onClick} style={{background:"#fee2e2",borderRadius:7,padding:"8px 10px",cursor:onClick?"pointer":"default",transition:"transform .12s"}} onMouseEnter={e=>{if(onClick)e.currentTarget.style.transform="scale(1.03)";}} onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}><div style={{fontSize:11,color:"#991b1b",marginBottom:2}}>Abandoned Calls</div><div style={{fontSize:18,fontWeight:700,color:"#991b1b"}}>{ab.count}</div><div style={{fontSize:11,color:"#991b1b"}}>{ab.count>0?"click for details":"none this period"}</div></div>;}catch(err){console.error("Abandoned people-card err",name,err);return null;}})()}
                   <div><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>Hours worked</div><div style={{fontSize:18,fontWeight:700,color:"#111827"}}>{hrs!=null?`${hrs}h`:"—"}</div><div style={{fontSize:11,color:"#6b7280"}}>{hrs==null?"upload schedule":""}</div></div>
                   

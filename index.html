@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.9";
+const APP_VERSION="2.9.1";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -2518,7 +2518,7 @@ const DEFAULT_ROSTER={
     {id:"gs10",name:"William Cook"},{id:"gs11",name:"Dion Henry"},{id:"gs12",name:"Caitlyn Foxall"},
     {id:"gs13",name:"Lorrana De Carvalho"}
   ]},
-  "Owner Support":{lead:"Shanya Kumar",members:[{id:"os1",name:"Caitlin Lameko"},{id:"os2",name:"Darren Graham"}]},
+  "Owner Support":{lead:"Shanya Kumar",members:[{id:"os1",name:"Caitlin Lameko"},{id:"os2",name:"Darren Graham"},{id:"os3",name:"Akash Chaturvedi"}]},
   "Reputation and Resolutions":{lead:"Janendra Kishan",members:[
     {id:"rr1",name:"Kenneth Cassel"},{id:"rr2",name:"Ricky Chahal"},{id:"rr3",name:"Shane Pawson"}
   ]},
@@ -3987,6 +3987,155 @@ function App(){
   // Each q is 1-5; percent = (q1+q2+q3+q4)/20 * 100 (rounded). Aggregated by FY25 week into
   // data["Reputation and Resolutions"][w__N].post_case_csat for the R&R dashboard KPI tile.
   const[csatData,setCsatData]=useState(()=>mirrorRead("csat",{responses:[]}));
+
+  // v2.9.1 — Run-once migration: add Akash Chaturvedi to Owner Support roster and
+  // consolidate any data stored under name variants ("Akash", "Chaturvedi", "Akash C"
+  // etc.) into the canonical "Akash Chaturvedi" entry. Runs after cloud data has loaded
+  // (5s delay), guarded by localStorage flag so it only fires once per browser.
+  React.useEffect(()=>{
+    const MIG_FLAG="bc_added_akash_v1";
+    if(localStorage.getItem(MIG_FLAG))return;
+    const tid=setTimeout(()=>{
+      try{
+        const FULL="Akash Chaturvedi";
+        // Is the name a variant of Akash Chaturvedi (case-insensitive)? Excludes exact match.
+        const isVariant=(name)=>{
+          const n=String(name||"").toLowerCase().trim();
+          if(!n||n===FULL.toLowerCase())return false;
+          return n==="akash"||n==="chaturvedi"||/^akash\s/.test(n)||/\schaturvedi$/.test(n)||/^a\.?\s+chaturvedi$/.test(n)||/^akash\s+c\.?$/.test(n);
+        };
+        // Generic deep merge that sums numeric fields and keeps non-numeric from target.
+        const mergeStats=(t,s)=>{const o={...(t||{})};Object.entries(s||{}).forEach(([k,v])=>{if(typeof v==="number"&&typeof o[k]==="number")o[k]=o[k]+v;else if(o[k]==null)o[k]=v;});return o;};
+        const mergeBuckets=(tBuckets,sBuckets)=>{const o={...(tBuckets||{})};Object.entries(sBuckets||{}).forEach(([k,v])=>{o[k]=mergeStats(o[k],v);});return o;};
+        const log=[];
+
+        // 1. ROSTER — add Akash to Owner Support members if not present.
+        setRoster(prev=>{
+          const next={...prev};
+          const os={...(next["Owner Support"]||{lead:"Shanya Kumar",members:[]})};
+          const mems=[...(os.members||[])];
+          if(!mems.some(m=>m&&m.name===FULL)){
+            mems.push({id:"os_akash_"+Date.now(),name:FULL});
+            os.members=mems;
+            next["Owner Support"]=os;
+            log.push("roster: added "+FULL+" to Owner Support");
+          }
+          return next;
+        });
+
+        // 2. icData — merge variant keys into FULL (per-week + per-month + reviewRecords)
+        setIcData(prev=>{
+          const next={...prev};
+          const variantKeys=Object.keys(next).filter(isVariant);
+          if(!variantKeys.length)return prev;
+          const target={weeks:{},months:{},reviewRecords:[],...(next[FULL]||{})};
+          let tWeeks={...(target.weeks||{})},tMonths={...(target.months||{})},tRecs=[...(target.reviewRecords||[])];
+          variantKeys.forEach(k=>{
+            const src=next[k]||{};
+            tWeeks=mergeBuckets(tWeeks,src.weeks);
+            tMonths=mergeBuckets(tMonths,src.months);
+            if(Array.isArray(src.reviewRecords))tRecs=tRecs.concat(src.reviewRecords);
+            delete next[k];
+            log.push("icData: merged '"+k+"' into '"+FULL+"'");
+          });
+          // Dedup reviewRecords by title
+          const seen=new Set();const dedup=[];tRecs.forEach(r=>{if(r&&!seen.has(r.title)){seen.add(r.title);dedup.push(r);}});
+          next[FULL]={...target,weeks:tWeeks,months:tMonths,reviewRecords:dedup};
+          return next;
+        });
+
+        // 3. schedData — merge weeks + days
+        setSchedData(prev=>{
+          const next={...prev};
+          const variantKeys=Object.keys(next).filter(isVariant);
+          if(!variantKeys.length)return prev;
+          const target={weeks:{},days:{},...(next[FULL]||{})};
+          let tWeeks={...(target.weeks||{})},tDays={...(target.days||{})};
+          variantKeys.forEach(k=>{
+            const src=next[k]||{};
+            // Weeks: number values, sum if both exist
+            Object.entries(src.weeks||{}).forEach(([w,v])=>{tWeeks[w]=typeof v==="number"&&typeof tWeeks[w]==="number"?tWeeks[w]+v:(tWeeks[w]==null?v:tWeeks[w]);});
+            // Days: object per date with hours field, prefer target if set
+            Object.entries(src.days||{}).forEach(([d,info])=>{if(tDays[d]==null)tDays[d]=info;});
+            delete next[k];
+            log.push("schedData: merged '"+k+"' into '"+FULL+"'");
+          });
+          next[FULL]={...target,weeks:tWeeks,days:tDays};
+          return next;
+        });
+
+        // 4. rejectedCallsData — merge months/events arrays
+        setRejectedCallsData(prev=>{
+          const next={...prev};
+          const variantKeys=Object.keys(next).filter(isVariant);
+          if(!variantKeys.length)return prev;
+          const target={months:{},...(next[FULL]||{})};
+          let tMonths={...(target.months||{})};
+          variantKeys.forEach(k=>{
+            const src=next[k]||{};
+            Object.entries(src.months||{}).forEach(([mn,info])=>{
+              if(!tMonths[mn])tMonths[mn]={...info};
+              else{
+                const ev=[...((tMonths[mn]||{}).events||[]),...((info||{}).events||[])];
+                tMonths[mn]={...tMonths[mn],events:ev};
+              }
+            });
+            delete next[k];
+            log.push("rejectedCalls: merged '"+k+"' into '"+FULL+"'");
+          });
+          next[FULL]={...target,months:tMonths};
+          return next;
+        });
+
+        // 5. dailyTimelineData — merge per-date event arrays
+        setDailyTimelineData(prev=>{
+          const next={...prev};
+          const variantKeys=Object.keys(next).filter(isVariant);
+          if(!variantKeys.length)return prev;
+          const target={...(next[FULL]||{})};
+          variantKeys.forEach(k=>{
+            const src=next[k]||{};
+            Object.entries(src).forEach(([d,arr])=>{if(Array.isArray(arr)){target[d]=[...(target[d]||[]),...arr];}});
+            delete next[k];
+            log.push("timeline: merged '"+k+"' into '"+FULL+"'");
+          });
+          next[FULL]=target;
+          return next;
+        });
+
+        // 6. callReviews — replace agentName on matching rows
+        setCallReviews(prev=>{
+          let changed=0;
+          const next=prev.map(r=>{if(r&&isVariant(r.agentName)){changed++;return{...r,agentName:FULL};}return r;});
+          if(changed)log.push("callReviews: relabelled "+changed+" entries to '"+FULL+"'");
+          return changed?next:prev;
+        });
+
+        // 7. capabilities — variant keys → FULL
+        setCapabilities(prev=>{
+          const next={...prev};
+          const variantKeys=Object.keys(next).filter(isVariant);
+          if(!variantKeys.length)return prev;
+          const target={...(next[FULL]||{})};
+          variantKeys.forEach(k=>{
+            const src=next[k]||{};
+            Object.entries(src).forEach(([skill,val])=>{if(target[skill]==null)target[skill]=val;});
+            delete next[k];
+            log.push("capabilities: merged '"+k+"' into '"+FULL+"'");
+          });
+          next[FULL]=target;
+          return next;
+        });
+
+        localStorage.setItem(MIG_FLAG,"1");
+        if(log.length)console.log("[Akash migration]",log);
+        else console.log("[Akash migration] no variant data to merge — Akash added to roster only");
+        try{if(typeof toast==="function")toast("Added Akash Chaturvedi to Owner Support"+(log.length>1?" and merged data":""));}catch(_){}
+      }catch(e){console.error("[Akash migration] failed:",e);}
+    },5000);
+    return()=>clearTimeout(tid);
+  },[]);
+
   const[icFilter,setIcFilter]=useState("week");
   const[icWeek,setIcWeek]=useState(AUTO_WEEK);
   const[icMonth,setIcMonth]=useState("March 2026");

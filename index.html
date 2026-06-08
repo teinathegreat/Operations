@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.7.12";
+const APP_VERSION="2.7.13";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -7914,60 +7914,53 @@ function App(){
           <button onClick={()=>setRfSortDir(rfSortDir==="asc"?"desc":"asc")} style={{...S.ghost,padding:"4px 10px",border:"1px solid #e5e7eb",borderRadius:6}}>{rfSortDir==="asc"?"↑ Asc":"↓ Desc"}</button>
         </div>
 
-        {/* Card list — every review fully expanded, all info inline. Two-column grid
-            on wide screens, single column on narrow. No click-to-expand. */}
+        {/* Compact row list — every review fully expanded, all info inline.
+            Full page width, no column constraint, each row maximizes horizontal space. */}
         {sorted.length===0?(
           <div style={{padding:40,textAlign:"center",color:"#9ca3af",fontSize:13,background:"#fff",border:"1px solid #e5e7eb",borderRadius:10}}>No reviews match the current filters.</div>
         ):(
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(420px,1fr))",gap:12}}>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {sorted.map((r,i)=>{
               const tm=String(r.modified||"").match(/(\d{1,2}):(\d{2})/);
               const dateLabel=(()=>{
                 if(!r.modDate)return"—";
-                try{const d=new Date(r.modDate+"T00:00:00");return d.toLocaleDateString("en-NZ",{day:"numeric",month:"short",year:"numeric"});}catch(e){return r.modDate;}
+                try{const d=new Date(r.modDate+"T00:00:00");return d.toLocaleDateString("en-NZ",{day:"numeric",month:"short"});}catch(e){return r.modDate;}
               })();
               const cClr=channelClr(r.channel);
               const sClr=statusClr(r.status);
               const rClr=ratingClr(r.rating);
               return(
-                <div key={(r.title||"r")+"|"+i} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:10,overflow:"hidden",borderLeft:`4px solid ${cClr}`,display:"flex",flexDirection:"column"}}>
-                  {/* Header strip: channel pill + title + rating + status */}
-                  <div style={{padding:"10px 14px",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:cClr+"08"}}>
+                <div key={(r.title||"r")+"|"+i} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,borderLeft:`4px solid ${cClr}`,padding:"10px 14px",display:"flex",flexDirection:"column",gap:6}}>
+                  {/* Metadata strip — single horizontal line that wraps if needed */}
+                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",fontSize:12.5}}>
                     {r.channel&&pill(cClr,"#fff",r.channel)}
-                    <span style={{fontWeight:700,fontSize:13.5,color:"#111827"}}>{r.title||"—"}</span>
-                    <span style={{flex:1}}></span>
+                    <span style={{fontWeight:700,color:"#111827",fontSize:13}}>{r.title||"—"}</span>
                     {r.rating!=null&&r.rating!==""&&(
-                      <span style={{display:"inline-flex",alignItems:"center",gap:3,padding:"3px 9px",borderRadius:6,background:rClr+"15",color:rClr,fontWeight:700,fontSize:13}}>★ {r.rating}<span style={{fontSize:10,opacity:.7,marginLeft:1}}>/10</span></span>
+                      <span style={{display:"inline-flex",alignItems:"center",gap:2,padding:"2px 8px",borderRadius:5,background:rClr+"18",color:rClr,fontWeight:700,fontSize:12.5}}>★ {r.rating}<span style={{fontSize:10,opacity:.7}}>/10</span></span>
                     )}
                     {r.status&&pill(sClr+"22",sClr,r.status)}
+                    <span style={{color:"#d1d5db"}}>│</span>
+                    <span style={{color:"#4b5563"}}><strong style={{color:"#111827"}}>{dateLabel}</strong>{tm&&<span style={{color:"#9ca3af"}}> · {tm[0]}</span>}</span>
+                    <span style={{color:"#4b5563"}}>· <strong style={{color:"#111827"}}>{r.agent||"—"}</strong>{r.team&&<span style={{color:"#9ca3af"}}> ({r.team})</span>}</span>
+                    <span style={{color:"#d1d5db"}}>│</span>
+                    {r.customer&&<span style={{color:"#4b5563"}}><span style={{color:"#9ca3af",fontWeight:600}}>Guest:</span> <strong style={{color:"#111827"}}>{r.customer}</strong></span>}
+                    {r.property&&<span style={{color:"#4b5563"}}><span style={{color:"#9ca3af",fontWeight:600}}>Property:</span> {r.property}</span>}
+                    {r.region&&<span style={{color:"#6b7280",fontSize:11.5}}>· {r.region}</span>}
+                    <span style={{flex:1}}></span>
+                    {r.link&&<a href={r.link} target="_blank" rel="noreferrer" style={{color:"#0d9488",textDecoration:"none",fontWeight:600,fontSize:11.5}}>Open ↗</a>}
                   </div>
-                  {/* Metadata row */}
-                  <div style={{padding:"9px 14px",display:"flex",flexWrap:"wrap",gap:"4px 14px",fontSize:11.5,color:"#4b5563",borderBottom:"1px solid #f3f4f6",background:"#fafbfc"}}>
-                    <span><strong style={{color:"#111827"}}>{dateLabel}</strong>{tm&&<span style={{color:"#9ca3af"}}> · {tm[0]}</span>}</span>
-                    <span>· <strong style={{color:"#111827"}}>{r.agent||"—"}</strong>{r.team&&<span style={{color:"#9ca3af"}}> ({r.team})</span>}</span>
-                  </div>
-                  {/* Customer + property block */}
-                  <div style={{padding:"10px 14px",display:"grid",gridTemplateColumns:"auto 1fr",gap:"4px 10px",fontSize:12,borderBottom:"1px solid #f3f4f6"}}>
-                    <span style={{color:"#9ca3af",fontWeight:600}}>Guest:</span><span style={{color:"#111827"}}>{r.customer||<span style={{color:"#d1d5db"}}>—</span>}</span>
-                    <span style={{color:"#9ca3af",fontWeight:600}}>Property:</span><span style={{color:"#111827"}}>{r.property||<span style={{color:"#d1d5db"}}>—</span>}</span>
-                    {r.region&&<><span style={{color:"#9ca3af",fontWeight:600}}>Region:</span><span style={{color:"#4b5563"}}>{r.region}</span></>}
-                  </div>
-                  {/* Guest comment */}
-                  <div style={{padding:"10px 14px",borderBottom:r.addComment?"1px solid #f3f4f6":"none"}}>
-                    <div style={{fontSize:10,fontWeight:700,color:"#9ca3af",letterSpacing:".05em",textTransform:"uppercase",marginBottom:4}}>Guest Comment</div>
-                    <div style={{fontSize:12.5,color:"#1f2937",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{r.comment||<span style={{color:"#9ca3af",fontStyle:"italic"}}>No comment recorded.</span>}</div>
-                  </div>
-                  {/* Agent response — only render if present */}
-                  {r.addComment&&(
-                    <div style={{padding:"10px 14px",background:"#f9fafb"}}>
-                      <div style={{fontSize:10,fontWeight:700,color:"#0d9488",letterSpacing:".05em",textTransform:"uppercase",marginBottom:4}}>Agent Response</div>
-                      <div style={{fontSize:12.5,color:"#1f2937",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{r.addComment}</div>
+                  {/* Comment line — full width */}
+                  {r.comment&&(
+                    <div style={{fontSize:12.5,color:"#1f2937",lineHeight:1.5,paddingLeft:2}}>
+                      <span style={{color:"#9ca3af",fontWeight:700,fontSize:10,letterSpacing:".04em",textTransform:"uppercase",marginRight:6}}>Guest</span>
+                      <span style={{whiteSpace:"pre-wrap"}}>{r.comment}</span>
                     </div>
                   )}
-                  {/* Footer: link */}
-                  {r.link&&(
-                    <div style={{padding:"7px 14px",borderTop:"1px solid #f3f4f6",fontSize:11.5,textAlign:"right",background:"#fafbfc"}}>
-                      <a href={r.link} target="_blank" rel="noreferrer" style={{color:"#0d9488",textDecoration:"none",fontWeight:600}}>Open original ↗</a>
+                  {/* Response line — only renders if present */}
+                  {r.addComment&&(
+                    <div style={{fontSize:12.5,color:"#1f2937",lineHeight:1.5,paddingLeft:2,paddingTop:4,borderTop:"1px dashed #f3f4f6"}}>
+                      <span style={{color:"#0d9488",fontWeight:700,fontSize:10,letterSpacing:".04em",textTransform:"uppercase",marginRight:6}}>Response</span>
+                      <span style={{whiteSpace:"pre-wrap"}}>{r.addComment}</span>
                     </div>
                   )}
                 </div>
@@ -10942,7 +10935,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             <button onClick={()=>setTab("audit")} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"4px 14px",fontSize:12,cursor:"pointer",marginLeft:4,fontWeight:500}}>Review</button>
           </div>
         )}
-        <div key={tab} className="bc-page-fade" style={{maxWidth:(tab==="planner"||tab==="owner withdrawals")?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":(tab==="owner withdrawals"?"0":"24px 28px"),width:tab==="owner withdrawals"?"100%":undefined}}>
+        <div key={tab} className="bc-page-fade" style={{maxWidth:(tab==="planner"||tab==="owner withdrawals"||tab==="reviews")?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":(tab==="owner withdrawals"?"0":"24px 28px"),width:tab==="owner withdrawals"?"100%":undefined}}>
 
         {/* Profile View takes over main content */}
         {tab==="dashboard"&&isAdmin&&(

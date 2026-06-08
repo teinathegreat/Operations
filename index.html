@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.8";
+const APP_VERSION="2.9";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -8810,7 +8810,7 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
                     formData.append("file",aiAudioFile);
                     formData.append("model","whisper-1");
                     formData.append("language","en");
-                    formData.append("prompt","Customer service phone call for Bachcare, a New Zealand holiday home rental management company. The agent introduces themselves by name and mentions Bachcare. The caller is either a guest staying at a bach (NZ holiday home) or a homeowner. Common topics: bookings via Bachcare Direct, Booking.com, Airbnb, or VRBO; check-in and check-out; cleaning; maintenance; refunds; cancellation policy; security bonds; managed services; property managers (MSPs); reputation and resolutions; owner support; case files. Transcribe all speech accurately including quiet, mumbled or muffled parts at the start of the call.");
+                    formData.append("prompt","Bachcare. MSP. bach. Booking.com. Airbnb. VRBO. Intercom.");
                     formData.append("temperature","0");
                     formData.append("response_format","verbose_json");
                     formData.append("timestamp_granularities[]","segment");
@@ -8819,25 +8819,41 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
                     const txData=await txResp.json();
                     const segments=txData.segments||[];
                     if(segments.length){
+                      // v2.9 — robust hallucination filter. The previous version only caught
+                      // CONSECUTIVE repeats; Whisper often alternates two phrases (A B A B A B…)
+                      // when fed a long prompt or silent audio, which beat consecutive-dedup.
+                      // New approach: count how many times each normalized segment text appears
+                      // across the whole transcript. Anything that appears 4+ times is a
+                      // hallucination loop, regardless of position.
+                      const normalize=(t)=>String(t||"").toLowerCase().replace(/[^a-z\s]/g,"").trim();
+                      const occurrenceCount={};
+                      segments.forEach(seg=>{const n=normalize(seg.text);if(n.length>3)occurrenceCount[n]=(occurrenceCount[n]||0)+1;});
+                      const hallucinatedTexts=new Set(Object.entries(occurrenceCount).filter(([,c])=>c>=4).map(([t])=>t));
                       // Filter Whisper hallucinations: detect repeated phrases
-                      const cleanSegments=[];let prevText="";let repeatCount=0;
+                      const cleanSegments=[];let prevText="";let repeatCount=0;let lastWasSilence=false;
                       segments.forEach(seg=>{
                         const text=seg.text.trim();
-                        const normalized=text.toLowerCase().replace(/[^a-z\s]/g,"").trim();
-                        const prevNorm=prevText.toLowerCase().replace(/[^a-z\s]/g,"").trim();
-                        // Check for exact or near-exact repeat
+                        const normalized=normalize(text);
+                        const prevNorm=normalize(prevText);
+                        // NEW: skip segments whose text is part of a hallucination loop
+                        if(hallucinatedTexts.has(normalized)){
+                          if(!lastWasSilence){cleanSegments.push({start:seg.start,text:"[silence or hallucinated audio]",filtered:true});lastWasSilence=true;}
+                          return;
+                        }
+                        // Check for exact or near-exact repeat (legacy consecutive check)
                         if(normalized===prevNorm||normalized.length<15&&prevNorm.includes(normalized)){
                           repeatCount++;
                           if(repeatCount>=3)return; // Skip hallucinated repeats
                         }else{
                           // If we had a repeated section, mark it
-                          if(repeatCount>=3){cleanSegments.push({start:seg.start,text:"[silence]",filtered:true});}
+                          if(repeatCount>=3&&!lastWasSilence){cleanSegments.push({start:seg.start,text:"[silence]",filtered:true});lastWasSilence=true;}
                           repeatCount=0;
                         }
                         // Also filter common hallucination phrases when repeated
                         const hallucinations=["thank you","thanks for watching","bye","please subscribe","you","thank you for watching"];
                         if(hallucinations.some(h=>normalized===h)&&seg.no_speech_prob>0.5)return;
                         prevText=text;
+                        lastWasSilence=false;
                         cleanSegments.push(seg);
                       });
                       cleanSegments.forEach(seg=>{

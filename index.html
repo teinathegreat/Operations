@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.9.4";
+const APP_VERSION="2.9.7";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -3872,7 +3872,7 @@ function App(){
   ];
   const[dailyReports,setDailyReports]=useState(()=>{return[];});
 
-  const[dailyConfig,setDailyConfig]=useState(()=>{return null;});
+  const[dailyConfig,setDailyConfig]=useState(()=>{try{const m=localStorage.getItem("bc_mirror_dailycfg");if(m){const p=JSON.parse(m);if(p&&typeof p==="object"&&Object.keys(p).length)return p;}}catch(_){}return null;});
   const getDailyFields=(tn)=>(dailyConfig||DEFAULT_DAILY_CONFIG)[tn]||null;
   const[capCriteria,setCapCriteria]=useState(()=>{return{};});
   const[assessHistory,setAssessHistory]=useState(()=>{return[];});
@@ -5145,6 +5145,9 @@ function App(){
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("capcrit"))return;Object.entries(capCriteria).forEach(([k,v])=>dbSaveConfigKey("capcrit",k,v));},[capCriteria]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("perms"))return;Object.entries(permissions).forEach(([k,v])=>dbSaveConfigKey("perms",k,v));},[permissions]);
   useEffect(()=>{if(!saveEnabled.current||!isOwner||!dailyConfig||!isCloudConfirmed("dailycfg"))return;Object.entries(dailyConfig).forEach(([k,v])=>dbSaveConfigKey("dailycfg",k,v));},[dailyConfig]);
+  // Mirror the daily config locally (all users) so a fresh load restores the last-known
+  // config instantly instead of falling back to DEFAULT_DAILY_CONFIG before Supabase responds.
+  useEffect(()=>{try{if(dailyConfig&&Object.keys(dailyConfig).length)localStorage.setItem("bc_mirror_dailycfg",JSON.stringify(dailyConfig));}catch(_){}},[dailyConfig]);
   useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("notes"))return;Object.entries(quickNotes).forEach(([k,v])=>dbSaveConfigKey("notes",k,v));},[quickNotes]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("sys"))return;dbSaveConfigKey("sys","quick_refs",quickRefs);},[quickRefs]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("sys"))return;dbSaveConfigKey("sys","update_notes",updateNotes);},[updateNotes]);
@@ -9027,7 +9030,7 @@ function App(){
                 <span style={{fontWeight:600,fontSize:13,color:"#111827",flex:1}}>{cr.label}</span>
                 <span style={{fontSize:11,fontWeight:600,color:val===true?"#059669":"#dc2626"}}>{val===true?"Pass":"Fail"}</span>
               </div>
-              {reason&&<div style={{fontSize:12,color:"#4b5563",marginTop:4,paddingLeft:26,lineHeight:1.5}}>{reason}</div>}
+              {reason&&<div style={{fontSize:12,color:"#4b5563",marginTop:4,paddingLeft:26,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{reason}</div>}
             </div>);
           })}
         </div>
@@ -9055,6 +9058,12 @@ function App(){
           <div style={{fontSize:13,color:"#0c4a6e",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{viewReview.notes}</div>
         </div>}
 
+        {/* How to reach 10/10 */}
+        {viewReview.improvementPlan&&<div style={{marginBottom:12,padding:"10px 14px",background:"#ecfdf5",borderRadius:8,border:"1px solid #a7f3d0"}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#047857",textTransform:"uppercase",letterSpacing:".04em",marginBottom:4}}>🎯 How to reach 10/10</div>
+          <div style={{fontSize:13,color:"#065f46",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{viewReview.improvementPlan}</div>
+        </div>}
+
         {/* Full coaching summary for employee */}
         <div style={{marginBottom:12,padding:"14px 16px",background:"#f8fafc",borderRadius:10,border:"1px solid #e2e8f0"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
@@ -9072,6 +9081,7 @@ function App(){
               if(passed.length){summary+="WHAT YOU DID WELL ✅\n";passed.forEach(cr=>{const r=viewReview.aiReasoning?.[cr.id];summary+="• "+cr.label+(r?" — "+r:"")+"\n";});summary+="\n";}
               if(failed.length){summary+="AREAS TO IMPROVE ❌\n";failed.forEach(cr=>{const r=viewReview.aiReasoning?.[cr.id];summary+="• "+cr.label+(r?" — "+r:"")+"\n";});summary+="\n";}
               if(viewReview.notes)summary+="COACHING FEEDBACK\n"+viewReview.notes+"\n\n";
+              if(viewReview.improvementPlan)summary+="HOW TO REACH 10/10 🎯\n"+viewReview.improvementPlan+"\n\n";
               if(viewReview.advisories)summary+="ADVISORIES\n"+viewReview.advisories+"\n\n";
               summary+="Reviewed by: "+viewReview.reviewedBy;
               copy(summary);toast2("Summary copied! Ready to send to "+viewReview.agentName+".");
@@ -9102,6 +9112,7 @@ function App(){
     const[callType,setCallType]=React.useState(savedState.callType||existing?.callType||"");
     const[callSummary,setCallSummary]=React.useState(savedState.callSummary||existing?.callSummary||"");
     const[advisories,setAdvisories]=React.useState(savedState.advisories||existing?.advisories||"");
+    const[improvementPlan,setImprovementPlan]=React.useState(savedState.improvementPlan||existing?.improvementPlan||"");
     const[escalated,setEscalated]=React.useState(savedState.escalated!==undefined?savedState.escalated:(existing?.escalated??null));
     const[escalationJustified,setEscalationJustified]=React.useState(savedState.escalationJustified!==undefined?savedState.escalationJustified:(existing?.escalationJustified??null));
     const[escalationNotes,setEscalationNotes]=React.useState(savedState.escalationNotes||existing?.escalationNotes||"");
@@ -9115,7 +9126,7 @@ function App(){
     const[aiVisible,setAiVisible]=React.useState(savedState.aiVisible||false);
     const[gradeIntensity,setGradeIntensity]=React.useState(savedState.gradeIntensity||"standard");
     // Persist state to window on every change
-    React.useEffect(()=>{window[stateKey]={agentName,callLink,callDate,notes,callLength,callType,callSummary,advisories,escalated,escalationJustified,escalationNotes,criteria,aiAudioFile,aiAudioName,aiTranscript,aiStatus,aiProgress,aiReasoning,aiVisible,gradeIntensity};});
+    React.useEffect(()=>{window[stateKey]={agentName,callLink,callDate,notes,callLength,callType,callSummary,advisories,improvementPlan,escalated,escalationJustified,escalationNotes,criteria,aiAudioFile,aiAudioName,aiTranscript,aiStatus,aiProgress,aiReasoning,aiVisible,gradeIntensity};});
     const teamCriteria=getReviewCriteria(team);
     const teamMaxScore=teamCriteria.length;
     const teamPassThreshold=0.7;
@@ -9135,7 +9146,7 @@ function App(){
     // each timestamped line "Agent:" or "Customer:". The labeled transcript replaces the raw one
     // before grading runs, and is also what the user sees in the transcript pane afterwards.
     const diarizeTranscript=async(rawTranscript,agentFirstName)=>{
-      const diarPrompt="Below is a transcript of a customer service phone call. Each line has a timestamp like [00:32]. The Agent works for Bachcare (a New Zealand holiday home rental management company) and is named "+agentFirstName+". The Customer is the caller — a guest staying at a property, or a homeowner whose property Bachcare manages.\n\nLabel each line by inserting \"Agent:\" or \"Customer:\" immediately after the timestamp. For example:\n  [00:05] Agent: Hi there, you've reached Bachcare, this is "+agentFirstName+" speaking.\n  [00:09] Customer: Yeah hi, I've got a problem with my booking.\n\nRules:\n- If a line is ambiguous, use context. The Agent typically introduces themselves first, says things like \"how can I help\", \"let me check\", \"I'll look into that\", \"absolutely\", uses Bachcare's name, references bookings/properties/owners. The Customer typically describes a problem, asks questions, expresses emotion.\n- Keep timestamps and the original text exactly as-is. Only INSERT the speaker label between the timestamp and the text.\n- Do not merge, split, summarise, or rewrite lines. Do not add or remove any words.\n- If a line is just \"[silence]\" leave it as \"Agent: [silence]\".\n- A single line is always one speaker — never mix.\n\nOutput ONLY the labeled transcript. No preamble, no commentary, no explanation.\n\nTranscript:\n"+rawTranscript;
+      const diarPrompt="Below is a transcript of a customer service phone call. Each line has a timestamp like [00:32]. The Agent works for Bachcare (a New Zealand holiday home rental management company) and is named "+agentFirstName+". The Customer is the caller — a guest staying at a property, or a homeowner whose property Bachcare manages.\n\nLabel each line by inserting \"Agent:\" or \"Customer:\" immediately after the timestamp. For example:\n  [00:05] Agent: Hi there, you've reached Bachcare, this is "+agentFirstName+" speaking.\n  [00:09] Customer: Yeah hi, I've got a problem with my booking.\n\nRules:\n- If a line is ambiguous, use context. The Agent typically introduces themselves first, says things like \"how can I help\", \"let me check\", \"I'll look into that\", \"absolutely\", uses Bachcare's name, references bookings/properties/owners. The Customer typically describes a problem, asks questions, expresses emotion.\n- Keep timestamps and the original text exactly as-is. Only INSERT the speaker label between the timestamp and the text.\n- Do not merge, split, summarise, or rewrite lines. Do not add or remove any words — with ONE exception below.\n- The agent's name is spelled exactly \\\""+agentFirstName+"\\\". If the transcript spells the agent's own name a different way (a phonetic mishearing, e.g. \\\"Gail\\\" when the agent is \\\"Gayle\\\"), correct that spelling to \\\""+agentFirstName+"\\\". This name-spelling fix is the only word change you may make.\n- If a line is just \"[silence]\" leave it as \"Agent: [silence]\".\n- A single line is always one speaker — never mix.\n\nOutput ONLY the labeled transcript. No preamble, no commentary, no explanation.\n\nTranscript:\n"+rawTranscript;
       try{
         const resp=await callClaudeAPI({maxTokens:4000,prompt:diarPrompt,purpose:"call-diarize"});
         const text=(resp.content||[]).map(c=>c.text||"").join("").trim();
@@ -9153,12 +9164,12 @@ function App(){
     // finding rather than benefit-of-the-doubt grading.
     const buildGradingPrompt=({transcript,diarized})=>(
       "You are an experienced call centre quality coach for Bachcare, a New Zealand holiday home management company. You're reviewing a phone call to help the agent improve."+intensityPrompt+
-      "\n\nCRITICAL OUTPUT RULES:\n- NEVER mention transcription, transcript, recording, audio quality, or speech-to-text in your feedback, summary, advisories, or reasoning. Write as if you listened to the call directly.\n- If there are repeated words or phrases (like repeated thank you), ignore them — treat them as a single occurrence.\n- If the call starts abruptly without a greeting, in Standard intensity assume the greeting happened. In Firm/Strict, only fail if there is clear evidence the agent skipped it.\n- Write all feedback as coaching from someone who listened to the call, not someone who read a transcript."+
+      "\n\nCRITICAL OUTPUT RULES:\n- NEVER mention transcription, transcript, recording, audio quality, or speech-to-text in your feedback, summary, advisories, or reasoning. Write as if you listened to the call directly.\n- If there are repeated words or phrases (like repeated thank you), ignore them — treat them as a single occurrence.\n- If the call starts abruptly without a greeting, in Standard intensity assume the greeting happened. In Firm/Strict, only fail if there is clear evidence the agent skipped it.\n- Write all feedback as coaching from someone who listened to the call, not someone who read a transcript.\n- Write every reason, the feedback, advisories and improvement plan in plain, natural, conversational English — the way a supportive team leader actually talks to someone. Do NOT use clinical, jargon-y, or robotic phrasing. For example, never write something like 'Revealed internal hierarchy to customer'; instead write it the way a person would say it, e.g. 'Told the customer they'd need to check with their manager — that can make us look less capable, so it's better to just say you'll look into it and sort it out behind the scenes.'"+
       (diarized?"\n- The transcript below is LABELED with \"Agent:\" and \"Customer:\" prefixes for each line. USE these labels — never grade the agent for something the customer said, and never give the agent credit for something the customer offered up unprompted.":"")+
       "\n\nESCALATION RULES:\n- The ONLY valid reason for an agent to escalate a call to a manager is if the customer explicitly demands to speak to a manager and is pushing for it.\n- Agents should NEVER say things like 'Let me ask my team leader' or 'I need to check with my manager' on the call. Instead they should say 'Let me look into this for you' and then contact their manager privately.\n- If the agent used phrases that revealed they need manager approval, that's a fail on confidence/autonomy even if the call wasn't formally escalated.\n- If the call was transferred or escalated, determine whether the customer demanded it or the agent offered it unnecessarily."+
-      "\n\nACTIVE FAULT-FINDING — be a discerning coach, not a generous grader:\n- For EVERY criterion result, the `reason` field MUST quote a specific moment from the call with its timestamp. Format: \"[01:23] Agent: '<short quote>' — <brief why it does or doesn't meet the criterion>\". A finding without evidence is a weaker finding. If you genuinely cannot find any evidence one way or the other, say so plainly in the reason and lean toward fail.\n- Look ACTIVELY for failure before defaulting to pass. Real calls have rough edges — find them.\n- Common silent failures to check for explicitly on every call:\n  * Agent didn't summarise the agreed actions before closing the call.\n  * Agent didn't paraphrase the customer's issue back to confirm understanding.\n  * Agent used hedge language ('I think', 'probably', 'maybe', 'I'll try to', 'hopefully') instead of decisive language.\n  * Agent gave a vague timeline ('soon', 'shortly', 'as soon as I can') instead of a concrete one (a date, a number of hours, a named day).\n  * Agent missed an emotional beat (frustration, urgency, confusion, gratitude) without acknowledging it verbally.\n  * Agent let the customer drive the conversation instead of leading it (frequent dead air, customer repeating themselves, agent only reacting).\n  * Agent didn't confirm contact details or who is responsible for the next step.\n  * Agent said 'I'll try' instead of 'I will'.\n  * Agent revealed internal-only language (referring to team leads, internal systems, manager approval) on the customer-facing call.\n  * Agent talked over the customer or cut them off mid-sentence.\n  * Agent gave information that sounds uncertain (long pauses before answers, audible flipping through screens, 'um let me see').\n- If you cannot find clear positive evidence the agent met a criterion, fail it and state in the reason what they should have said or done."+
-      "\n\nGrade the agent against each criterion, and also provide:\n- A brief call summary (2-3 sentences describing what the call was about).\n- Constructive feedback written in a warm, coaching tone. Highlight what the agent did well first — quote a specific moment. Then areas to improve — quote specific moments. Don't sound robotic or generic.\n- Advisories: ALWAYS include something here. If there are genuine concerns (compliance issues, incorrect info, escalation problems), flag them clearly with a quote. If the call was good, note one specific strength and one minor opportunity. Never leave this empty.\n- Call type: determine if this was an 'Inbound' or 'Outbound' call based on the greeting and context.\n- Escalation: determine if the call was escalated or if the agent unnecessarily deferred to management."+
-      "\n\nRespond ONLY in this exact JSON format, no other text:\n{\"results\":[{\"id\":\"CRITERION_ID\",\"pass\":true/false,\"reason\":\"[MM:SS] Agent/Customer: '<quote>' — <concise judgement>\"}],\"summary\":\"what the call was about\",\"feedback\":\"constructive coaching feedback with quoted moments\",\"advisories\":\"always provide something here\",\"callType\":\"Inbound or Outbound\",\"escalated\":true/false,\"escalationJustified\":true/false/null,\"escalationNotes\":\"brief note on escalation or empty string\"}"+
+      "\n\nACTIVE FAULT-FINDING — be a discerning coach, not a generous grader:\n- For EVERY criterion result, the `reason` field MUST quote a specific moment from the call with its timestamp, labelling the speaker by NAME — use \""+agentName.split(" ")[0]+":\" for the agent and \"Customer:\" for the caller (never the generic word \"Agent\"). For a PASS: \"[01:23] "+agentName.split(" ")[0]+": '<short quote>' — <brief why it meets the criterion>\". For a FAIL, give the evidence the same way, then a line break, then a concrete coaching tip showing the better move: \"[01:23] "+agentName.split(" ")[0]+": '<short quote>' — <why it falls short>\n→ Try instead: <a specific, natural example of what "+agentName.split(" ")[0]+" could have said or done at that moment>\". A finding without evidence is a weaker finding. If you genuinely cannot find any evidence one way or the other, say so plainly in the reason and lean toward fail.\n- Look ACTIVELY for failure before defaulting to pass. Real calls have rough edges — find them.\n- Common silent failures to check for explicitly on every call:\n  * Agent didn't summarise the agreed actions before closing the call.\n  * Agent didn't paraphrase the customer's issue back to confirm understanding.\n  * Agent used hedge language ('I think', 'probably', 'maybe', 'I'll try to', 'hopefully') instead of decisive language.\n  * Agent gave a vague timeline ('soon', 'shortly', 'as soon as I can') instead of a concrete one (a date, a number of hours, a named day).\n  * Agent missed an emotional beat (frustration, urgency, confusion, gratitude) without acknowledging it verbally.\n  * Agent let the customer drive the conversation instead of leading it (frequent dead air, customer repeating themselves, agent only reacting).\n  * Agent didn't confirm contact details or who is responsible for the next step.\n  * Agent said 'I'll try' instead of 'I will'.\n  * Agent revealed internal-only language (referring to team leads, internal systems, manager approval) on the customer-facing call.\n  * Agent talked over the customer or cut them off mid-sentence.\n  * Agent gave information that sounds uncertain (long pauses before answers, audible flipping through screens, 'um let me see').\n- If you cannot find clear positive evidence the agent met a criterion, fail it and state in the reason what they should have said or done."+
+      "\n\nGrade the agent against each criterion, and also provide:\n- A brief call summary (2-3 sentences describing what the call was about).\n- Constructive feedback written in a warm, coaching tone. Highlight what the agent did well first — quote a specific moment. Then areas to improve — quote specific moments. Don't sound robotic or generic.\n- Advisories: ALWAYS include something here. If there are genuine concerns (compliance issues, incorrect info, escalation problems), flag them clearly with a quote. If the call was good, note one specific strength and one minor opportunity. Never leave this empty.\n- Call type: determine if this was an 'Inbound' or 'Outbound' call based on the greeting and context.\n- Escalation: determine if the call was escalated or if the agent unnecessarily deferred to management.\n- A path to a perfect score (improvementPlan): a short, prioritised list of the specific, concrete things "+agentName.split(" ")[0]+" can do next time to turn the failed criteria into passes and reach a perfect 10/10 — base it strictly on what was actually graded, point to the real missed moments, and write it naturally like a coach would say it. If every criterion already passed, instead note the key strengths to keep doing to stay at that level."+
+      "\n\nRespond ONLY in this exact JSON format, no other text:\n{\"results\":[{\"id\":\"CRITERION_ID\",\"pass\":true/false,\"reason\":\"[MM:SS] <speaker>: '<quote>' — <judgement>; on a FAIL add a line break then '→ Try instead: ...'\"}],\"summary\":\"what the call was about\",\"feedback\":\"constructive coaching feedback with quoted moments\",\"advisories\":\"always provide something here\",\"improvementPlan\":\"prioritised, concrete steps to reach 10/10\",\"callType\":\"Inbound or Outbound\",\"escalated\":true/false,\"escalationJustified\":true/false/null,\"escalationNotes\":\"brief note on escalation or empty string\"}"+
       "\n\nThe agent's first name is: "+agentName.split(" ")[0]+". Only use their first name in feedback, summary, and advisories. Never use their last name."+
       "\n\nCriteria:\n"+teamCriteria.map(cr=>cr.id+": "+cr.label+(cr.guide?" - "+cr.guide:"")).join("\n")+
       "\n\nCall Transcript:\n"+transcript
@@ -9216,13 +9227,15 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
         const aiEscalated=parsed.escalated??null;
         const aiEscJustified=parsed.escalationJustified??null;
         const aiEscNotes=parsed.escalationNotes||"";
+        const aiImprove=parsed.improvementPlan||"";
         const mergedCriteria={...criteria,...newCriteria};
-        window[stateKey]={...window[stateKey],criteria:mergedCriteria,aiReasoning:newReasoning,callSummary:aiSummary||aiTranscript,notes:aiFeedback,advisories:aiAdvisories,callType:aiCallType,escalated:aiEscalated,escalationJustified:aiEscJustified,escalationNotes:aiEscNotes,aiStatus:"done",aiProgress:"Graded "+matched+" of "+criteriaIds.length+" criteria.",agentName};
+        window[stateKey]={...window[stateKey],criteria:mergedCriteria,aiReasoning:newReasoning,callSummary:aiSummary||aiTranscript,notes:aiFeedback,advisories:aiAdvisories,improvementPlan:aiImprove,callType:aiCallType,escalated:aiEscalated,escalationJustified:aiEscJustified,escalationNotes:aiEscNotes,aiStatus:"done",aiProgress:"Graded "+matched+" of "+criteriaIds.length+" criteria.",agentName};
         setCriteria(mergedCriteria);
         setAiReasoning(newReasoning);
         if(aiSummary)setCallSummary(aiSummary);
         if(aiFeedback)setNotes(aiFeedback);
         if(aiAdvisories)setAdvisories(aiAdvisories);
+        if(aiImprove)setImprovementPlan(aiImprove);
         if(aiCallType)setCallType(aiCallType);
         if(aiEscalated!==null)setEscalated(aiEscalated);
         if(aiEscJustified!==null)setEscalationJustified(aiEscJustified);
@@ -9248,7 +9261,7 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
         score,passed,
         month:(()=>{try{const d=new Date(callDate+"T00:00:00Z");return d.toLocaleString("en-NZ",{month:"long",year:"numeric",timeZone:"UTC"});}catch{return month;}})(),
         team:team||getPersonTeam(agentName)||"",
-        callLength,callType,callSummary,advisories,escalated,escalationJustified,escalationNotes,
+        callLength,callType,callSummary,advisories,improvementPlan,escalated,escalationJustified,escalationNotes,
         reviewedBy:currentUser?.displayName,
         submittedAt:nowNZ(),
         aiGraded:aiStatus==="done"?true:undefined,
@@ -9350,7 +9363,7 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
                     formData.append("file",aiAudioFile);
                     formData.append("model","whisper-1");
                     formData.append("language","en");
-                    formData.append("prompt","Bachcare. MSP. bach. Booking.com. Airbnb. VRBO. Intercom.");
+                    formData.append("prompt","Bachcare. MSP. bach. Booking.com. Airbnb. VRBO. Intercom. "+agentName+".");
                     formData.append("temperature","0");
                     formData.append("response_format","verbose_json");
                     formData.append("timestamp_granularities[]","segment");
@@ -9442,15 +9455,17 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
                     const aiEscalated=parsed.escalated??null;
                     const aiEscJustified=parsed.escalationJustified??null;
                     const aiEscNotes=parsed.escalationNotes||"";
+                    const aiImprove=parsed.improvementPlan||"";
                     // Write to window SYNCHRONOUSLY before any state updates trigger remount
                     const mergedCriteria={...criteria,...newCriteria};
-                    window[stateKey]={...window[stateKey],criteria:mergedCriteria,aiReasoning:newReasoning,aiTranscript:localTranscript,callSummary:aiSummary||localTranscript,callLength:localDuration||callLength,notes:aiFeedback,advisories:aiAdvisories,callType:aiCallType,escalated:aiEscalated,escalationJustified:aiEscJustified,escalationNotes:aiEscNotes,aiStatus:"done",aiProgress:"Graded "+matched+" of "+criteriaIds.length+" criteria.",agentName};
+                    window[stateKey]={...window[stateKey],criteria:mergedCriteria,aiReasoning:newReasoning,aiTranscript:localTranscript,callSummary:aiSummary||localTranscript,callLength:localDuration||callLength,notes:aiFeedback,advisories:aiAdvisories,improvementPlan:aiImprove,callType:aiCallType,escalated:aiEscalated,escalationJustified:aiEscJustified,escalationNotes:aiEscNotes,aiStatus:"done",aiProgress:"Graded "+matched+" of "+criteriaIds.length+" criteria.",agentName};
                     // Now update React state
                     setCriteria(mergedCriteria);
                     setAiReasoning(newReasoning);
                     if(aiSummary)setCallSummary(aiSummary);
                     if(aiFeedback)setNotes(aiFeedback);
                     if(aiAdvisories)setAdvisories(aiAdvisories);
+                    if(aiImprove)setImprovementPlan(aiImprove);
                     if(aiCallType)setCallType(aiCallType);
                     if(aiEscalated!==null)setEscalated(aiEscalated);
                     if(aiEscJustified!==null)setEscalationJustified(aiEscJustified);
@@ -11322,7 +11337,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
       {/* ═══ MAIN CONTENT AREA ═══ */}
       <div style={{flex:1,marginLeft:sbCollapsed?64:220,minHeight:"100vh",display:"flex",flexDirection:"column",background:tab==="case tracker"?SIDEBAR_BG:undefined}}>
         {/* Top selector bar */}
-        {tab!=="owner withdrawals"&&tab!=="case tracker"&&<div className="bc-page-topbar" style={{background:"#fff",borderBottom:"1px solid "+("#e5e7eb"),position:"sticky",top:0,zIndex:40,padding:"0 24px"}}>
+        {tab!=="owner withdrawals"&&tab!=="case tracker"&&<div className="bc-page-topbar" style={{background:SIDEBAR_BG,borderBottom:"1px solid rgba(255,255,255,.06)",position:"sticky",top:0,zIndex:40,padding:"0 24px"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",flexWrap:"wrap"}}>
             {(()=>{
               const onSched=tab==="schedule";
@@ -13651,7 +13666,7 @@ const teamMap={
             const getPartner=(tn,shift,key)=>{const sp=getSyncPairs(tn);if(shift==="morning")return sp[key]||null;return Object.entries(sp).find(([,v])=>v===key)?.[0]||null;};
             const moveField=(tn,shift,key,dir)=>{if(!isOwner){toast2("Only the owner can change the daily config.");return;}setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};const arr=[...c[tn][shift]];const idx=arr.findIndex(f=>f.k===key);const nIdx=idx+dir;if(nIdx<0||nIdx>=arr.length)return c;[arr[idx],arr[nIdx]]=[arr[nIdx],arr[idx]];c[tn][shift]=arr;var otherShift=shift==="morning"?"evening":"morning";const oArr=[...c[tn][otherShift]];const sp=getSyncPairs(tn);var partnerKey=null;if(shift==="morning")partnerKey=sp[key];else partnerKey=Object.entries(sp).find(([,v])=>v===key)?.[0]||null;if(!partnerKey)partnerKey=key;var oIdx=oArr.findIndex(f=>f.k===partnerKey);if(oIdx<0&&idx<oArr.length)oIdx=idx;if(oIdx>=0){const oNIdx=oIdx+dir;if(oNIdx>=0&&oNIdx<oArr.length){[oArr[oIdx],oArr[oNIdx]]=[oArr[oNIdx],oArr[oIdx]];c[tn][otherShift]=oArr;}}dbSaveConfigAll("dailycfg",c);return c;});};
             const startEdit=(tn,shift,f)=>{setDcEditField({team:tn,shift,key:f.k});setDcEditLabel(f.l);setDcEditType(f.t);};
-            const saveEdit=()=>{if(!dcEditField||!dcEditLabel.trim())return;setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[dcEditField.team]={...c[dcEditField.team]};c[dcEditField.team][dcEditField.shift]=c[dcEditField.team][dcEditField.shift].map(f=>f.k===dcEditField.key?{...f,l:dcEditLabel.trim(),t:dcEditType}:f);return c;});addAudit("Daily Config Edited",dcEditField.shift+" field: "+dcEditLabel.trim());setDcEditField(null);toast2("Field updated.");};
+            const saveEdit=()=>{if(!dcEditField||!dcEditLabel.trim())return;setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[dcEditField.team]={...c[dcEditField.team]};c[dcEditField.team][dcEditField.shift]=c[dcEditField.team][dcEditField.shift].map(f=>f.k===dcEditField.key?{...f,l:dcEditLabel.trim(),t:dcEditType}:f);dbSaveConfigAll("dailycfg",c);return c;});addAudit("Daily Config Edited",dcEditField.shift+" field: "+dcEditLabel.trim());setDcEditField(null);toast2("Field updated & saved.");};
             const isEditing=(tn,shift,key)=>dcEditField&&dcEditField.team===tn&&dcEditField.shift===shift&&dcEditField.key===key;
             const renderField=(tn,shift,f,fi,arrLen)=>{
               if(isEditing(tn,shift,f.k))return<div style={{display:"flex",alignItems:"center",gap:4,flex:1}}>
@@ -13665,7 +13680,10 @@ const teamMap={
               return<><span style={{fontSize:11,color:"#111827",flex:1}}>{f.l}</span><span style={{fontSize:9,color:"#6b7280"}}>{f.t}</span><button onClick={()=>startEdit(tn,shift,f)} style={{fontSize:9,color:"#2563eb",background:"none",border:"none",cursor:"pointer",padding:"0 1px"}}>✎</button><button onClick={()=>moveField(tn,shift,f.k,-1)} disabled={fi===0} style={{fontSize:9,color:fi===0?"#d1d5db":"#6b7280",background:"none",border:"none",cursor:fi===0?"default":"pointer",padding:"0 1px"}}>▲</button><button onClick={()=>moveField(tn,shift,f.k,1)} disabled={fi===arrLen-1} style={{fontSize:9,color:fi===arrLen-1?"#d1d5db":"#6b7280",background:"none",border:"none",cursor:fi===arrLen-1?"default":"pointer",padding:"0 1px"}}>▼</button><button onClick={()=>removeField(tn,shift,f.k)} style={{fontSize:9,color:"#dc2626",background:"none",border:"none",cursor:"pointer",padding:"0 1px"}}>✕</button></>;
             };
             return<div>{teams.map(tn=>{const tColor=tc[tn]?.color||"#6b7280";return<div key={tn} style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",marginBottom:16,overflow:"hidden"}}>
-              <div style={{padding:"12px 18px",borderBottom:"1px solid #f3f4f6",borderLeft:"4px solid "+tColor,fontWeight:700,fontSize:14,color:"#111827"}}>{tn}</div>
+              <div style={{padding:"12px 18px",borderBottom:"1px solid #f3f4f6",borderLeft:"4px solid "+tColor,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontWeight:700,fontSize:14,color:"#111827",flex:1}}>{tn}</span>
+                {isOwner&&dailyConfig&&<button onClick={()=>{dbSaveConfigAll("dailycfg",dailyConfig);try{localStorage.setItem("bc_mirror_dailycfg",JSON.stringify(dailyConfig));}catch(_){}toast2("Daily config saved to cloud — everyone will now see this.");}} style={{fontSize:11,color:"#0d9488",background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:6,padding:"4px 12px",cursor:"pointer",fontWeight:600}}>💾 Save to cloud</button>}
+              </div>
               <div style={{padding:"14px 18px"}}>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 110px 1fr",gap:10,marginBottom:8}}>
                   <div style={{fontSize:12,fontWeight:700,color:"#059669",padding:"0 0 6px"}}>Morning Fields</div>

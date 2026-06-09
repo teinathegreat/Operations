@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="2.9.2";
+const APP_VERSION="2.9.3";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -6074,9 +6074,10 @@ function App(){
     // data["Reputation and Resolutions"][w__N][kpiKey] so the existing dashboard tile picks it up.
   // v2.9.2 — Case Tracker upload. Parses the full snapshot CSV and replaces the stored dataset.
   // Owner (Teina) and admins only. Records who uploaded and when for the "last updated" banner.
-  const handleCaseTrackerFile=(e)=>{
-    const file=e.target.files&&e.target.files[0];if(!file){return;}
-    if(!(isAdmin||isOwner)){toast2("⚠ Only the owner or an admin can upload the Case Tracker.");if(caseTrackerFileRef.current)caseTrackerFileRef.current.value="";return;}
+  const processCaseTrackerFile=(file)=>{
+    if(!file){return;}
+    if(!(isAdmin||isOwner)){toast2("⚠ Only the owner or an admin can upload the Case Tracker.");return;}
+    if(!/\.csv$/i.test(file.name)&&file.type!=="text/csv"){toast2("⚠ Please drop a .csv file.");return;}
     const reader=new FileReader();
     reader.onload=(ev)=>{
       try{
@@ -6090,6 +6091,10 @@ function App(){
       }catch(err){console.error("Case Tracker parse error:",err);toast2("⚠ Could not parse that file. Check it's the Case Tracker CSV.");}
     };
     reader.readAsText(file,"utf-8");
+  };
+  const handleCaseTrackerFile=(e)=>{
+    const file=e.target.files&&e.target.files[0];
+    processCaseTrackerFile(file);
     e.target.value="";
   };
   const handleCsatFile=(e)=>{
@@ -8481,6 +8486,7 @@ function App(){
     const [ctResolved,setCtResolved]=React.useState("all");
     const [ctSortKey,setCtSortKey]=React.useState("Created");
     const [ctSortDir,setCtSortDir]=React.useState("desc");
+    const [ctDragging,setCtDragging]=React.useState(false);
 
     const distinct=(col)=>{const s=new Set();rows.forEach(r=>{const v=(r[col]||"").trim();if(v)s.add(v);});return [...s].sort();};
     const channels=distinct("Channel"),types=distinct("CaseType"),statuses=distinct("Status"),assignees=distinct("Assigned"),fundsStatuses=distinct("FundsStatus");
@@ -8596,28 +8602,41 @@ function App(){
       );
     };
 
-    // Sortable table column set (curated from the 40-column export)
+    // Column set with percentage widths (sums to 100) so the table fills the full page
+    // width with no horizontal scroll. Text-heavy columns (Property, Issue) wrap.
     const COLS=[
-      {k:"CaseID",label:"Case",w:80},
-      {k:"Customer",label:"Customer",w:150},
-      {k:"Channel",label:"Channel",w:110},
-      {k:"PropertyName",label:"Property",w:200},
-      {k:"Region",label:"Region",w:120},
-      {k:"CaseType",label:"Type",w:90},
-      {k:"SubCaseType",label:"Sub-type",w:130},
-      {k:"IssueDescription",label:"Issue",w:260},
-      {k:"Status",label:"Status",w:130},
-      {k:"Assigned",label:"Assigned",w:100},
-      {k:"CaseValue",label:"Value",w:90},
-      {k:"FundsStatus",label:"Funds",w:110},
-      {k:"ResolvedSatisfactorily",label:"Resolved",w:100},
-      {k:"Created",label:"Created",w:100}
+      {k:"CaseID",label:"Case",w:"4%"},
+      {k:"Customer",label:"Customer",w:"9%"},
+      {k:"Channel",label:"Channel",w:"8%"},
+      {k:"PropertyName",label:"Property",w:"13%"},
+      {k:"Region",label:"Region",w:"8%"},
+      {k:"CaseType",label:"Type",w:"6%"},
+      {k:"SubCaseType",label:"Sub-type",w:"8%"},
+      {k:"IssueDescription",label:"Issue",w:"14%"},
+      {k:"Status",label:"Status",w:"8%"},
+      {k:"Assigned",label:"Assigned",w:"6%"},
+      {k:"CaseValue",label:"Value",w:"6%"},
+      {k:"FundsStatus",label:"Funds",w:"7%"},
+      {k:"ResolvedSatisfactorily",label:"Resolved",w:"6%"},
+      {k:"Created",label:"Created",w:"7%"}
     ];
     const setSort=(k)=>{if(ctSortKey===k)setCtSortDir(d=>d==="asc"?"desc":"asc");else{setCtSortKey(k);setCtSortDir(["CaseValue","Created","CompletionDate"].includes(k)?"desc":"asc");}};
 
     return(
-      <div>
+      <div style={{position:"relative"}}
+        onDragOver={canUpload?(e=>{e.preventDefault();if(!ctDragging)setCtDragging(true);}):undefined}
+        onDragLeave={canUpload?(e=>{if(e.currentTarget.contains(e.relatedTarget))return;setCtDragging(false);}):undefined}
+        onDrop={canUpload?(e=>{e.preventDefault();setCtDragging(false);const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];if(f)processCaseTrackerFile(f);}):undefined}>
         <input ref={caseTrackerFileRef} type="file" accept=".csv,text/csv" style={{display:"none"}} onChange={handleCaseTrackerFile}/>
+        {canUpload&&ctDragging&&(
+          <div style={{position:"fixed",inset:0,zIndex:300,background:"rgba(13,148,136,.10)",backdropFilter:"blur(2px)",display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+            <div style={{background:"#fff",border:"2px dashed #0d9488",borderRadius:16,padding:"32px 48px",textAlign:"center",boxShadow:"0 12px 40px rgba(13,148,136,.2)"}}>
+              <div style={{fontSize:34,marginBottom:8}}>📁</div>
+              <div style={{fontSize:16,fontWeight:800,color:"#0d9488"}}>Drop to update the Case Tracker</div>
+              <div style={{fontSize:12.5,color:"#6b7280",marginTop:4}}>Release the CSV file to replace the current snapshot</div>
+            </div>
+          </div>
+        )}
 
         {/* Header / last-updated banner */}
         <div style={{...card,padding:"16px 20px",marginBottom:16,display:"flex",flexWrap:"wrap",alignItems:"center",gap:14}}>
@@ -8640,14 +8659,28 @@ function App(){
         </div>
 
         {rows.length===0?(
-          <div style={{...card,padding:"56px 24px",textAlign:"center"}}>
+          <div style={{...card,padding:"56px 24px",textAlign:"center",border:canUpload?("2px dashed "+(ctDragging?"#0d9488":"#cbd5e1")):"1px solid #e5e7eb",background:ctDragging?"#f0fdfa":"#fff",transition:"all .15s"}}>
             <div style={{width:60,height:60,margin:"0 auto 16px",borderRadius:16,background:"#f0fdfa",color:"#0d9488",display:"grid",placeItems:"center",fontSize:26}}>📁</div>
             <div style={{fontSize:17,fontWeight:700,color:"#111827",marginBottom:6}}>No case data yet</div>
-            <div style={{fontSize:13.5,color:"#6b7280",maxWidth:440,margin:"0 auto 18px",lineHeight:1.5}}>{canUpload?"Upload the Case Tracker CSV to see all your cases at a glance. Every upload replaces the snapshot and is shared with everyone who can view this page.":"The Case Tracker hasn't been uploaded yet. The owner or an admin can add it."}</div>
+            <div style={{fontSize:13.5,color:"#6b7280",maxWidth:460,margin:"0 auto 18px",lineHeight:1.5}}>{canUpload?"Drag & drop the Case Tracker CSV here, or click below to browse. Every upload replaces the snapshot and is shared with everyone who can view this page.":"The Case Tracker hasn't been uploaded yet. The owner or an admin can add it."}</div>
             {canUpload&&<button onClick={()=>caseTrackerFileRef.current&&caseTrackerFileRef.current.click()} style={{background:"#0d9488",border:"none",color:"#fff",padding:"10px 22px",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Choose CSV file</button>}
           </div>
         ):(
         <>
+          {/* Filters — moved to top so everything below reflects the current filter */}
+          <div style={{...card,padding:"12px 14px",marginBottom:14,display:"flex",flexWrap:"wrap",gap:10,alignItems:"center"}}>
+            <input type="search" value={ctSearch} onChange={e=>setCtSearch(e.target.value)} placeholder="Search customer, property, issue, ref…" style={{...selSty,flex:2,minWidth:220}}/>
+            <select value={ctChannel} onChange={e=>setCtChannel(e.target.value)} style={selSty}><option value="all">All channels</option>{channels.map(c=><option key={c}>{c}</option>)}</select>
+            <select value={ctType} onChange={e=>setCtType(e.target.value)} style={selSty}><option value="all">All types</option>{types.map(c=><option key={c}>{c}</option>)}</select>
+            <select value={ctStatus} onChange={e=>setCtStatus(e.target.value)} style={selSty}><option value="all">All statuses</option>{statuses.map(c=><option key={c}>{c}</option>)}</select>
+            <select value={ctAssigned} onChange={e=>setCtAssigned(e.target.value)} style={selSty}><option value="all">All assignees</option>{assignees.map(c=><option key={c}>{c}</option>)}</select>
+            <select value={ctFunds} onChange={e=>setCtFunds(e.target.value)} style={selSty}><option value="all">All funds status</option>{fundsStatuses.map(c=><option key={c}>{c}</option>)}</select>
+            <select value={ctKey} onChange={e=>setCtKey(e.target.value)} style={selSty}><option value="all">Key acct: any</option><option value="Yes">Key account</option><option value="No">Not key</option></select>
+            <select value={ctResolved} onChange={e=>setCtResolved(e.target.value)} style={selSty}><option value="all">Resolved: any</option><option value="Yes">Yes</option><option value="No">No</option><option value="Pending">Pending</option></select>
+            <span style={{fontSize:12,color:"#6b7280",fontWeight:500}}><strong style={{color:"#111827"}}>{filtered.length}</strong> of {rows.length}</span>
+            <button onClick={resetFilters} style={{background:"transparent",border:"1px solid #e5e7eb",color:"#6b7280",padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Reset</button>
+          </div>
+
           {/* Operational summary */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:14}}>
             <Stat label="Total cases" value={agg.n} sub={ctSearch||ctChannel!=="all"||ctType!=="all"||ctStatus!=="all"||ctAssigned!=="all"||ctFunds!=="all"||ctKey!=="all"||ctResolved!=="all"?"after filters":"in snapshot"}/>
@@ -8697,28 +8730,14 @@ function App(){
             <BreakCard title="Top regions" entries={countBy("Region",8)} accent="#1A3C7E" showBar/>
           </div>
 
-          {/* Filters */}
-          <div style={{...card,padding:"12px 14px",marginBottom:14,display:"flex",flexWrap:"wrap",gap:10,alignItems:"center"}}>
-            <input type="search" value={ctSearch} onChange={e=>setCtSearch(e.target.value)} placeholder="Search customer, property, issue, ref…" style={{...selSty,flex:2,minWidth:220}}/>
-            <select value={ctChannel} onChange={e=>setCtChannel(e.target.value)} style={selSty}><option value="all">All channels</option>{channels.map(c=><option key={c}>{c}</option>)}</select>
-            <select value={ctType} onChange={e=>setCtType(e.target.value)} style={selSty}><option value="all">All types</option>{types.map(c=><option key={c}>{c}</option>)}</select>
-            <select value={ctStatus} onChange={e=>setCtStatus(e.target.value)} style={selSty}><option value="all">All statuses</option>{statuses.map(c=><option key={c}>{c}</option>)}</select>
-            <select value={ctAssigned} onChange={e=>setCtAssigned(e.target.value)} style={selSty}><option value="all">All assignees</option>{assignees.map(c=><option key={c}>{c}</option>)}</select>
-            <select value={ctFunds} onChange={e=>setCtFunds(e.target.value)} style={selSty}><option value="all">All funds status</option>{fundsStatuses.map(c=><option key={c}>{c}</option>)}</select>
-            <select value={ctKey} onChange={e=>setCtKey(e.target.value)} style={selSty}><option value="all">Key acct: any</option><option value="Yes">Key account</option><option value="No">Not key</option></select>
-            <select value={ctResolved} onChange={e=>setCtResolved(e.target.value)} style={selSty}><option value="all">Resolved: any</option><option value="Yes">Yes</option><option value="No">No</option><option value="Pending">Pending</option></select>
-            <span style={{fontSize:12,color:"#6b7280",fontWeight:500}}><strong style={{color:"#111827"}}>{filtered.length}</strong> of {rows.length}</span>
-            <button onClick={resetFilters} style={{background:"transparent",border:"1px solid #e5e7eb",color:"#6b7280",padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Reset</button>
-          </div>
-
           {/* Table */}
           <div style={{...card,overflow:"hidden"}}>
             <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,tableLayout:"fixed"}}>
                 <thead>
                   <tr>
                     {COLS.map(c=>(
-                      <th key={c.k} onClick={()=>setSort(c.k)} style={{background:"#f8fafc",borderBottom:"2px solid #e5e7eb",padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:".4px",color:ctSortKey===c.k?"#0d9488":"#9ca3af",whiteSpace:"nowrap",cursor:"pointer",userSelect:"none",minWidth:c.w,position:"sticky",top:0}}>
+                      <th key={c.k} onClick={()=>setSort(c.k)} style={{background:"#f8fafc",borderBottom:"2px solid #e5e7eb",padding:"10px 10px",textAlign:"left",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:".4px",color:ctSortKey===c.k?"#0d9488":"#9ca3af",cursor:"pointer",userSelect:"none",width:c.w,position:"sticky",top:0}}>
                         {c.label}<span style={{marginLeft:4,opacity:ctSortKey===c.k?1:.4}}>{ctSortKey===c.k?(ctSortDir==="asc"?"↑":"↓"):"↕"}</span>
                       </th>
                     ))}
@@ -8732,20 +8751,20 @@ function App(){
                     const caseLink=(r.LinkToCase||"").trim();
                     return(
                       <tr key={(r.CaseID||"")+"_"+i} style={{borderBottom:"1px solid #f1f5f9",borderLeft:"3px solid "+chColor(r.Channel)}}>
-                        <td style={{padding:"9px 12px",fontWeight:600}}>{caseLink?<a href={caseLink} target="_blank" rel="noopener" style={{color:"#0d9488",textDecoration:"none"}}>{r.CaseID}</a>:r.CaseID}</td>
-                        <td style={{padding:"9px 12px",color:"#111827"}}>{r.Customer||"—"}{(r.KeyAccount||"").trim()==="Yes"&&<span style={{marginLeft:6,fontSize:9,fontWeight:800,background:"#ede9fe",color:"#6d28d9",padding:"1px 5px",borderRadius:4,verticalAlign:"middle"}}>KEY</span>}</td>
-                        <td style={{padding:"9px 12px"}}><span style={{display:"inline-flex",alignItems:"center",gap:6}}><span style={{width:9,height:9,borderRadius:3,background:chColor(r.Channel)}}/><span style={{color:"#374151"}}>{r.Channel||"—"}</span></span></td>
-                        <td style={{padding:"9px 12px",color:"#374151"}} title={r.PropertyName}>{(r.PropertyName||"—").length>40?(r.PropertyName.slice(0,40)+"…"):(r.PropertyName||"—")}</td>
-                        <td style={{padding:"9px 12px",color:"#6b7280"}}>{r.Region||"—"}</td>
-                        <td style={{padding:"9px 12px",color:"#374151",fontWeight:500}}>{r.CaseType||"—"}</td>
-                        <td style={{padding:"9px 12px",color:"#6b7280"}}>{r.SubCaseType||"—"}</td>
-                        <td style={{padding:"9px 12px",color:"#4b5563",lineHeight:1.4}} title={r.IssueDescription}>{(r.IssueDescription||"—").length>70?(r.IssueDescription.slice(0,70)+"…"):(r.IssueDescription||"—")}</td>
-                        <td style={{padding:"9px 12px"}}><span style={{background:sc.bg,color:sc.fg,fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20,whiteSpace:"nowrap"}}>{r.Status||"—"}</span></td>
-                        <td style={{padding:"9px 12px",color:"#374151"}}>{r.Assigned||"—"}</td>
-                        <td style={{padding:"9px 12px",fontWeight:700,color:money(r.CaseValue)?"#111827":"#d1d5db",textAlign:"right",whiteSpace:"nowrap"}}>{money(r.CaseValue)?fmtMoney(money(r.CaseValue)):"—"}</td>
-                        <td style={{padding:"9px 12px"}}>{(r.FundsStatus||"").trim()?<span style={{background:fc.bg,color:fc.fg,fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20,whiteSpace:"nowrap"}}>{r.FundsStatus}</span>:"—"}</td>
-                        <td style={{padding:"9px 12px"}}><span style={{background:resC.bg,color:resC.fg,fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20}}>{res||"—"}</span></td>
-                        <td style={{padding:"9px 12px",color:"#6b7280",whiteSpace:"nowrap"}}>{dateStr(r.Created)||"—"}</td>
+                        <td style={{padding:"8px 10px",fontWeight:600,verticalAlign:"top"}}>{caseLink?<a href={caseLink} target="_blank" rel="noopener" style={{color:"#0d9488",textDecoration:"none"}}>{r.CaseID}</a>:r.CaseID}</td>
+                        <td style={{padding:"8px 10px",color:"#111827",verticalAlign:"top",wordBreak:"break-word"}}>{r.Customer||"—"}{(r.KeyAccount||"").trim()==="Yes"&&<span style={{marginLeft:6,fontSize:9,fontWeight:800,background:"#ede9fe",color:"#6d28d9",padding:"1px 5px",borderRadius:4,whiteSpace:"nowrap"}}>KEY</span>}</td>
+                        <td style={{padding:"8px 10px",verticalAlign:"top"}}><span style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:9,height:9,borderRadius:3,background:chColor(r.Channel),flexShrink:0}}/><span style={{color:"#374151",wordBreak:"break-word"}}>{r.Channel||"—"}</span></span></td>
+                        <td style={{padding:"8px 10px",color:"#374151",verticalAlign:"top",wordBreak:"break-word"}} title={r.PropertyName}>{r.PropertyName||"—"}</td>
+                        <td style={{padding:"8px 10px",color:"#6b7280",verticalAlign:"top",wordBreak:"break-word"}}>{r.Region||"—"}</td>
+                        <td style={{padding:"8px 10px",color:"#374151",fontWeight:500,verticalAlign:"top"}}>{r.CaseType||"—"}</td>
+                        <td style={{padding:"8px 10px",color:"#6b7280",verticalAlign:"top",wordBreak:"break-word"}}>{r.SubCaseType||"—"}</td>
+                        <td style={{padding:"8px 10px",color:"#4b5563",lineHeight:1.4,verticalAlign:"top",wordBreak:"break-word"}} title={r.IssueDescription}>{r.IssueDescription||"—"}</td>
+                        <td style={{padding:"8px 10px",verticalAlign:"top"}}><span style={{background:sc.bg,color:sc.fg,fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:10,display:"inline-block"}}>{r.Status||"—"}</span></td>
+                        <td style={{padding:"8px 10px",color:"#374151",verticalAlign:"top",wordBreak:"break-word"}}>{r.Assigned||"—"}</td>
+                        <td style={{padding:"8px 10px",fontWeight:700,color:money(r.CaseValue)?"#111827":"#d1d5db",textAlign:"right",verticalAlign:"top",whiteSpace:"nowrap"}}>{money(r.CaseValue)?fmtMoney(money(r.CaseValue)):"—"}</td>
+                        <td style={{padding:"8px 10px",verticalAlign:"top"}}>{(r.FundsStatus||"").trim()?<span style={{background:fc.bg,color:fc.fg,fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:10,display:"inline-block"}}>{r.FundsStatus}</span>:"—"}</td>
+                        <td style={{padding:"8px 10px",verticalAlign:"top"}}><span style={{background:resC.bg,color:resC.fg,fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:10,display:"inline-block"}}>{res||"—"}</span></td>
+                        <td style={{padding:"8px 10px",color:"#6b7280",verticalAlign:"top",whiteSpace:"nowrap"}}>{dateStr(r.Created)||"—"}</td>
                       </tr>
                     );
                   }):<tr><td colSpan={COLS.length} style={{padding:"40px",textAlign:"center",color:"#9ca3af"}}>No cases match the current filters.</td></tr>}
@@ -11289,7 +11308,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
       {/* ═══ MAIN CONTENT AREA ═══ */}
       <div style={{flex:1,marginLeft:sbCollapsed?64:220,minHeight:"100vh",display:"flex",flexDirection:"column"}}>
         {/* Top selector bar */}
-        {tab!=="owner withdrawals"&&<div className="bc-page-topbar" style={{background:"#fff",borderBottom:"1px solid "+("#e5e7eb"),position:"sticky",top:0,zIndex:40,padding:"0 24px"}}>
+        {tab!=="owner withdrawals"&&tab!=="case tracker"&&<div className="bc-page-topbar" style={{background:"#fff",borderBottom:"1px solid "+("#e5e7eb"),position:"sticky",top:0,zIndex:40,padding:"0 24px"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",flexWrap:"wrap"}}>
             {(()=>{
               const onSched=tab==="schedule";
@@ -11472,7 +11491,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             <button onClick={()=>setTab("audit")} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"4px 14px",fontSize:12,cursor:"pointer",marginLeft:4,fontWeight:500}}>Review</button>
           </div>
         )}
-        <div key={tab} className="bc-page-fade" style={{maxWidth:(tab==="planner"||tab==="owner withdrawals"||tab==="reviews")?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":(tab==="owner withdrawals"?"0":"24px 28px"),width:tab==="owner withdrawals"?"100%":undefined}}>
+        <div key={tab} className="bc-page-fade" style={{maxWidth:(tab==="planner"||tab==="owner withdrawals"||tab==="reviews"||tab==="case tracker")?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":(tab==="owner withdrawals"?"0":"24px 28px"),width:tab==="owner withdrawals"?"100%":undefined}}>
 
         {/* Profile View takes over main content */}
         {tab==="dashboard"&&isAdmin&&(

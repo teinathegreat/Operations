@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.0.0";
+const APP_VERSION="3.0.1";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -2727,25 +2727,6 @@ const migrateRoster=(rosterIn)=>{
 // loadStore removed — Supabase is the only data source
 // localStorage removed - Supabase is single source of truth
 
-// v2.9.2 — Quote-aware CSV parser for the Case Tracker snapshot. Preserves the original
-// header names (and order) so the table can display every column and links survive intact.
-// Handles quoted fields with embedded commas and "" escapes. Strips BOM.
-const parseCaseTrackerCSV=(text)=>{
-  text=String(text||"").replace(/^\uFEFF/,"");
-  const rows=[];let cur="",row=[],inQ=false,i=0;
-  while(i<text.length){const c=text[i];
-    if(inQ){if(c==='"'&&text[i+1]==='"'){cur+='"';i+=2;continue;}if(c==='"'){inQ=false;i++;continue;}cur+=c;i++;continue;}
-    if(c==='"'){inQ=true;i++;continue;}
-    if(c===','){row.push(cur);cur="";i++;continue;}
-    if(c==='\r'){i++;continue;}
-    if(c==='\n'){row.push(cur);rows.push(row);row=[];cur="";i++;continue;}
-    cur+=c;i++;}
-  if(cur.length||row.length){row.push(cur);rows.push(row);}
-  if(!rows.length)return{headers:[],rows:[]};
-  const headers=rows[0].map(h=>String(h).trim());
-  const out=rows.slice(1).filter(r=>r.some(c=>String(c).trim()!=="")).map(r=>{const o={};headers.forEach((h,idx)=>{o[h]=(r[idx]??"").trim();});return o;});
-  return{headers,rows:out};
-};
 const parseCSV=(text)=>{const lines=text.trim().split(/\r?\n/).map(l=>l.trim()).filter(Boolean);if(lines.length<2)return[];const hdrs=lines[0].split(",").map(h=>h.trim().replace(/^"|"$/g,"").toLowerCase().replace(/\s+/g,"_"));return lines.slice(1).map(line=>{const vals=[];let cur="";let inQ=false;for(const c of line){if(c==='"'){inQ=!inQ;}else if(c===','&&!inQ){vals.push(cur.trim());cur="";}else cur+=c;}vals.push(cur.trim());const o={};hdrs.forEach((h,i)=>{o[h]=vals[i]||"";});return o;});};
 
 function Badge({pass}){
@@ -3442,9 +3423,6 @@ function App(){
   // daily config. Prevents a SECOND admin's stale session from ever reverting these. (Teina is
   // already the designated super-admin elsewhere, e.g. the version editor.)
   const isOwner=currentUser?.username==="Teina";
-  // Single source of truth for the sidebar background. The Case Tracker page background
-  // references this same value so it ALWAYS matches the sidebar — change it once, both update.
-  const SIDEBAR_BG="linear-gradient(180deg,#111827 0%,#0f172a 100%)";
   const isLeader=currentUser?.role==="leader";
   const isGuest=currentUser?.role==="guest";
   const[pw,setPw]=useState("");const[pwErr,setPwErr]=useState("");const[showPw,setShowPw]=useState(false);
@@ -3488,8 +3466,8 @@ function App(){
   React.useEffect(()=>{
     const TAB_GROUPS={
       "daily":"tasks","to-do list":"tasks","action list":"tasks","planner":"tasks",
-      "dashboard":"insights","people":"insights","leaderboard":"insights","schedule":"insights","reports":"insights",
-      "call reviews":"quality","reviews":"quality","case tracker":"quality","owner withdrawals":"quality",
+      "dashboard":"insights","people":"insights","leaderboard":"insights","schedule":"insights","reports":"insights","reviews":"insights",
+      "call reviews":"quality","owner withdrawals":"quality",
       "quick references":"more",
       "settings":"admin","export":"admin","accounts":"admin","audit":"admin","weights":"admin","kpi targets":"admin","capabilities":"admin","daily config":"admin","review criteria":"admin"
     };
@@ -3872,7 +3850,7 @@ function App(){
   ];
   const[dailyReports,setDailyReports]=useState(()=>{return[];});
 
-  const[dailyConfig,setDailyConfig]=useState(()=>{try{const m=localStorage.getItem("bc_mirror_dailycfg");if(m){const p=JSON.parse(m);if(p&&typeof p==="object"&&Object.keys(p).length)return p;}}catch(_){}return null;});
+  const[dailyConfig,setDailyConfig]=useState(()=>{return null;});
   const getDailyFields=(tn)=>(dailyConfig||DEFAULT_DAILY_CONFIG)[tn]||null;
   const[capCriteria,setCapCriteria]=useState(()=>{return{};});
   const[assessHistory,setAssessHistory]=useState(()=>{return[];});
@@ -4009,13 +3987,6 @@ function App(){
   // Each q is 1-5; percent = (q1+q2+q3+q4)/20 * 100 (rounded). Aggregated by FY25 week into
   // data["Reputation and Resolutions"][w__N].post_case_csat for the R&R dashboard KPI tile.
   const[csatData,setCsatData]=useState(()=>mirrorRead("csat",{responses:[]}));
-
-  // v2.9.2 — Case Tracker. A single snapshot dataset uploaded by Teina/admin whenever there's
-  // an update. Stored as one logical blob (casetracker:data) exactly like csat. Shape:
-  // { rows:[{...rawColumns}], headers:[...orderedHeaderNames], lastUpdated:ISO, uploadedBy, fileName, count }
-  // Replace semantics — each upload swaps the whole snapshot, so size stays bounded (~150KB).
-  const caseTrackerFileRef=useRef();
-  const[caseTracker,setCaseTracker]=useState(()=>mirrorRead("casetracker",{rows:[],headers:[],lastUpdated:null,uploadedBy:null,fileName:null,count:0}));
 
   // v2.9.1 — Run-once migration: add Akash Chaturvedi to Owner Support roster and
   // consolidate any data stored under name variants ("Akash", "Chaturvedi", "Akash C"
@@ -4576,7 +4547,7 @@ function App(){
     setSbMsg("Loading from Supabase...");
     try{
       // Load row-level tables + config from config_rows
-      const[cr2,ai2,td2,dr2,mn2,fm2,ah2,gl2,au2,nf2,aa2,pb2,pc2,ms2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence,rc_tgt,rc_rej,rc_tl,rc_csat,rc_ct]=await Promise.all([
+      const[cr2,ai2,td2,dr2,mn2,fm2,ah2,gl2,au2,nf2,aa2,pb2,pc2,ms2,rc_caps,rc_cc,rc_qn,rc_ob,rc_pm,rc_dc,rc_as,rc_sd,rc_id,rc_ip,rc_wt,rc_rcc,rc_sys,rc_presence,rc_tgt,rc_rej,rc_tl,rc_csat]=await Promise.all([
         dbLoadAll("call_reviews"),dbLoadAll("action_items"),dbLoadAll("todos"),dbLoadAll("daily_reports"),
         dbLoadAll("meeting_notes"),dbLoadAll("formal_meetings"),dbLoadAll("assess_history"),dbLoadAll("goals"),
         dbLoadAll("audit_entries"),dbLoadAll("notif_entries"),dbLoadAll("alert_entries"),
@@ -4585,7 +4556,7 @@ function App(){
         dbLoadConfig("perms"),dbLoadConfig("dailycfg"),dbLoadConfig("snooze"),
         dbLoadConfig("sched"),dbLoadConfig("ic"),dbLoadConfig("icppt"),
         dbLoadConfig("weights"),dbLoadConfig("revcrit"),dbLoadConfig("sys"),dbLoadConfig("presence"),dbLoadConfig("tgt"),
-        dbLoadConfig("rejcalls"),dbLoadConfig("timeline"),dbLoadConfig("csat"),dbLoadConfig("casetracker")
+        dbLoadConfig("rejcalls"),dbLoadConfig("timeline"),dbLoadConfig("csat")
       ]);
       // sys config holds app_data, accounts, api_keys, quick_refs, update_notes, etc.
       const sysConf=rc_sys||{};
@@ -4700,8 +4671,6 @@ function App(){
       if(rc_tl&&typeof rc_tl==="object")setDailyTimelineData(rc_tl);
       // v2.5.9 — csat is stored as a single key (csat:data), so rc_csat is {data: {responses:[...]}}.
       if(rc_csat&&rc_csat.data&&typeof rc_csat.data==="object"&&(Array.isArray(rc_csat.data.responses)||Array.isArray(rc_csat.data.post_case)||Array.isArray(rc_csat.data.claim)||Array.isArray(rc_csat.data.in_stay)))setCsatData(rc_csat.data);
-      // v2.9.2 — casetracker is a single key (casetracker:data); rc_ct is {data:{rows,...}}.
-      if(rc_ct&&rc_ct.data&&typeof rc_ct.data==="object"&&Array.isArray(rc_ct.data.rows))setCaseTracker(rc_ct.data);
       if(f_wt&&typeof f_wt==="object"){
         // v2.4.4: Skip teams whose weights have an unsaved local edit in flight,
         // otherwise the stale DB read clobbers the user's change and the weight
@@ -4930,7 +4899,6 @@ function App(){
           const rjv=await dbLoadConfig("rejcalls");if(rjv&&typeof rjv==="object"&&!dirtyHasPrefix("rejcalls"))setRejectedCallsData(rjv);
           const tlv=await dbLoadConfig("timeline");if(tlv&&typeof tlv==="object"&&!dirtyHasPrefix("timeline"))setDailyTimelineData(tlv);
           const csv2=await dbLoadConfig("csat");if(csv2&&csv2.data&&typeof csv2.data==="object"&&(Array.isArray(csv2.data.responses)||Array.isArray(csv2.data.post_case)||Array.isArray(csv2.data.claim)||Array.isArray(csv2.data.in_stay))&&!dirtyConfigRef.current.has("csat:data"))setCsatData(csv2.data);
-          const ctv=await dbLoadConfig("casetracker");if(ctv&&ctv.data&&typeof ctv.data==="object"&&Array.isArray(ctv.data.rows)&&!dirtyConfigRef.current.has("casetracker:data"))setCaseTracker(ctv.data);
           // Backfill call reviews a stranded session may have missed. MERGE (not replace): server rows win,
           // but any review created locally and not yet returned by the read is preserved — so this can never
           // make a just-submitted review vanish.
@@ -5081,7 +5049,6 @@ function App(){
           else if(prefix==="revcrit")objMerge(setReviewCriteriaConfig);
           else if(prefix==="tgt")objMerge(setTgtOwners);
           else if(prefix==="csat"){if(key==="data"&&value&&typeof value==="object"&&(Array.isArray(value.responses)||Array.isArray(value.post_case)||Array.isArray(value.claim)||Array.isArray(value.in_stay))){if(!dirtyConfigRef.current.has(row.id)){setCsatData(value);try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}}}}
-          else if(prefix==="casetracker"){if(key==="data"&&value&&typeof value==="object"&&Array.isArray(value.rows)){if(!dirtyConfigRef.current.has(row.id)){setCaseTracker(value);try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}}}}
           else if(prefix==="sys"){
             if(key==="app_data"&&value&&typeof value==="object"){
               // v2.4.3: app_data is now JUST data (no _tc/_r). Strip them in case an old client wrote them.
@@ -5145,9 +5112,6 @@ function App(){
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("capcrit"))return;Object.entries(capCriteria).forEach(([k,v])=>dbSaveConfigKey("capcrit",k,v));},[capCriteria]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("perms"))return;Object.entries(permissions).forEach(([k,v])=>dbSaveConfigKey("perms",k,v));},[permissions]);
   useEffect(()=>{if(!saveEnabled.current||!isOwner||!dailyConfig||!isCloudConfirmed("dailycfg"))return;Object.entries(dailyConfig).forEach(([k,v])=>dbSaveConfigKey("dailycfg",k,v));},[dailyConfig]);
-  // Mirror the daily config locally (all users) so a fresh load restores the last-known
-  // config instantly instead of falling back to DEFAULT_DAILY_CONFIG before Supabase responds.
-  useEffect(()=>{try{if(dailyConfig&&Object.keys(dailyConfig).length)localStorage.setItem("bc_mirror_dailycfg",JSON.stringify(dailyConfig));}catch(_){}},[dailyConfig]);
   useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("notes"))return;Object.entries(quickNotes).forEach(([k,v])=>dbSaveConfigKey("notes",k,v));},[quickNotes]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("sys"))return;dbSaveConfigKey("sys","quick_refs",quickRefs);},[quickRefs]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("sys"))return;dbSaveConfigKey("sys","update_notes",updateNotes);},[updateNotes]);
@@ -5163,7 +5127,6 @@ function App(){
   // Since 2.5.9/2.6.0/2.6.8 we use {post_case,claim,in_stay} buckets, so the old gate never fired
   // and CSAT uploads were silently dropped on refresh. Now we accept either shape.
   useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("csat"))return;if(!csatData||typeof csatData!=="object")return;const hasResponses=Array.isArray(csatData.responses);const hasBuckets=Array.isArray(csatData.post_case)||Array.isArray(csatData.claim)||Array.isArray(csatData.in_stay);if(!hasResponses&&!hasBuckets)return;dbSaveConfigKey("csat","data",csatData);},[csatData]);
-  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("casetracker"))return;if(!caseTracker||typeof caseTracker!=="object"||!Array.isArray(caseTracker.rows))return;dbSaveConfigKey("casetracker","data",caseTracker);},[caseTracker]);
   useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("timeline"))return;Object.entries(dailyTimelineData).forEach(([k,v])=>dbSaveConfigKey("timeline",k,v));},[dailyTimelineData]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("weights"))return;Object.entries(allWeights).forEach(([k,v])=>dbSaveConfigKey("weights",k,v));},[allWeights]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("sys"))return;dbSaveConfigKey("sys","call_review_teams",callReviewTeams);},[callReviewTeams]);
@@ -5193,7 +5156,6 @@ function App(){
   useEffect(()=>{try{localStorage.setItem("bc_mirror_tc",JSON.stringify(tc));}catch(e){console.warn("tc mirror failed:",e?.message);}},[tc]);
   useEffect(()=>{try{localStorage.setItem("bc_mirror_roster",JSON.stringify(roster));}catch(e){console.warn("roster mirror failed:",e?.message);}},[roster]);
   useEffect(()=>{try{localStorage.setItem("bc_mirror_csat",JSON.stringify(csatData));}catch(e){console.warn("csat mirror failed:",e?.message);}},[csatData]);
-  useEffect(()=>{try{localStorage.setItem("bc_mirror_casetracker",JSON.stringify(caseTracker));}catch(e){console.warn("casetracker mirror failed:",e?.message);}},[caseTracker]);
   useEffect(()=>{try{localStorage.setItem("bc_mirror_ic",JSON.stringify(icData));}catch(e){console.warn("ic mirror failed:",e?.message);}},[icData]);
   useEffect(()=>{try{localStorage.setItem("bc_mirror_sched",JSON.stringify(schedData));}catch(e){console.warn("sched mirror failed:",e?.message);}},[schedData]);
   useEffect(()=>{try{localStorage.setItem("bc_mirror_weights",JSON.stringify(allWeights));}catch(e){console.warn("weights mirror failed:",e?.message);}},[allWeights]);
@@ -6078,31 +6040,6 @@ function App(){
     // Per-response percent = sum / (5 × Nquestions) × 100. Responses deduped by form ID, stored
     // separately per type in csatData, aggregated by FY25 week and pushed into
     // data["Reputation and Resolutions"][w__N][kpiKey] so the existing dashboard tile picks it up.
-  // v2.9.2 — Case Tracker upload. Parses the full snapshot CSV and replaces the stored dataset.
-  // Owner (Teina) and admins only. Records who uploaded and when for the "last updated" banner.
-  const processCaseTrackerFile=(file)=>{
-    if(!file){return;}
-    if(!(isAdmin||isOwner)){toast2("⚠ Only the owner or an admin can upload the Case Tracker.");return;}
-    if(!/\.csv$/i.test(file.name)&&file.type!=="text/csv"){toast2("⚠ Please drop a .csv file.");return;}
-    const reader=new FileReader();
-    reader.onload=(ev)=>{
-      try{
-        const {headers,rows}=parseCaseTrackerCSV(ev.target.result);
-        if(!rows.length){toast2("⚠ Case Tracker: no data rows found in that file.");return;}
-        if(!headers.includes("CaseID")){toast2("⚠ That doesn't look like a Case Tracker export (no CaseID column).");return;}
-        const snap={rows,headers,lastUpdated:new Date().toISOString(),uploadedBy:currentUser?.displayName||currentUser?.username||"Unknown",fileName:file.name,count:rows.length};
-        setCaseTracker(snap);
-        addAudit("Case Tracker Updated",`${rows.length} cases imported from ${file.name}`);
-        toast2(`✓ Case Tracker updated — ${rows.length} cases loaded.`);
-      }catch(err){console.error("Case Tracker parse error:",err);toast2("⚠ Could not parse that file. Check it's the Case Tracker CSV.");}
-    };
-    reader.readAsText(file,"utf-8");
-  };
-  const handleCaseTrackerFile=(e)=>{
-    const file=e.target.files&&e.target.files[0];
-    processCaseTrackerFile(file);
-    e.target.value="";
-  };
   const handleCsatFile=(e)=>{
     if(!isAdmin)return toast2("Only admins can upload reports.");
     const file=e.target.files[0];if(!file)return;
@@ -7440,7 +7377,7 @@ function App(){
     );
   }
 
-  const TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Reviews","Case Tracker","Call Reviews","Owner Withdrawals","Quick References","Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"];
+  const TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Reviews","Call Reviews","Owner Withdrawals","Quick References","Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"];
   const ePK=exPt==="month"?`m__${exMo}`:`w__${exWk}`;
 
 
@@ -8464,337 +8401,6 @@ function App(){
   }
 
 
-  // v2.9.2 — Case Tracker tab. Renders the uploaded case snapshot at a glance: last-updated
-  // banner, operational + financial summary cards, channel distribution, breakdown grids and a
-  // filterable/sortable table. Upload (replace snapshot) is owner/admin only and lives at the top.
-  function CaseTrackerTab(){
-    const CH={
-      "Airbnb":"#F83056","Booking.com":"#012864","VRBO":"#1A3C7E","Vrbo":"#1A3C7E",
-      "Bachcare":"#7838E3","Direct":"#7838E3"
-    };
-    const chColor=(c)=>CH[c]||CH[(c||"").trim()]||"#6b7280";
-    const money=(s)=>{const n=parseFloat(String(s==null?"":s).replace(/[$,\s]/g,""));return isNaN(n)?0:n;};
-    const fmtMoney=(n)=>"$"+Number(n||0).toLocaleString("en-NZ",{minimumFractionDigits:2,maximumFractionDigits:2});
-    const fmtMoneyShort=(n)=>"$"+Number(Math.round(n||0)).toLocaleString("en-NZ");
-    const dateStr=(s)=>{const t=String(s||"").trim();if(!t)return "";return t.split(" ")[0];};
-    const dateSort=(s)=>{const d=dateStr(s);const m=d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);if(!m)return 0;let[,dd,mm,yy]=m;yy=+yy<100?2000+(+yy):+yy;return new Date(yy,(+mm)-1,+dd).getTime();};
-
-    const rows=Array.isArray(caseTracker?.rows)?caseTracker.rows:[];
-    const meta=caseTracker||{};
-
-    const [ctSearch,setCtSearch]=React.useState("");
-    const [ctChannel,setCtChannel]=React.useState("all");
-    const [ctType,setCtType]=React.useState("all");
-    const [ctStatus,setCtStatus]=React.useState("all");
-    const [ctAssigned,setCtAssigned]=React.useState("all");
-    const [ctFunds,setCtFunds]=React.useState("all");
-    const [ctKey,setCtKey]=React.useState("all");
-    const [ctResolved,setCtResolved]=React.useState("all");
-    const [ctSortKey,setCtSortKey]=React.useState("Created");
-    const [ctSortDir,setCtSortDir]=React.useState("desc");
-    const [ctDragging,setCtDragging]=React.useState(false);
-
-    const distinct=(col)=>{const s=new Set();rows.forEach(r=>{const v=(r[col]||"").trim();if(v)s.add(v);});return [...s].sort();};
-    const channels=distinct("Channel"),types=distinct("CaseType"),statuses=distinct("Status"),assignees=distinct("Assigned"),fundsStatuses=distinct("FundsStatus");
-
-    const filtered=React.useMemo(()=>{
-      const q=ctSearch.trim().toLowerCase();
-      return rows.filter(r=>{
-        if(ctChannel!=="all"&&(r.Channel||"").trim()!==ctChannel)return false;
-        if(ctType!=="all"&&(r.CaseType||"").trim()!==ctType)return false;
-        if(ctStatus!=="all"&&(r.Status||"").trim()!==ctStatus)return false;
-        if(ctAssigned!=="all"&&(r.Assigned||"").trim()!==ctAssigned)return false;
-        if(ctFunds!=="all"&&(r.FundsStatus||"").trim()!==ctFunds)return false;
-        if(ctKey!=="all"&&(r.KeyAccount||"").trim()!==ctKey)return false;
-        if(ctResolved!=="all"&&(r.ResolvedSatisfactorily||"").trim()!==ctResolved)return false;
-        if(q){const blob=[r.CaseID,r.Customer,r.PropertyName,r.PropertyID,r.Region,r.IssueDescription,r.MSPFullName,r.Assigned,r.ENTBookingRef,r.ThirdPartyReference].join(" ").toLowerCase();if(!blob.includes(q))return false;}
-        return true;
-      });
-    },[rows,ctSearch,ctChannel,ctType,ctStatus,ctAssigned,ctFunds,ctKey,ctResolved]);
-
-    const sorted=React.useMemo(()=>{
-      const moneyCols=new Set(["CaseValue","GelFunded","OwnerFunded","GuestRecovered","FundingVariance"]);
-      const numCols=new Set(["Days","WorkingDaysToComplete","TimesReopened","CaseID"]);
-      const dateCols=new Set(["Created","CompletionDate","CheckInDate","CheckOutDate","Modified","LastActioned"]);
-      return [...filtered].sort((a,b)=>{
-        let av=a[ctSortKey],bv=b[ctSortKey];
-        if(moneyCols.has(ctSortKey)){av=money(av);bv=money(bv);}
-        else if(numCols.has(ctSortKey)){av=parseFloat(av)||0;bv=parseFloat(bv)||0;}
-        else if(dateCols.has(ctSortKey)){av=dateSort(av);bv=dateSort(bv);}
-        else {av=String(av||"").toLowerCase();bv=String(bv||"").toLowerCase();}
-        if(av<bv)return ctSortDir==="asc"?-1:1;
-        if(av>bv)return ctSortDir==="asc"?1:-1;
-        return 0;
-      });
-    },[filtered,ctSortKey,ctSortDir]);
-
-    // Aggregates (over filtered set)
-    const agg=React.useMemo(()=>{
-      const f=filtered;const n=f.length;
-      const completed=f.filter(r=>(r.Status||"").trim()==="Completed").length;
-      const open=n-completed;
-      const claims=f.filter(r=>(r.CaseType||"").trim()==="Claim").length;
-      const feedback=f.filter(r=>(r.CaseType||"").trim()==="Feedback").length;
-      const reopened=f.filter(r=>(r.Reopened||"").trim().toLowerCase()==="yes").length;
-      const tlReview=f.filter(r=>(r.TLReviewNeeded||"").trim().toUpperCase()==="TRUE").length;
-      const resYes=f.filter(r=>(r.ResolvedSatisfactorily||"").trim()==="Yes").length;
-      const resPend=f.filter(r=>(r.ResolvedSatisfactorily||"").trim()==="Pending").length;
-      const resKnown=f.filter(r=>["Yes","No"].includes((r.ResolvedSatisfactorily||"").trim())).length;
-      const resPct=resKnown?Math.round(resYes/resKnown*100):null;
-      const keyAcct=f.filter(r=>(r.KeyAccount||"").trim()==="Yes").length;
-      const caseValue=f.reduce((s,r)=>s+money(r.CaseValue),0);
-      const gel=f.reduce((s,r)=>s+money(r.GelFunded),0);
-      const owner=f.reduce((s,r)=>s+money(r.OwnerFunded),0);
-      const guest=f.reduce((s,r)=>s+money(r.GuestRecovered),0);
-      const fundsSettled=f.filter(r=>(r.FundsStatus||"").trim()==="Settled").length;
-      const fundsPending=f.filter(r=>(r.FundsStatus||"").trim()==="Pending").length;
-      const fundsWritten=f.filter(r=>(r.FundsStatus||"").trim()==="Written Off").length;
-      const daysArr=f.map(r=>parseFloat(r.WorkingDaysToComplete)).filter(v=>!isNaN(v));
-      const avgDays=daysArr.length?(daysArr.reduce((s,v)=>s+v,0)/daysArr.length):null;
-      const byChannel={};f.forEach(r=>{const c=(r.Channel||"Unknown").trim()||"Unknown";byChannel[c]=(byChannel[c]||0)+1;});
-      return {n,completed,open,claims,feedback,reopened,tlReview,resYes,resPend,resPct,keyAcct,caseValue,gel,owner,guest,fundsSettled,fundsPending,fundsWritten,avgDays,byChannel};
-    },[filtered]);
-
-    const countBy=(col,limit)=>{const m={};filtered.forEach(r=>{const v=(r[col]||"").trim()||"(blank)";m[v]=(m[v]||0)+1;});let e=Object.entries(m).sort((a,b)=>b[1]-a[1]);if(limit)e=e.slice(0,limit);return e;};
-
-    const resetFilters=()=>{setCtSearch("");setCtChannel("all");setCtType("all");setCtStatus("all");setCtAssigned("all");setCtFunds("all");setCtKey("all");setCtResolved("all");};
-
-    const statusColor=(s)=>{const t=(s||"").trim();if(t==="Completed")return{bg:"#dcfce7",fg:"#15803d"};if(t==="New"||t==="More Info Needed"||t==="Quote/Book")return{bg:"#fef3c7",fg:"#b45309"};if(t==="Airbnb Esc / Dispute"||t==="Push Back"||t==="Pending Finance")return{bg:"#fee2e2",fg:"#dc2626"};return{bg:"#e0e7ff",fg:"#4338ca"};};
-    const fundsColor=(s)=>{const t=(s||"").trim();if(t==="Settled")return{bg:"#dcfce7",fg:"#15803d"};if(t==="Pending")return{bg:"#fef3c7",fg:"#b45309"};if(t==="Written Off")return{bg:"#fee2e2",fg:"#dc2626"};return{bg:"#f1f5f9",fg:"#64748b"};};
-
-    const exportCSV=()=>{
-      if(!filtered.length){toast2("Nothing to export.");return;}
-      const hdrs=(meta.headers&&meta.headers.length)?meta.headers:Object.keys(filtered[0]);
-      const esc=v=>{const s=String(v==null?"":v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
-      const lines=[hdrs.join(",")];filtered.forEach(r=>lines.push(hdrs.map(h=>esc(r[h])).join(",")));
-      const blob=new Blob([lines.join("\n")],{type:"text/csv;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="case-tracker-filtered-"+todayNZ()+".csv";a.click();setTimeout(()=>URL.revokeObjectURL(url),500);
-    };
-
-    const canUpload=isAdmin||isOwner;
-    const lastUpd=meta.lastUpdated?new Date(meta.lastUpdated).toLocaleString("en-NZ",{timeZone:"Pacific/Auckland",day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):null;
-
-    const card={background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,boxShadow:"0 1px 2px rgba(15,23,42,.04)"};
-    const lbl={fontSize:11,textTransform:"uppercase",letterSpacing:".5px",color:"#9ca3af",fontWeight:700};
-    const selSty={background:"#fff",border:"1px solid #d1d5db",borderRadius:8,padding:"7px 10px",fontSize:13,color:"#111827",fontFamily:"inherit"};
-
-    const Stat=({label,value,sub,color,accent})=>(
-      <div style={{...card,padding:"14px 16px",position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",left:0,top:0,bottom:0,width:3,background:accent||"#0d9488"}}/>
-        <div style={lbl}>{label}</div>
-        <div style={{fontSize:26,fontWeight:800,color:color||"#111827",marginTop:3,letterSpacing:"-.5px",lineHeight:1.05}}>{value}</div>
-        {sub&&<div style={{fontSize:12,color:"#6b7280",marginTop:3}}>{sub}</div>}
-      </div>
-    );
-
-    const BreakCard=({title,entries,accent,showBar})=>{
-      const max=entries.reduce((m,[,c])=>Math.max(m,c),0)||1;
-      return(
-        <div style={{...card,overflow:"hidden"}}>
-          <div style={{padding:"12px 16px",borderBottom:"1px solid #f1f5f9",fontWeight:700,fontSize:14,color:"#111827",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <span>{title}</span><span style={{fontSize:12,color:"#9ca3af",fontWeight:600}}>{entries.length}</span>
-          </div>
-          <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:7}}>
-            {entries.length?entries.map(([k,c])=>(
-              <div key={k}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12.5,marginBottom:showBar?3:0}}>
-                  <span style={{color:"#374151",fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"75%"}} title={k}>{k}</span>
-                  <span style={{color:"#111827",fontWeight:700}}>{c}</span>
-                </div>
-                {showBar&&<div style={{height:5,background:"#f1f5f9",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:(c/max*100)+"%",background:accent||"#0d9488",borderRadius:3}}/></div>}
-              </div>
-            )):<div style={{color:"#9ca3af",fontSize:12}}>No data</div>}
-          </div>
-        </div>
-      );
-    };
-
-    // Column set with percentage widths (sums to 100) so the table fills the full page
-    // width with no horizontal scroll. Text-heavy columns (Property, Issue) wrap.
-    const COLS=[
-      {k:"CaseID",label:"Case",w:"4%"},
-      {k:"Customer",label:"Customer",w:"9%"},
-      {k:"Channel",label:"Channel",w:"8%"},
-      {k:"PropertyName",label:"Property",w:"13%"},
-      {k:"Region",label:"Region",w:"8%"},
-      {k:"CaseType",label:"Type",w:"6%"},
-      {k:"SubCaseType",label:"Sub-type",w:"8%"},
-      {k:"IssueDescription",label:"Issue",w:"14%"},
-      {k:"Status",label:"Status",w:"8%"},
-      {k:"Assigned",label:"Assigned",w:"6%"},
-      {k:"CaseValue",label:"Value",w:"6%"},
-      {k:"FundsStatus",label:"Funds",w:"7%"},
-      {k:"ResolvedSatisfactorily",label:"Resolved",w:"6%"},
-      {k:"Created",label:"Created",w:"7%"}
-    ];
-    const setSort=(k)=>{if(ctSortKey===k)setCtSortDir(d=>d==="asc"?"desc":"asc");else{setCtSortKey(k);setCtSortDir(["CaseValue","Created","CompletionDate"].includes(k)?"desc":"asc");}};
-
-    return(
-      <div style={{position:"relative"}}
-        onDragOver={canUpload?(e=>{e.preventDefault();if(!ctDragging)setCtDragging(true);}):undefined}
-        onDragLeave={canUpload?(e=>{if(e.currentTarget.contains(e.relatedTarget))return;setCtDragging(false);}):undefined}
-        onDrop={canUpload?(e=>{e.preventDefault();setCtDragging(false);const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];if(f)processCaseTrackerFile(f);}):undefined}>
-        <input ref={caseTrackerFileRef} type="file" accept=".csv,text/csv" style={{display:"none"}} onChange={handleCaseTrackerFile}/>
-        {canUpload&&ctDragging&&(
-          <div style={{position:"fixed",inset:0,zIndex:300,background:"rgba(13,148,136,.10)",backdropFilter:"blur(2px)",display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
-            <div style={{background:"#fff",border:"2px dashed #0d9488",borderRadius:16,padding:"32px 48px",textAlign:"center",boxShadow:"0 12px 40px rgba(13,148,136,.2)"}}>
-              <div style={{fontSize:34,marginBottom:8}}>📁</div>
-              <div style={{fontSize:16,fontWeight:800,color:"#0d9488"}}>Drop to update the Case Tracker</div>
-              <div style={{fontSize:12.5,color:"#6b7280",marginTop:4}}>Release the CSV file to replace the current snapshot</div>
-            </div>
-          </div>
-        )}
-
-        {/* Header / last-updated banner */}
-        <div style={{...card,padding:"16px 20px",marginBottom:16,display:"flex",flexWrap:"wrap",alignItems:"center",gap:14}}>
-          <div style={{flex:1,minWidth:240}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:20}}>📁</span>
-              <div style={{fontWeight:800,fontSize:18,color:"#111827",letterSpacing:"-.3px"}}>Case Tracker</div>
-              {rows.length>0&&<span style={{background:"#ccfbf1",color:"#0d9488",fontSize:12,fontWeight:700,borderRadius:20,padding:"2px 10px"}}>{rows.length} cases</span>}
-            </div>
-            <div style={{fontSize:12.5,color:"#6b7280",marginTop:5}}>
-              {lastUpd?<>Last updated <strong style={{color:"#374151"}}>{lastUpd}</strong>{meta.uploadedBy?<> · by {meta.uploadedBy}</>:null}{meta.fileName?<> · <span style={{fontFamily:"ui-monospace,monospace",fontSize:11.5}}>{meta.fileName}</span></>:null}</>:"No data uploaded yet."}
-            </div>
-          </div>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            {rows.length>0&&<button onClick={exportCSV} style={{background:"#fff",border:"1px solid #d1d5db",color:"#374151",padding:"8px 14px",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Export filtered</button>}
-            {canUpload?
-              <div onClick={()=>caseTrackerFileRef.current&&caseTrackerFileRef.current.click()}
-                onDragOver={e=>{e.preventDefault();e.stopPropagation();if(!ctDragging)setCtDragging(true);}}
-                onDragLeave={e=>{e.stopPropagation();if(e.currentTarget.contains(e.relatedTarget))return;setCtDragging(false);}}
-                onDrop={e=>{e.preventDefault();e.stopPropagation();setCtDragging(false);const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];if(f)processCaseTrackerFile(f);}}
-                title="Drag a CSV here or click to browse"
-                style={{display:"flex",alignItems:"center",gap:10,border:"2px dashed "+(ctDragging?"#0d9488":"#cbd5e1"),background:ctDragging?"#f0fdfa":"#f8fafc",borderRadius:10,padding:"8px 16px",cursor:"pointer",transition:"all .15s"}}>
-                <span style={{fontSize:20}}>📤</span>
-                <div style={{textAlign:"left",lineHeight:1.25}}>
-                  <div style={{fontSize:12.5,fontWeight:700,color:"#0d9488"}}>Drag &amp; drop CSV{rows.length>0?" to update":""}</div>
-                  <div style={{fontSize:11,color:"#6b7280"}}>or click to browse</div>
-                </div>
-              </div>
-              :<span style={{fontSize:12,color:"#9ca3af"}}>Owner/admin uploads</span>}
-          </div>
-        </div>
-
-        {rows.length===0?(
-          <div style={{...card,padding:"56px 24px",textAlign:"center",border:canUpload?("2px dashed "+(ctDragging?"#0d9488":"#cbd5e1")):"1px solid #e5e7eb",background:ctDragging?"#f0fdfa":"#fff",transition:"all .15s"}}>
-            <div style={{width:60,height:60,margin:"0 auto 16px",borderRadius:16,background:"#f0fdfa",color:"#0d9488",display:"grid",placeItems:"center",fontSize:26}}>📁</div>
-            <div style={{fontSize:17,fontWeight:700,color:"#111827",marginBottom:6}}>No case data yet</div>
-            <div style={{fontSize:13.5,color:"#6b7280",maxWidth:460,margin:"0 auto 18px",lineHeight:1.5}}>{canUpload?"Drag & drop the Case Tracker CSV here, or click below to browse. Every upload replaces the snapshot and is shared with everyone who can view this page.":"The Case Tracker hasn't been uploaded yet. The owner or an admin can add it."}</div>
-            {canUpload&&<button onClick={()=>caseTrackerFileRef.current&&caseTrackerFileRef.current.click()} style={{background:"#0d9488",border:"none",color:"#fff",padding:"10px 22px",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Choose CSV file</button>}
-          </div>
-        ):(
-        <>
-          {/* Filters — moved to top so everything below reflects the current filter */}
-          <div style={{...card,padding:"12px 14px",marginBottom:14,display:"flex",flexWrap:"wrap",gap:10,alignItems:"center"}}>
-            <input type="search" value={ctSearch} onChange={e=>setCtSearch(e.target.value)} placeholder="Search customer, property, issue, ref…" style={{...selSty,flex:2,minWidth:220}}/>
-            <select value={ctChannel} onChange={e=>setCtChannel(e.target.value)} style={selSty}><option value="all">All channels</option>{channels.map(c=><option key={c}>{c}</option>)}</select>
-            <select value={ctType} onChange={e=>setCtType(e.target.value)} style={selSty}><option value="all">All types</option>{types.map(c=><option key={c}>{c}</option>)}</select>
-            <select value={ctStatus} onChange={e=>setCtStatus(e.target.value)} style={selSty}><option value="all">All statuses</option>{statuses.map(c=><option key={c}>{c}</option>)}</select>
-            <select value={ctAssigned} onChange={e=>setCtAssigned(e.target.value)} style={selSty}><option value="all">All assignees</option>{assignees.map(c=><option key={c}>{c}</option>)}</select>
-            <select value={ctFunds} onChange={e=>setCtFunds(e.target.value)} style={selSty}><option value="all">All funds status</option>{fundsStatuses.map(c=><option key={c}>{c}</option>)}</select>
-            <select value={ctKey} onChange={e=>setCtKey(e.target.value)} style={selSty}><option value="all">Key acct: any</option><option value="Yes">Key account</option><option value="No">Not key</option></select>
-            <select value={ctResolved} onChange={e=>setCtResolved(e.target.value)} style={selSty}><option value="all">Resolved: any</option><option value="Yes">Yes</option><option value="No">No</option><option value="Pending">Pending</option></select>
-            <span style={{fontSize:12,color:"#6b7280",fontWeight:500}}><strong style={{color:"#111827"}}>{filtered.length}</strong> of {rows.length}</span>
-            <button onClick={resetFilters} style={{background:"transparent",border:"1px solid #e5e7eb",color:"#6b7280",padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Reset</button>
-          </div>
-
-          {/* Operational summary */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:14}}>
-            <Stat label="Total cases" value={agg.n} sub={ctSearch||ctChannel!=="all"||ctType!=="all"||ctStatus!=="all"||ctAssigned!=="all"||ctFunds!=="all"||ctKey!=="all"||ctResolved!=="all"?"after filters":"in snapshot"}/>
-            <Stat label="Open" value={agg.open} sub={agg.n?Math.round(agg.open/agg.n*100)+"% of total":""} accent="#d97706" color={agg.open?"#b45309":"#111827"}/>
-            <Stat label="Completed" value={agg.completed} sub={agg.n?Math.round(agg.completed/agg.n*100)+"% of total":""} accent="#16a34a" color="#15803d"/>
-            <Stat label="Resolved satisfactorily" value={agg.resPct==null?"—":agg.resPct+"%"} sub={agg.resYes+" yes · "+agg.resPend+" pending"} accent="#0d9488"/>
-            <Stat label="Reopened" value={agg.reopened} sub={agg.tlReview?agg.tlReview+" need TL review":"none flagged for TL"} accent={agg.reopened?"#dc2626":"#16a34a"} color={agg.reopened?"#dc2626":"#111827"}/>
-            <Stat label="Avg working days" value={agg.avgDays==null?"—":agg.avgDays.toFixed(1)} sub="to complete" accent="#6366f1"/>
-          </div>
-
-          {/* Financial summary */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:18}}>
-            <Stat label="Total case value" value={fmtMoneyShort(agg.caseValue)} sub={fmtMoney(agg.caseValue)} accent="#0d9488"/>
-            <Stat label="Bachcare funded" value={fmtMoneyShort(agg.gel)} sub="GelFunded total" accent="#7838E3"/>
-            <Stat label="Owner funded" value={fmtMoneyShort(agg.owner)} sub="recovered from owners" accent="#1A3C7E"/>
-            <Stat label="Guest recovered" value={fmtMoneyShort(agg.guest)} sub="recovered from guests" accent="#16a34a"/>
-            <Stat label="Funds settled" value={agg.fundsSettled} sub={agg.fundsPending+" pending · "+agg.fundsWritten+" written off"} accent="#16a34a" color="#15803d"/>
-            <Stat label="Claims / Feedback" value={agg.claims+" / "+agg.feedback} sub={agg.keyAcct+" key-account cases"} accent="#6366f1"/>
-          </div>
-
-          {/* Channel distribution */}
-          <div style={{...card,padding:"14px 18px",marginBottom:18}}>
-            <div style={{...lbl,marginBottom:10}}>Cases by channel</div>
-            <div style={{display:"flex",height:14,borderRadius:7,overflow:"hidden",background:"#f1f5f9"}}>
-              {Object.entries(agg.byChannel).sort((a,b)=>b[1]-a[1]).map(([c,n])=>(
-                <div key={c} title={c+": "+n} style={{width:(agg.n?n/agg.n*100:0)+"%",background:chColor(c)}}/>
-              ))}
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:14,marginTop:12}}>
-              {Object.entries(agg.byChannel).sort((a,b)=>b[1]-a[1]).map(([c,n])=>(
-                <div key={c} style={{display:"flex",alignItems:"center",gap:7,fontSize:12.5}}>
-                  <span style={{width:11,height:11,borderRadius:3,background:chColor(c),display:"inline-block"}}/>
-                  <span style={{color:"#374151",fontWeight:600}}>{c}</span>
-                  <span style={{color:"#9ca3af"}}>{n} · {agg.n?Math.round(n/agg.n*100):0}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Breakdown grid */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14,marginBottom:18}}>
-            <BreakCard title="By case type" entries={countBy("CaseType")} accent="#0d9488" showBar/>
-            <BreakCard title="By sub-type" entries={countBy("SubCaseType")} accent="#6366f1" showBar/>
-            <BreakCard title="By status" entries={countBy("Status")} accent="#d97706" showBar/>
-            <BreakCard title="By funds status" entries={countBy("FundsStatus")} accent="#16a34a" showBar/>
-            <BreakCard title="By assignee" entries={countBy("Assigned")} accent="#7838E3" showBar/>
-            <BreakCard title="Top regions" entries={countBy("Region",8)} accent="#1A3C7E" showBar/>
-          </div>
-
-          {/* Table */}
-          <div style={{...card,overflow:"hidden"}}>
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,tableLayout:"fixed"}}>
-                <thead>
-                  <tr>
-                    {COLS.map(c=>(
-                      <th key={c.k} onClick={()=>setSort(c.k)} style={{background:"#f8fafc",borderBottom:"2px solid #e5e7eb",padding:"10px 10px",textAlign:"left",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:".4px",color:ctSortKey===c.k?"#0d9488":"#9ca3af",cursor:"pointer",userSelect:"none",width:c.w,position:"sticky",top:0}}>
-                        {c.label}<span style={{marginLeft:4,opacity:ctSortKey===c.k?1:.4}}>{ctSortKey===c.k?(ctSortDir==="asc"?"↑":"↓"):"↕"}</span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.length?sorted.map((r,i)=>{
-                    const sc=statusColor(r.Status),fc=fundsColor(r.FundsStatus);
-                    const res=(r.ResolvedSatisfactorily||"").trim();
-                    const resC=res==="Yes"?{bg:"#dcfce7",fg:"#15803d"}:res==="No"?{bg:"#fee2e2",fg:"#dc2626"}:res==="Pending"?{bg:"#fef3c7",fg:"#b45309"}:{bg:"#f1f5f9",fg:"#9ca3af"};
-                    const caseLink=(r.LinkToCase||"").trim();
-                    return(
-                      <tr key={(r.CaseID||"")+"_"+i} style={{borderBottom:"1px solid #f1f5f9",borderLeft:"3px solid "+chColor(r.Channel)}}>
-                        <td style={{padding:"8px 10px",fontWeight:600,verticalAlign:"top"}}>{caseLink?<a href={caseLink} target="_blank" rel="noopener" style={{color:"#0d9488",textDecoration:"none"}}>{r.CaseID}</a>:r.CaseID}</td>
-                        <td style={{padding:"8px 10px",color:"#111827",verticalAlign:"top",wordBreak:"break-word"}}>{r.Customer||"—"}{(r.KeyAccount||"").trim()==="Yes"&&<span style={{marginLeft:6,fontSize:9,fontWeight:800,background:"#ede9fe",color:"#6d28d9",padding:"1px 5px",borderRadius:4,whiteSpace:"nowrap"}}>KEY</span>}</td>
-                        <td style={{padding:"8px 10px",verticalAlign:"top"}}><span style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:9,height:9,borderRadius:3,background:chColor(r.Channel),flexShrink:0}}/><span style={{color:"#374151",wordBreak:"break-word"}}>{r.Channel||"—"}</span></span></td>
-                        <td style={{padding:"8px 10px",color:"#374151",verticalAlign:"top",wordBreak:"break-word"}} title={r.PropertyName}>{r.PropertyName||"—"}</td>
-                        <td style={{padding:"8px 10px",color:"#6b7280",verticalAlign:"top",wordBreak:"break-word"}}>{r.Region||"—"}</td>
-                        <td style={{padding:"8px 10px",color:"#374151",fontWeight:500,verticalAlign:"top"}}>{r.CaseType||"—"}</td>
-                        <td style={{padding:"8px 10px",color:"#6b7280",verticalAlign:"top",wordBreak:"break-word"}}>{r.SubCaseType||"—"}</td>
-                        <td style={{padding:"8px 10px",color:"#4b5563",lineHeight:1.4,verticalAlign:"top",wordBreak:"break-word"}} title={r.IssueDescription}>{r.IssueDescription||"—"}</td>
-                        <td style={{padding:"8px 10px",verticalAlign:"top"}}><span style={{background:sc.bg,color:sc.fg,fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:10,display:"inline-block"}}>{r.Status||"—"}</span></td>
-                        <td style={{padding:"8px 10px",color:"#374151",verticalAlign:"top",wordBreak:"break-word"}}>{r.Assigned||"—"}</td>
-                        <td style={{padding:"8px 10px",fontWeight:700,color:money(r.CaseValue)?"#111827":"#d1d5db",textAlign:"right",verticalAlign:"top",whiteSpace:"nowrap"}}>{money(r.CaseValue)?fmtMoney(money(r.CaseValue)):"—"}</td>
-                        <td style={{padding:"8px 10px",verticalAlign:"top"}}>{(r.FundsStatus||"").trim()?<span style={{background:fc.bg,color:fc.fg,fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:10,display:"inline-block"}}>{r.FundsStatus}</span>:"—"}</td>
-                        <td style={{padding:"8px 10px",verticalAlign:"top"}}><span style={{background:resC.bg,color:resC.fg,fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:10,display:"inline-block"}}>{res||"—"}</span></td>
-                        <td style={{padding:"8px 10px",color:"#6b7280",verticalAlign:"top",whiteSpace:"nowrap"}}>{dateStr(r.Created)||"—"}</td>
-                      </tr>
-                    );
-                  }):<tr><td colSpan={COLS.length} style={{padding:"40px",textAlign:"center",color:"#9ca3af"}}>No cases match the current filters.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-        )}
-      </div>
-    );
-  }
-
   function CallReviewsTab(){
     const selMonth=crSelMonth||mo;const setSelMonth=setCrSelMonth;
     React.useEffect(()=>{setCrSelMonth(mo);},[mo]);
@@ -9030,7 +8636,7 @@ function App(){
                 <span style={{fontWeight:600,fontSize:13,color:"#111827",flex:1}}>{cr.label}</span>
                 <span style={{fontSize:11,fontWeight:600,color:val===true?"#059669":"#dc2626"}}>{val===true?"Pass":"Fail"}</span>
               </div>
-              {reason&&<div style={{fontSize:12,color:"#4b5563",marginTop:4,paddingLeft:26,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{reason}</div>}
+              {reason&&<div style={{fontSize:12,color:"#4b5563",marginTop:4,paddingLeft:26,lineHeight:1.5}}>{reason}</div>}
             </div>);
           })}
         </div>
@@ -9058,12 +8664,6 @@ function App(){
           <div style={{fontSize:13,color:"#0c4a6e",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{viewReview.notes}</div>
         </div>}
 
-        {/* How to reach 10/10 */}
-        {viewReview.improvementPlan&&<div style={{marginBottom:12,padding:"10px 14px",background:"#ecfdf5",borderRadius:8,border:"1px solid #a7f3d0"}}>
-          <div style={{fontSize:11,fontWeight:600,color:"#047857",textTransform:"uppercase",letterSpacing:".04em",marginBottom:4}}>🎯 How to reach 10/10</div>
-          <div style={{fontSize:13,color:"#065f46",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{viewReview.improvementPlan}</div>
-        </div>}
-
         {/* Full coaching summary for employee */}
         <div style={{marginBottom:12,padding:"14px 16px",background:"#f8fafc",borderRadius:10,border:"1px solid #e2e8f0"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
@@ -9081,7 +8681,6 @@ function App(){
               if(passed.length){summary+="WHAT YOU DID WELL ✅\n";passed.forEach(cr=>{const r=viewReview.aiReasoning?.[cr.id];summary+="• "+cr.label+(r?" — "+r:"")+"\n";});summary+="\n";}
               if(failed.length){summary+="AREAS TO IMPROVE ❌\n";failed.forEach(cr=>{const r=viewReview.aiReasoning?.[cr.id];summary+="• "+cr.label+(r?" — "+r:"")+"\n";});summary+="\n";}
               if(viewReview.notes)summary+="COACHING FEEDBACK\n"+viewReview.notes+"\n\n";
-              if(viewReview.improvementPlan)summary+="HOW TO REACH 10/10 🎯\n"+viewReview.improvementPlan+"\n\n";
               if(viewReview.advisories)summary+="ADVISORIES\n"+viewReview.advisories+"\n\n";
               summary+="Reviewed by: "+viewReview.reviewedBy;
               copy(summary);toast2("Summary copied! Ready to send to "+viewReview.agentName+".");
@@ -9112,7 +8711,6 @@ function App(){
     const[callType,setCallType]=React.useState(savedState.callType||existing?.callType||"");
     const[callSummary,setCallSummary]=React.useState(savedState.callSummary||existing?.callSummary||"");
     const[advisories,setAdvisories]=React.useState(savedState.advisories||existing?.advisories||"");
-    const[improvementPlan,setImprovementPlan]=React.useState(savedState.improvementPlan||existing?.improvementPlan||"");
     const[escalated,setEscalated]=React.useState(savedState.escalated!==undefined?savedState.escalated:(existing?.escalated??null));
     const[escalationJustified,setEscalationJustified]=React.useState(savedState.escalationJustified!==undefined?savedState.escalationJustified:(existing?.escalationJustified??null));
     const[escalationNotes,setEscalationNotes]=React.useState(savedState.escalationNotes||existing?.escalationNotes||"");
@@ -9126,7 +8724,7 @@ function App(){
     const[aiVisible,setAiVisible]=React.useState(savedState.aiVisible||false);
     const[gradeIntensity,setGradeIntensity]=React.useState(savedState.gradeIntensity||"standard");
     // Persist state to window on every change
-    React.useEffect(()=>{window[stateKey]={agentName,callLink,callDate,notes,callLength,callType,callSummary,advisories,improvementPlan,escalated,escalationJustified,escalationNotes,criteria,aiAudioFile,aiAudioName,aiTranscript,aiStatus,aiProgress,aiReasoning,aiVisible,gradeIntensity};});
+    React.useEffect(()=>{window[stateKey]={agentName,callLink,callDate,notes,callLength,callType,callSummary,advisories,escalated,escalationJustified,escalationNotes,criteria,aiAudioFile,aiAudioName,aiTranscript,aiStatus,aiProgress,aiReasoning,aiVisible,gradeIntensity};});
     const teamCriteria=getReviewCriteria(team);
     const teamMaxScore=teamCriteria.length;
     const teamPassThreshold=0.7;
@@ -9146,7 +8744,7 @@ function App(){
     // each timestamped line "Agent:" or "Customer:". The labeled transcript replaces the raw one
     // before grading runs, and is also what the user sees in the transcript pane afterwards.
     const diarizeTranscript=async(rawTranscript,agentFirstName)=>{
-      const diarPrompt="Below is a transcript of a customer service phone call. Each line has a timestamp like [00:32]. The Agent works for Bachcare (a New Zealand holiday home rental management company) and is named "+agentFirstName+". The Customer is the caller — a guest staying at a property, or a homeowner whose property Bachcare manages.\n\nLabel each line by inserting \"Agent:\" or \"Customer:\" immediately after the timestamp. For example:\n  [00:05] Agent: Hi there, you've reached Bachcare, this is "+agentFirstName+" speaking.\n  [00:09] Customer: Yeah hi, I've got a problem with my booking.\n\nRules:\n- If a line is ambiguous, use context. The Agent typically introduces themselves first, says things like \"how can I help\", \"let me check\", \"I'll look into that\", \"absolutely\", uses Bachcare's name, references bookings/properties/owners. The Customer typically describes a problem, asks questions, expresses emotion.\n- Keep timestamps and the original text exactly as-is. Only INSERT the speaker label between the timestamp and the text.\n- Do not merge, split, summarise, or rewrite lines. Do not add or remove any words — with ONE exception below.\n- The agent's name is spelled exactly \\\""+agentFirstName+"\\\". If the transcript spells the agent's own name a different way (a phonetic mishearing, e.g. \\\"Gail\\\" when the agent is \\\"Gayle\\\"), correct that spelling to \\\""+agentFirstName+"\\\". Also, the company name is always Bachcare — if the transcript renders it as a close phonetic variant (BadgeCare, Batchcare, Bach Care, Badge Care, Bachelor), correct it to Bachcare. Correcting the agent's own name and the company name to Bachcare are the only word changes you may make.\n- If a line is just \"[silence]\" leave it as \"Agent: [silence]\".\n- A single line is always one speaker — never mix.\n\nOutput ONLY the labeled transcript. No preamble, no commentary, no explanation.\n\nTranscript:\n"+rawTranscript;
+      const diarPrompt="Below is a transcript of a customer service phone call. Each line has a timestamp like [00:32]. The Agent works for Bachcare (a New Zealand holiday home rental management company) and is named "+agentFirstName+". The Customer is the caller — a guest staying at a property, or a homeowner whose property Bachcare manages.\n\nLabel each line by inserting \"Agent:\" or \"Customer:\" immediately after the timestamp. For example:\n  [00:05] Agent: Hi there, you've reached Bachcare, this is "+agentFirstName+" speaking.\n  [00:09] Customer: Yeah hi, I've got a problem with my booking.\n\nRules:\n- If a line is ambiguous, use context. The Agent typically introduces themselves first, says things like \"how can I help\", \"let me check\", \"I'll look into that\", \"absolutely\", uses Bachcare's name, references bookings/properties/owners. The Customer typically describes a problem, asks questions, expresses emotion.\n- Keep timestamps and the original text exactly as-is. Only INSERT the speaker label between the timestamp and the text.\n- Do not merge, split, summarise, or rewrite lines. Do not add or remove any words.\n- If a line is just \"[silence]\" leave it as \"Agent: [silence]\".\n- A single line is always one speaker — never mix.\n\nOutput ONLY the labeled transcript. No preamble, no commentary, no explanation.\n\nTranscript:\n"+rawTranscript;
       try{
         const resp=await callClaudeAPI({maxTokens:4000,prompt:diarPrompt,purpose:"call-diarize"});
         const text=(resp.content||[]).map(c=>c.text||"").join("").trim();
@@ -9164,13 +8762,12 @@ function App(){
     // finding rather than benefit-of-the-doubt grading.
     const buildGradingPrompt=({transcript,diarized})=>(
       "You are an experienced call centre quality coach for Bachcare, a New Zealand holiday home management company. You're reviewing a phone call to help the agent improve."+intensityPrompt+
-      "\n\nCRITICAL OUTPUT RULES:\n- NEVER mention transcription, transcript, recording, audio quality, or speech-to-text in your feedback, summary, advisories, or reasoning. Write as if you listened to the call directly.\n- If there are repeated words or phrases (like repeated thank you), ignore them — treat them as a single occurrence.\n- If the call starts abruptly without a greeting, in Standard intensity assume the greeting happened. In Firm/Strict, only fail if there is clear evidence the agent skipped it.\n- Write all feedback as coaching from someone who listened to the call, not someone who read a transcript.\n- Write every reason, the feedback, advisories and improvement plan in plain, natural, conversational English — the way a supportive team leader actually talks to someone. Do NOT use clinical, jargon-y, or robotic phrasing. For example, never write something like 'Revealed internal hierarchy to customer'; instead write it the way a person would say it, e.g. 'Told the customer they'd need to check with their manager — that can make us look less capable, so it's better to just say you'll look into it and sort it out behind the scenes.'\n- The company is always \"Bachcare\". If the audio renders it as a close-sounding variant (e.g. \"BadgeCare\", \"Batchcare\", \"Bach Care\", \"Badge Care\", \"Bachelor\"), that is simply the agent's accent coming through — read it as \"Bachcare\" and NEVER fault, mark down, or even mention the agent saying the company name wrongly. Assume they said it correctly.\n- Be fair and contextual: judge each criterion against what THIS call was actually about. Do NOT invent failures for things that don't fit the call. If the customer called about one specific issue or item, not asking about other hypothetical issues they never raised is NOT a miss — treat that as fine. Only flag a missed opportunity if it would genuinely have helped this particular call.\n- Match each concern to the RIGHT criterion. Optimistic, warm words like \"hopefully\", \"happy to\", \"we'd love to\" ARE positive language — never fail a positive-language style criterion for them. Concerns about hedging, confidence, or vague timing belong only to the confidence and clear-expectations criteria, not to positive language."+
+      "\n\nCRITICAL OUTPUT RULES:\n- NEVER mention transcription, transcript, recording, audio quality, or speech-to-text in your feedback, summary, advisories, or reasoning. Write as if you listened to the call directly.\n- If there are repeated words or phrases (like repeated thank you), ignore them — treat them as a single occurrence.\n- If the call starts abruptly without a greeting, in Standard intensity assume the greeting happened. In Firm/Strict, only fail if there is clear evidence the agent skipped it.\n- Write all feedback as coaching from someone who listened to the call, not someone who read a transcript."+
       (diarized?"\n- The transcript below is LABELED with \"Agent:\" and \"Customer:\" prefixes for each line. USE these labels — never grade the agent for something the customer said, and never give the agent credit for something the customer offered up unprompted.":"")+
       "\n\nESCALATION RULES:\n- The ONLY valid reason for an agent to escalate a call to a manager is if the customer explicitly demands to speak to a manager and is pushing for it.\n- Agents should NEVER say things like 'Let me ask my team leader' or 'I need to check with my manager' on the call. Instead they should say 'Let me look into this for you' and then contact their manager privately.\n- If the agent used phrases that revealed they need manager approval, that's a fail on confidence/autonomy even if the call wasn't formally escalated.\n- If the call was transferred or escalated, determine whether the customer demanded it or the agent offered it unnecessarily."+
-      "\n\nBACHCARE FOLLOW-UP & TIMEFRAME STYLE (apply this whenever you coach on expectations, timeframes, or call closings):\n- Bachcare does NOT promise fixed deadlines like 'within 24 hours'. The preferred commitment is personal ownership: the agent keeps the customer updated on progress and, even if there is no progress, still gives them an update by the END OF THE AGENT'S SHIFT that day.\n- A commitment like 'I'll keep you posted on progress, and even if I have no update I'll come back to you by the end of my shift today' is a STRONG, clear expectation — score it as meeting the standard, and prefer this style in every 'Try instead' you write. Never suggest a fixed hour-count.\n- Example for setting expectations / closing: 'I'll chase this up and keep you updated. Even if there's nothing new yet, I'll make sure to come back to you by the end of my shift today.'\n- Example for calling someone (e.g. a manager or property manager): 'I'll give them a ring right now. They can get busy, so if they don't pick up I'll keep trying through the day — and either way I'll update you by the end of my shift today, even if there's no news yet.'"+
-      "\n\nACTIVE FAULT-FINDING — be a discerning coach, not a generous grader:\n- For EVERY criterion result, the `reason` field MUST quote a specific moment from the call with its timestamp, labelling the speaker by NAME — use \""+agentName.split(" ")[0]+":\" for the agent and \"Customer:\" for the caller (never the generic word \"Agent\"). For a PASS: \"[01:23] "+agentName.split(" ")[0]+": '<short quote>' — <brief why it meets the criterion>\". For a FAIL, give the evidence the same way, then a line break, then a concrete coaching tip showing the better move, then a short reason WHY that approach is better so they understand the thinking — not just what to change: \"[01:23] "+agentName.split(" ")[0]+": '<short quote>' — <why it falls short>\n→ Try instead: <a specific, natural example of what "+agentName.split(" ")[0]+" could have said or done at that moment>\n→ Why: <a brief, plain explanation of why this is the better approach and how it helps the customer or "+agentName.split(" ")[0]+">\". ALWAYS include the 'Why' line on every Doesn't Meet. A finding without evidence is a weaker finding. If you genuinely cannot find any evidence one way or the other, say so plainly in the reason and lean toward fail.\n- Look ACTIVELY for failure before defaulting to pass. Real calls have rough edges — find them.\n- Common silent failures to check for explicitly on every call:\n  * Agent didn't summarise the agreed actions before closing the call.\n  * Agent didn't paraphrase the customer's issue back to confirm understanding.\n  * Agent used hedge language ('I think', 'probably', 'maybe', 'I'll try to', 'hopefully') instead of decisive language.\n  * Agent gave a vague timeline ('soon', 'shortly', 'as soon as I can') with no real commitment. NOTE: at Bachcare the standard is NOT a fixed deadline like '24 hours' — it is a personal commitment to keep the customer updated on progress and, even if there is no progress, to give them an update by the end of the agent's shift. Treat 'I'll keep you updated and come back to you by the end of my shift today' as a clear, acceptable expectation, and never coach toward a fixed hour-count.\n  * Agent missed an emotional beat (frustration, urgency, confusion, gratitude) without acknowledging it verbally.\n  * Agent let the customer drive the conversation instead of leading it (frequent dead air, customer repeating themselves, agent only reacting).\n  * Agent didn't confirm contact details or who is responsible for the next step.\n  * Agent said 'I'll try' instead of 'I will'.\n  * Agent revealed internal-only language (referring to team leads, internal systems, manager approval) on the customer-facing call.\n  * Agent talked over the customer or cut them off mid-sentence.\n  * Agent gave information that sounds uncertain (long pauses before answers, audible flipping through screens, 'um let me see').\n- If you cannot find clear positive evidence the agent met a criterion, fail it and state in the reason what they should have said or done."+
-      "\n\nGrade the agent against each criterion, and also provide:\n- A brief call summary (2-3 sentences describing what the call was about).\n- Constructive feedback written in a warm, coaching tone. Highlight what the agent did well first — quote a specific moment. Then areas to improve — quote specific moments. Don't sound robotic or generic.\n- Advisories: ALWAYS include something here. If there are genuine concerns (compliance issues, incorrect info, escalation problems), flag them clearly with a quote. If the call was good, note one specific strength and one minor opportunity. Never leave this empty.\n- Call type: determine if this was an 'Inbound' or 'Outbound' call based on the greeting and context.\n- Escalation: determine if the call was escalated or if the agent unnecessarily deferred to management.\n- A path to a perfect score (improvementPlan): a short, prioritised list of the specific, concrete things "+agentName.split(" ")[0]+" can do next time to turn the failed criteria into passes and reach a perfect 10/10 — base it strictly on what was actually graded, point to the real missed moments, and write it naturally like a coach would say it. If every criterion already passed, instead note the key strengths to keep doing to stay at that level."+
-      "\n\nRespond ONLY in this exact JSON format, no other text:\n{\"results\":[{\"id\":\"CRITERION_ID\",\"pass\":true/false,\"reason\":\"[MM:SS] <speaker>: '<quote>' — <judgement>; on a FAIL add a line break then '→ Try instead: ...'\"}],\"summary\":\"what the call was about\",\"feedback\":\"constructive coaching feedback with quoted moments\",\"advisories\":\"always provide something here\",\"improvementPlan\":\"prioritised, concrete steps to reach 10/10\",\"callType\":\"Inbound or Outbound\",\"escalated\":true/false,\"escalationJustified\":true/false/null,\"escalationNotes\":\"brief note on escalation or empty string\"}"+
+      "\n\nACTIVE FAULT-FINDING — be a discerning coach, not a generous grader:\n- For EVERY criterion result, the `reason` field MUST quote a specific moment from the call with its timestamp. Format: \"[01:23] Agent: '<short quote>' — <brief why it does or doesn't meet the criterion>\". A finding without evidence is a weaker finding. If you genuinely cannot find any evidence one way or the other, say so plainly in the reason and lean toward fail.\n- Look ACTIVELY for failure before defaulting to pass. Real calls have rough edges — find them.\n- Common silent failures to check for explicitly on every call:\n  * Agent didn't summarise the agreed actions before closing the call.\n  * Agent didn't paraphrase the customer's issue back to confirm understanding.\n  * Agent used hedge language ('I think', 'probably', 'maybe', 'I'll try to', 'hopefully') instead of decisive language.\n  * Agent gave a vague timeline ('soon', 'shortly', 'as soon as I can') instead of a concrete one (a date, a number of hours, a named day).\n  * Agent missed an emotional beat (frustration, urgency, confusion, gratitude) without acknowledging it verbally.\n  * Agent let the customer drive the conversation instead of leading it (frequent dead air, customer repeating themselves, agent only reacting).\n  * Agent didn't confirm contact details or who is responsible for the next step.\n  * Agent said 'I'll try' instead of 'I will'.\n  * Agent revealed internal-only language (referring to team leads, internal systems, manager approval) on the customer-facing call.\n  * Agent talked over the customer or cut them off mid-sentence.\n  * Agent gave information that sounds uncertain (long pauses before answers, audible flipping through screens, 'um let me see').\n- If you cannot find clear positive evidence the agent met a criterion, fail it and state in the reason what they should have said or done."+
+      "\n\nGrade the agent against each criterion, and also provide:\n- A brief call summary (2-3 sentences describing what the call was about).\n- Constructive feedback written in a warm, coaching tone. Highlight what the agent did well first — quote a specific moment. Then areas to improve — quote specific moments. Don't sound robotic or generic.\n- Advisories: ALWAYS include something here. If there are genuine concerns (compliance issues, incorrect info, escalation problems), flag them clearly with a quote. If the call was good, note one specific strength and one minor opportunity. Never leave this empty.\n- Call type: determine if this was an 'Inbound' or 'Outbound' call based on the greeting and context.\n- Escalation: determine if the call was escalated or if the agent unnecessarily deferred to management."+
+      "\n\nRespond ONLY in this exact JSON format, no other text:\n{\"results\":[{\"id\":\"CRITERION_ID\",\"pass\":true/false,\"reason\":\"[MM:SS] Agent/Customer: '<quote>' — <concise judgement>\"}],\"summary\":\"what the call was about\",\"feedback\":\"constructive coaching feedback with quoted moments\",\"advisories\":\"always provide something here\",\"callType\":\"Inbound or Outbound\",\"escalated\":true/false,\"escalationJustified\":true/false/null,\"escalationNotes\":\"brief note on escalation or empty string\"}"+
       "\n\nThe agent's first name is: "+agentName.split(" ")[0]+". Only use their first name in feedback, summary, and advisories. Never use their last name."+
       "\n\nCriteria:\n"+teamCriteria.map(cr=>cr.id+": "+cr.label+(cr.guide?" - "+cr.guide:"")).join("\n")+
       "\n\nCall Transcript:\n"+transcript
@@ -9228,15 +8825,13 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
         const aiEscalated=parsed.escalated??null;
         const aiEscJustified=parsed.escalationJustified??null;
         const aiEscNotes=parsed.escalationNotes||"";
-        const aiImprove=parsed.improvementPlan||"";
         const mergedCriteria={...criteria,...newCriteria};
-        window[stateKey]={...window[stateKey],criteria:mergedCriteria,aiReasoning:newReasoning,callSummary:aiSummary||aiTranscript,notes:aiFeedback,advisories:aiAdvisories,improvementPlan:aiImprove,callType:aiCallType,escalated:aiEscalated,escalationJustified:aiEscJustified,escalationNotes:aiEscNotes,aiStatus:"done",aiProgress:"Graded "+matched+" of "+criteriaIds.length+" criteria.",agentName};
+        window[stateKey]={...window[stateKey],criteria:mergedCriteria,aiReasoning:newReasoning,callSummary:aiSummary||aiTranscript,notes:aiFeedback,advisories:aiAdvisories,callType:aiCallType,escalated:aiEscalated,escalationJustified:aiEscJustified,escalationNotes:aiEscNotes,aiStatus:"done",aiProgress:"Graded "+matched+" of "+criteriaIds.length+" criteria.",agentName};
         setCriteria(mergedCriteria);
         setAiReasoning(newReasoning);
         if(aiSummary)setCallSummary(aiSummary);
         if(aiFeedback)setNotes(aiFeedback);
         if(aiAdvisories)setAdvisories(aiAdvisories);
-        if(aiImprove)setImprovementPlan(aiImprove);
         if(aiCallType)setCallType(aiCallType);
         if(aiEscalated!==null)setEscalated(aiEscalated);
         if(aiEscJustified!==null)setEscalationJustified(aiEscJustified);
@@ -9262,7 +8857,7 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
         score,passed,
         month:(()=>{try{const d=new Date(callDate+"T00:00:00Z");return d.toLocaleString("en-NZ",{month:"long",year:"numeric",timeZone:"UTC"});}catch{return month;}})(),
         team:team||getPersonTeam(agentName)||"",
-        callLength,callType,callSummary,advisories,improvementPlan,escalated,escalationJustified,escalationNotes,
+        callLength,callType,callSummary,advisories,escalated,escalationJustified,escalationNotes,
         reviewedBy:currentUser?.displayName,
         submittedAt:nowNZ(),
         aiGraded:aiStatus==="done"?true:undefined,
@@ -9364,7 +8959,7 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
                     formData.append("file",aiAudioFile);
                     formData.append("model","whisper-1");
                     formData.append("language","en");
-                    formData.append("prompt","Bachcare. MSP. bach. Booking.com. Airbnb. VRBO. Intercom. "+agentName+".");
+                    formData.append("prompt","Bachcare. MSP. bach. Booking.com. Airbnb. VRBO. Intercom.");
                     formData.append("temperature","0");
                     formData.append("response_format","verbose_json");
                     formData.append("timestamp_granularities[]","segment");
@@ -9456,17 +9051,15 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
                     const aiEscalated=parsed.escalated??null;
                     const aiEscJustified=parsed.escalationJustified??null;
                     const aiEscNotes=parsed.escalationNotes||"";
-                    const aiImprove=parsed.improvementPlan||"";
                     // Write to window SYNCHRONOUSLY before any state updates trigger remount
                     const mergedCriteria={...criteria,...newCriteria};
-                    window[stateKey]={...window[stateKey],criteria:mergedCriteria,aiReasoning:newReasoning,aiTranscript:localTranscript,callSummary:aiSummary||localTranscript,callLength:localDuration||callLength,notes:aiFeedback,advisories:aiAdvisories,improvementPlan:aiImprove,callType:aiCallType,escalated:aiEscalated,escalationJustified:aiEscJustified,escalationNotes:aiEscNotes,aiStatus:"done",aiProgress:"Graded "+matched+" of "+criteriaIds.length+" criteria.",agentName};
+                    window[stateKey]={...window[stateKey],criteria:mergedCriteria,aiReasoning:newReasoning,aiTranscript:localTranscript,callSummary:aiSummary||localTranscript,callLength:localDuration||callLength,notes:aiFeedback,advisories:aiAdvisories,callType:aiCallType,escalated:aiEscalated,escalationJustified:aiEscJustified,escalationNotes:aiEscNotes,aiStatus:"done",aiProgress:"Graded "+matched+" of "+criteriaIds.length+" criteria.",agentName};
                     // Now update React state
                     setCriteria(mergedCriteria);
                     setAiReasoning(newReasoning);
                     if(aiSummary)setCallSummary(aiSummary);
                     if(aiFeedback)setNotes(aiFeedback);
                     if(aiAdvisories)setAdvisories(aiAdvisories);
-                    if(aiImprove)setImprovementPlan(aiImprove);
                     if(aiCallType)setCallType(aiCallType);
                     if(aiEscalated!==null)setEscalated(aiEscalated);
                     if(aiEscJustified!==null)setEscalationJustified(aiEscJustified);
@@ -10612,7 +10205,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const setLocalAccounts=(updated)=>{setLiveAccounts(updated);saveAccountsToSupabase(updated);};
     const pending=pendingEdits.filter(r=>r.status==="pending");
     const resolved=pendingEdits.filter(r=>r.status!=="pending").slice(0,20);
-    const MENU_TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Reviews","Case Tracker","Call Reviews","Owner Withdrawals","Quick References","Expectations"];
+    const MENU_TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Reviews","Call Reviews","Owner Withdrawals","Quick References","Expectations"];
     const ADMIN_TABS=["Settings","Export","Audit","Weights","KPI Targets","Capabilities","Daily Config","Accounts","Review Criteria","Expectations Config"];
     const ALL_TEAMS=["All Teams",...tNames];
     const getDefPerms=(acct)=>{
@@ -11216,7 +10809,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
       </div>
 
       {/* ═══ SIDEBAR ═══ */}
-      <div className="bc-sidebar-root" style={{width:sbCollapsed?64:220,background:SIDEBAR_BG,display:"flex",flexDirection:"column",flexShrink:0,position:"fixed",top:0,bottom:0,left:0,zIndex:60,borderRight:"1px solid rgba(255,255,255,.06)",transition:"width .2s ease"}}>
+      <div className="bc-sidebar-root" style={{width:sbCollapsed?64:220,background:"linear-gradient(180deg,#111827 0%,#0f172a 100%)",display:"flex",flexDirection:"column",flexShrink:0,position:"fixed",top:0,bottom:0,left:0,zIndex:60,borderRight:"1px solid rgba(255,255,255,.06)",transition:"width .2s ease"}}>
         {/* Logo + collapse toggle */}
         <div style={{padding:sbCollapsed?"22px 8px 18px":"22px 18px 18px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
           <div style={{display:"flex",alignItems:"center",gap:10,justifyContent:sbCollapsed?"center":"flex-start"}}>
@@ -11233,14 +10826,14 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         <div className="bc-sidebar-scroll" style={{padding:sbCollapsed?"12px 6px":"12px 10px",flex:1,overflowY:"auto"}}>
           {(()=>{
             // Tab metadata: icon + which group it belongs to
-            const ICONS={"Home":"🏠","Daily":"📝","To-Do List":"✅","Action List":"📋","Planner":"🗂️","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","Reviews":"⭐","Case Tracker":"📁","Call Reviews":"📞","Owner Withdrawals":"⚠️","Quick References":"📌","Expectations":"🎯","Settings":"⚙️","Export":"📤","Accounts":"🔑","Audit":"📜","Weights":"⚖️","KPI Targets":"🎯","Capabilities":"🎓","Daily Config":"📝","Review Criteria":"📋","Expectations Config":"🎯"};
-            const DISPLAY={"Daily":"Daily Reports","Reviews":"Review Tracker","Owner Withdrawals":"Withdraw Tracker"};
+            const ICONS={"Home":"🏠","Daily":"📝","To-Do List":"✅","Action List":"📋","Planner":"🗂️","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","Reviews":"⭐","Call Reviews":"📞","Owner Withdrawals":"⚠️","Quick References":"📌","Expectations":"🎯","Settings":"⚙️","Export":"📤","Accounts":"🔑","Audit":"📜","Weights":"⚖️","KPI Targets":"🎯","Capabilities":"🎓","Daily Config":"📝","Review Criteria":"📋","Expectations Config":"🎯"};
+            const DISPLAY={"Daily":"Daily Reports"};
             // Group definitions
             const GROUPS=[
               {id:"home",label:null,tabs:["Home"]},
               {id:"tasks",label:"Tasks",tabs:["Daily","To-Do List","Action List","Planner"]},
-              {id:"insights",label:"Insights",tabs:["Dashboard","People","Leaderboard","Schedule","Reports"]},
-              {id:"quality",label:"Quality",tabs:["Call Reviews","Reviews","Case Tracker","Owner Withdrawals"]},
+              {id:"insights",label:"Insights",tabs:["Dashboard","People","Leaderboard","Schedule","Reports","Reviews"]},
+              {id:"quality",label:"Quality",tabs:["Call Reviews","Owner Withdrawals"]},
               {id:"more",label:"More",tabs:["Quick References","Expectations"]}
             ];
             const ADMIN_GROUP={id:"admin",label:"Admin",tabs:["Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria","Expectations Config"]};
@@ -11336,9 +10929,9 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
       </div>
 
       {/* ═══ MAIN CONTENT AREA ═══ */}
-      <div style={{flex:1,marginLeft:sbCollapsed?64:220,minHeight:"100vh",display:"flex",flexDirection:"column",background:tab==="case tracker"?SIDEBAR_BG:undefined}}>
+      <div style={{flex:1,marginLeft:sbCollapsed?64:220,minHeight:"100vh",display:"flex",flexDirection:"column"}}>
         {/* Top selector bar */}
-        {tab!=="owner withdrawals"&&tab!=="case tracker"&&<div className="bc-page-topbar" style={{background:SIDEBAR_BG,borderBottom:"1px solid rgba(255,255,255,.06)",position:"sticky",top:0,zIndex:40,padding:"0 24px"}}>
+        {tab!=="owner withdrawals"&&<div className="bc-page-topbar" style={{background:"#fff",borderBottom:"1px solid "+("#e5e7eb"),position:"sticky",top:0,zIndex:40,padding:"0 24px"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",flexWrap:"wrap"}}>
             {(()=>{
               const onSched=tab==="schedule";
@@ -11521,7 +11114,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             <button onClick={()=>setTab("audit")} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"4px 14px",fontSize:12,cursor:"pointer",marginLeft:4,fontWeight:500}}>Review</button>
           </div>
         )}
-        <div key={tab} className="bc-page-fade" style={{maxWidth:(tab==="planner"||tab==="owner withdrawals"||tab==="reviews"||tab==="case tracker")?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":(tab==="owner withdrawals"?"0":"24px 28px"),width:tab==="owner withdrawals"?"100%":undefined}}>
+        <div key={tab} className="bc-page-fade" style={{maxWidth:(tab==="planner"||tab==="owner withdrawals"||tab==="reviews")?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":(tab==="owner withdrawals"?"0":"24px 28px"),width:tab==="owner withdrawals"?"100%":undefined}}>
 
         {/* Profile View takes over main content */}
         {tab==="dashboard"&&isAdmin&&(
@@ -11808,8 +11401,6 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         {tab==="reports"&&<ReportsTab/>}
 
         {tab==="reviews"&&<ReviewsTab/>}
-
-        {tab==="case tracker"&&<CaseTrackerTab/>}
 
 
         {tab==="export"&&<div>
@@ -13667,7 +13258,7 @@ const teamMap={
             const getPartner=(tn,shift,key)=>{const sp=getSyncPairs(tn);if(shift==="morning")return sp[key]||null;return Object.entries(sp).find(([,v])=>v===key)?.[0]||null;};
             const moveField=(tn,shift,key,dir)=>{if(!isOwner){toast2("Only the owner can change the daily config.");return;}setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[tn]={...c[tn]};const arr=[...c[tn][shift]];const idx=arr.findIndex(f=>f.k===key);const nIdx=idx+dir;if(nIdx<0||nIdx>=arr.length)return c;[arr[idx],arr[nIdx]]=[arr[nIdx],arr[idx]];c[tn][shift]=arr;var otherShift=shift==="morning"?"evening":"morning";const oArr=[...c[tn][otherShift]];const sp=getSyncPairs(tn);var partnerKey=null;if(shift==="morning")partnerKey=sp[key];else partnerKey=Object.entries(sp).find(([,v])=>v===key)?.[0]||null;if(!partnerKey)partnerKey=key;var oIdx=oArr.findIndex(f=>f.k===partnerKey);if(oIdx<0&&idx<oArr.length)oIdx=idx;if(oIdx>=0){const oNIdx=oIdx+dir;if(oNIdx>=0&&oNIdx<oArr.length){[oArr[oIdx],oArr[oNIdx]]=[oArr[oNIdx],oArr[oIdx]];c[tn][otherShift]=oArr;}}dbSaveConfigAll("dailycfg",c);return c;});};
             const startEdit=(tn,shift,f)=>{setDcEditField({team:tn,shift,key:f.k});setDcEditLabel(f.l);setDcEditType(f.t);};
-            const saveEdit=()=>{if(!dcEditField||!dcEditLabel.trim())return;setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[dcEditField.team]={...c[dcEditField.team]};c[dcEditField.team][dcEditField.shift]=c[dcEditField.team][dcEditField.shift].map(f=>f.k===dcEditField.key?{...f,l:dcEditLabel.trim(),t:dcEditType}:f);dbSaveConfigAll("dailycfg",c);return c;});addAudit("Daily Config Edited",dcEditField.shift+" field: "+dcEditLabel.trim());setDcEditField(null);toast2("Field updated & saved.");};
+            const saveEdit=()=>{if(!dcEditField||!dcEditLabel.trim())return;setDailyConfig(prev=>{const c={...(prev||DEFAULT_DAILY_CONFIG)};c[dcEditField.team]={...c[dcEditField.team]};c[dcEditField.team][dcEditField.shift]=c[dcEditField.team][dcEditField.shift].map(f=>f.k===dcEditField.key?{...f,l:dcEditLabel.trim(),t:dcEditType}:f);return c;});addAudit("Daily Config Edited",dcEditField.shift+" field: "+dcEditLabel.trim());setDcEditField(null);toast2("Field updated.");};
             const isEditing=(tn,shift,key)=>dcEditField&&dcEditField.team===tn&&dcEditField.shift===shift&&dcEditField.key===key;
             const renderField=(tn,shift,f,fi,arrLen)=>{
               if(isEditing(tn,shift,f.k))return<div style={{display:"flex",alignItems:"center",gap:4,flex:1}}>
@@ -13681,10 +13272,7 @@ const teamMap={
               return<><span style={{fontSize:11,color:"#111827",flex:1}}>{f.l}</span><span style={{fontSize:9,color:"#6b7280"}}>{f.t}</span><button onClick={()=>startEdit(tn,shift,f)} style={{fontSize:9,color:"#2563eb",background:"none",border:"none",cursor:"pointer",padding:"0 1px"}}>✎</button><button onClick={()=>moveField(tn,shift,f.k,-1)} disabled={fi===0} style={{fontSize:9,color:fi===0?"#d1d5db":"#6b7280",background:"none",border:"none",cursor:fi===0?"default":"pointer",padding:"0 1px"}}>▲</button><button onClick={()=>moveField(tn,shift,f.k,1)} disabled={fi===arrLen-1} style={{fontSize:9,color:fi===arrLen-1?"#d1d5db":"#6b7280",background:"none",border:"none",cursor:fi===arrLen-1?"default":"pointer",padding:"0 1px"}}>▼</button><button onClick={()=>removeField(tn,shift,f.k)} style={{fontSize:9,color:"#dc2626",background:"none",border:"none",cursor:"pointer",padding:"0 1px"}}>✕</button></>;
             };
             return<div>{teams.map(tn=>{const tColor=tc[tn]?.color||"#6b7280";return<div key={tn} style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",marginBottom:16,overflow:"hidden"}}>
-              <div style={{padding:"12px 18px",borderBottom:"1px solid #f3f4f6",borderLeft:"4px solid "+tColor,display:"flex",alignItems:"center",gap:10}}>
-                <span style={{fontWeight:700,fontSize:14,color:"#111827",flex:1}}>{tn}</span>
-                {isOwner&&dailyConfig&&<button onClick={()=>{dbSaveConfigAll("dailycfg",dailyConfig);try{localStorage.setItem("bc_mirror_dailycfg",JSON.stringify(dailyConfig));}catch(_){}toast2("Daily config saved to cloud — everyone will now see this.");}} style={{fontSize:11,color:"#0d9488",background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:6,padding:"4px 12px",cursor:"pointer",fontWeight:600}}>💾 Save to cloud</button>}
-              </div>
+              <div style={{padding:"12px 18px",borderBottom:"1px solid #f3f4f6",borderLeft:"4px solid "+tColor,fontWeight:700,fontSize:14,color:"#111827"}}>{tn}</div>
               <div style={{padding:"14px 18px"}}>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 110px 1fr",gap:10,marginBottom:8}}>
                   <div style={{fontSize:12,fontWeight:700,color:"#059669",padding:"0 0 6px"}}>Morning Fields</div>
@@ -13981,18 +13569,69 @@ const teamMap={
                 <thead><tr style={{background:"#f9fafb"}}><th style={{padding:"10px 20px",textAlign:"left",fontWeight:600,color:"#6b7280",borderBottom:"2px solid #e5e7eb",fontSize:11}}>KPI</th><th style={{padding:"10px 16px",textAlign:"left",fontWeight:600,color:"#6b7280",borderBottom:"2px solid #e5e7eb",fontSize:11}}>Target</th><th style={{padding:"10px 16px",textAlign:"center",fontWeight:600,color:"#6b7280",borderBottom:"2px solid #e5e7eb",fontSize:11}}>Threshold</th></tr></thead>
                 <tbody>{kpis2.map((k,ki)=>{
                   const edited=kpiEditVals[k.key]||{};const lbl=edited.label??k.label;const tgt=edited.target??k.target;const thr=edited.thresh??k.thresh;
+                  // v2.9.2 — target/thresh now SYNC. Changing thresh rebuilds target string from
+                  // dir+unit. Changing target string parses out the number and writes thresh.
+                  // Eliminates the "I set the target to 95 but the pass check still uses 90" trap
+                  // where the two values silently drifted apart.
+                  const rebuildTarget=(t)=>{const dir=k.dir||"gt";const unit=k.unit||"";const sign=dir==="gt"?">":dir==="lt"?"<":dir==="gte"?"≥":dir==="lte"?"≤":">";return sign+t+unit;};
+                  const parseTargetThresh=(s)=>{const m=String(s).match(/(-?\d+(?:\.\d+)?)/);return m?+m[1]:null;};
                   return(<tr key={k.key} style={{borderBottom:"1px solid #f3f4f6",background:ki%2?"#f9fafb":"#fff"}}>
                     <td style={{padding:"8px 20px"}}><input value={lbl} onChange={e=>!kpiTargetsLocked&&setKpiEditVals(p=>({...p,[k.key]:{...p[k.key],label:e.target.value}}))} disabled={kpiTargetsLocked} style={{border:"none",background:"transparent",fontSize:13,fontWeight:500,color:"#111827",width:"100%",padding:"2px 0",outline:"none",opacity:kpiTargetsLocked?.7:1}}/><div style={{fontSize:10,color:"#9ca3af",marginTop:1}}>{k.key}</div></td>
-                    <td style={{padding:"8px 16px"}}><input value={tgt} onChange={e=>!kpiTargetsLocked&&setKpiEditVals(p=>({...p,[k.key]:{...p[k.key],target:e.target.value}}))} disabled={kpiTargetsLocked} style={{border:"none",background:"transparent",fontSize:13,color:"#6b7280",width:"100%",padding:"2px 0",outline:"none"}}/></td>
-                    <td style={{padding:"8px 16px",textAlign:"center"}}><input type="number" value={thr} onChange={e=>!kpiTargetsLocked&&setKpiEditVals(p=>({...p,[k.key]:{...p[k.key],thresh:+e.target.value||0}}))} disabled={kpiTargetsLocked} style={{border:kpiTargetsLocked?"none":"1px solid #e5e7eb",background:kpiTargetsLocked?"transparent":"#fff",fontSize:13,fontWeight:600,color:"#111827",width:70,padding:"4px 8px",borderRadius:6,textAlign:"center",outline:"none"}}/></td>
+                    <td style={{padding:"8px 16px"}}><input value={tgt} onChange={e=>{if(kpiTargetsLocked)return;const newTgt=e.target.value;const parsed=parseTargetThresh(newTgt);setKpiEditVals(p=>({...p,[k.key]:{...p[k.key],target:newTgt,...(parsed!=null?{thresh:parsed}:{})}}));}} disabled={kpiTargetsLocked} style={{border:"none",background:"transparent",fontSize:13,color:"#6b7280",width:"100%",padding:"2px 0",outline:"none"}}/></td>
+                    <td style={{padding:"8px 16px",textAlign:"center"}}><input type="number" value={thr} onChange={e=>{if(kpiTargetsLocked)return;const newThr=+e.target.value||0;setKpiEditVals(p=>({...p,[k.key]:{...p[k.key],thresh:newThr,target:rebuildTarget(newThr)}}));}} disabled={kpiTargetsLocked} style={{border:kpiTargetsLocked?"none":"1px solid #e5e7eb",background:kpiTargetsLocked?"transparent":"#fff",fontSize:13,fontWeight:600,color:"#111827",width:70,padding:"4px 8px",borderRadius:6,textAlign:"center",outline:"none"}}/></td>
                   </tr>);
                 })}</tbody>
               </table>
               {Object.keys(kpiEditVals).length>0&&(<div style={{display:"flex",gap:8,padding:"12px 20px",borderTop:"1px solid #e5e7eb",background:"#f9fafb"}}>
-                <button onClick={()=>{if(!isOwner){toast2("Only the owner can change KPI targets.");return;}const updatedKpis=(tc[kpiTeam]?.kpis||[]).map(k=>{const e2=kpiEditVals[k.key];return e2?{...k,...e2}:k;});const newTc={...tc,[kpiTeam]:{...tc[kpiTeam],kpis:updatedKpis}};setTc(newTc);
-                  // Explicit save to Supabase — don't wait on the auto-save useEffect, which has hash-dedup that can sometimes skip
-                  dbSaveConfigKey("sys","app_data",{...data,_r:roster,_tc:newTc});
-                  addAudit("KPI Targets Updated",kpiTeam+": "+Object.keys(kpiEditVals).join(", "));setKpiEditVals({});toast2("KPI targets saved.");}} style={S.p1}>Save Changes</button>
+                <button onClick={async()=>{if(!isOwner){toast2("Only the owner can change KPI targets.");return;}
+                  const updatedKpis=(tc[kpiTeam]?.kpis||[]).map(k=>{const e2=kpiEditVals[k.key];return e2?{...k,...e2}:k;});
+                  const newTc={...tc,[kpiTeam]:{...tc[kpiTeam],kpis:updatedKpis}};
+                  setTc(newTc);
+                  // v2.9.2 — explicit dual-save AND verify. The loader reads from team_config
+                  // (standalone), so saving only to app_data._tc means the loader ignores the
+                  // update. Both paths now save explicitly, bypassing the dedupe/suppressSaves
+                  // race that was silently dropping the team_config save in earlier versions.
+                  // Then we immediately re-read team_config from cloud and verify the bytes
+                  // actually landed — if not, we surface it loudly instead of letting the user
+                  // discover the revert next session.
+                  try{
+                    // Force-bypass dedupe by clearing the last-hash entry for both keys before saving.
+                    if(typeof lastSavedConfigRef!=="undefined"&&lastSavedConfigRef.current){
+                      lastSavedConfigRef.current.delete("sys:team_config");
+                      lastSavedConfigRef.current.delete("sys:app_data");
+                    }
+                    await dbSaveConfigKey("sys","team_config",newTc);
+                    await dbSaveConfigKey("sys","app_data",{...data,_r:roster,_tc:newTc});
+                    // Verify by reading back from cloud
+                    const verify=await dbLoadConfig("sys");
+                    let savedTc=verify?.team_config;
+                    if(savedTc&&typeof savedTc==="object"&&"_v" in savedTc)savedTc=savedTc._v;
+                    const editedKeys=Object.keys(kpiEditVals);
+                    const mismatches=[];
+                    editedKeys.forEach(kKey=>{
+                      const expected=newTc[kpiTeam]?.kpis?.find(k=>k.key===kKey);
+                      const stored=savedTc?.[kpiTeam]?.kpis?.find(k=>k.key===kKey);
+                      if(!expected||!stored)return;
+                      if(expected.thresh!==stored.thresh||expected.target!==stored.target){
+                        mismatches.push(kKey+" (expected thresh="+expected.thresh+" got "+stored?.thresh+")");
+                      }
+                    });
+                    if(mismatches.length){
+                      console.error("[KPI Save] Verification FAILED:",mismatches);
+                      toast2("⚠ Save verification failed: "+mismatches.join(", "));
+                      addAudit("KPI Save VERIFICATION FAILED",kpiTeam+": "+mismatches.join(", "));
+                    }else{
+                      const summary=editedKeys.map(kKey=>{const x=newTc[kpiTeam]?.kpis?.find(k=>k.key===kKey);return x?.label+"="+x?.target;}).join(", ");
+                      console.log("[KPI Save] Verified in cloud:",summary);
+                      addAudit("KPI Targets Updated",kpiTeam+": "+summary);
+                      toast2("✓ Saved & verified: "+summary);
+                    }
+                  }catch(e){
+                    console.error("[KPI Save] error:",e);
+                    toast2("Save error: "+e.message);
+                  }
+                  setKpiEditVals({});
+                }} style={S.p1}>Save Changes</button>
                 <button onClick={()=>setKpiEditVals({})} style={S.out}>Discard</button>
               </div>)}
             </div>;

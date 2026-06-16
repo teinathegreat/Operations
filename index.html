@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.1.1";
+const APP_VERSION="3.1.2";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -3474,6 +3474,7 @@ function App(){
   // KPI key (csat_in_stay / post_case_csat / csat_owner_claim) so the modal can look up the
   // matching csatData bucket and question labels.
   const[csatDetail,setCsatDetail]=useState(null);
+  const[kpiBreakdown,setKpiBreakdown]=useState(null);
   const[csatDetailScope,setCsatDetailScope]=useState("period");// "period" | "all"
   // Reset scope filter back to "current period" each time a new KPI is opened so the user always
   // lands on what's relevant to where they were on the dashboard. Closing (null) leaves it alone.
@@ -6128,8 +6129,8 @@ function App(){
       const team={...(prev[TEAM]||{})};
       const stamp=nowNZ();
       // claims_resolved (cleaning claims)
-      Object.keys(clT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};if(ex.claims_resolved!=null&&!ex._autoFilled)return;team[pk]={...ex,claims_resolved:pct(clP[w]||0,clT[w]),_autoFilled:stamp};});
-      Object.keys(clMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};if(ex.claims_resolved!=null&&!ex._autoFilled)return;team[pk]={...ex,claims_resolved:pct(clMP[ml]||0,clMT[ml]),_autoFilled:stamp};});
+      Object.keys(clT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};if(ex.claims_resolved!=null&&!ex._autoFilled)return;team[pk]={...ex,claims_resolved:pct(clP[w]||0,clT[w]),_clRes:{p:clP[w]||0,t:clT[w]},_autoFilled:stamp};});
+      Object.keys(clMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};if(ex.claims_resolved!=null&&!ex._autoFilled)return;team[pk]={...ex,claims_resolved:pct(clMP[ml]||0,clMT[ml]),_clRes:{p:clMP[ml]||0,t:clMT[ml]},_autoFilled:stamp};});
       // feedback half + combined "Feedback and Review Resolution" (pooled with any stored review half)
       Object.keys(fbT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};const fb={p:fbP[w]||0,t:fbT[w]};const fr=combine(fb,ex._revRes);const next={...ex,_fbRes:fb};if(fr!=null&&!(ex.feedback_resolution!=null&&!ex._autoFilled)){next.feedback_resolution=fr;next._autoFilled=stamp;}team[pk]=next;});
       Object.keys(fbMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};const fb={p:fbMP[ml]||0,t:fbMT[ml]};const fr=combine(fb,ex._revRes);const next={...ex,_fbRes:fb};if(fr!=null&&!(ex.feedback_resolution!=null&&!ex._autoFilled)){next.feedback_resolution=fr;next._autoFilled=stamp;}team[pk]=next;});
@@ -11813,9 +11814,9 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 }
                 const p=isPass(v,k);return(
                 <tr key={k.key} style={{background:i%2?tDef.lightBg||"#f9fafb":"#fff",borderBottom:"1px solid "+(tDef.lightBg||"#f3f4f6")}}>
-                  <td style={{padding:"9px 13px",color:"#111827",cursor:(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")?"pointer":"default"}}
-                      onClick={()=>{if(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")setCsatDetail(k.key);}}
-                      title={(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")?"Click to view all submitted responses":""}>
+                  <td style={{padding:"9px 13px",color:"#111827",cursor:(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim"||k.key==="claims_resolved"||k.key==="feedback_resolution"||k.key==="airbnb_reviews")?"pointer":"default"}}
+                      onClick={()=>{if(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")setCsatDetail(k.key);else if(k.key==="claims_resolved"||k.key==="feedback_resolution"||k.key==="airbnb_reviews")setKpiBreakdown(k.key);}}
+                      title={(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")?"Click to view all submitted responses":((k.key==="claims_resolved"||k.key==="feedback_resolution"||k.key==="airbnb_reviews")?"Click to see the breakdown":"")}>
                     {(k.dir==="bool"||k.key==="call_reviews_count"||k.key==="call_reviews_pass")?(()=>{
                       const wkMon=(()=>{
                         const _wkRange=FY25_WK_RANGES.find(([w])=>w===wk);
@@ -14548,6 +14549,57 @@ const teamMap={
               <div style={{padding:"12px 22px",borderTop:"1px solid #e5e7eb",display:"flex",justifyContent:"flex-end",gap:8,background:"#fafbfc"}}>
                 <button onClick={()=>setCsatDetail(null)} style={{padding:"7px 16px",fontSize:13,fontWeight:600,background:"#fff",color:"#111827",border:"1px solid #d1d5db",borderRadius:8,cursor:"pointer"}}>Close</button>
               </div>
+            </div>
+          </div>
+        );
+      })()}
+      {kpiBreakdown&&(()=>{
+        const bd=(data[team]||{})[pk]||{};
+        const labels={claims_resolved:"Claims Cleaning Cases <3 Business Days",feedback_resolution:"Feedback and Review Resolution <3 Days",airbnb_reviews:"Airbnb and Negative Reviews Responded"};
+        const pctOf=(p,t)=>t>0?Math.round(p/t*1000)/10:null;
+        const Row=({label,val,good,bad,strong})=>(<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",fontSize:13,borderBottom:"1px solid #f9fafb"}}><span style={{color:"#374151"}}>{label}</span><span style={{fontWeight:strong?700:600,color:good?"#059669":(bad?"#dc2626":"#111827")}}>{val}</span></div>);
+        let body=null;
+        if(kpiBreakdown==="claims_resolved"){
+          const r=bd._clRes||{p:0,t:0};const rate=pctOf(r.p,r.t);
+          body=(<div>
+            <p style={{fontSize:12,color:"#6b7280",marginBottom:6}}>Cleaning claims (Claim · Additional Cleaning) completed this period.</p>
+            <Row label="Completed" val={r.t}/>
+            <Row label="Within 3 business days" val={rate!=null?`${r.p} (${rate}%)`:r.p} good/>
+            <Row label="Took longer than 3 business days" val={Math.max(0,r.t-r.p)} bad/>
+            {!r.t&&<p style={{fontSize:12,color:"#9ca3af",marginTop:8}}>No data yet — re-upload the Case Tracker on v3.1.2+ to populate this.</p>}
+          </div>);
+        } else if(kpiBreakdown==="feedback_resolution"){
+          const fb=bd._fbRes||{p:0,t:0};const rev=bd._revRes||{p:0,t:0};
+          const tp=(fb.p||0)+(rev.p||0),tt=(fb.t||0)+(rev.t||0);const rate=pctOf(tp,tt);
+          body=(<div>
+            <p style={{fontSize:12,color:"#6b7280",marginBottom:6}}>The two sources are pooled (added together), so the larger review volume drives the result.</p>
+            <Row label={`Feedback cases · ${pctOf(fb.p,fb.t)??"–"}%`} val={`${fb.p||0} / ${fb.t||0} in time`}/>
+            <Row label={`Reviews · ${pctOf(rev.p,rev.t)??"–"}%`} val={`${rev.p||0} / ${rev.t||0} in time`}/>
+            <div style={{marginTop:8,paddingTop:8,borderTop:"2px solid #e5e7eb"}}>
+              <Row label="Pooled total" val={`${tp} / ${tt} = ${rate??"–"}%`} strong/>
+            </div>
+            {!tt&&<p style={{fontSize:12,color:"#9ca3af",marginTop:8}}>Upload both the Case Tracker and Review Tracker to populate this.</p>}
+          </div>);
+        } else if(kpiBreakdown==="airbnb_reviews"){
+          const brk=bd._respondBreakdown||{};
+          const order=["Resolved","Team Reviewed Guest","72 Hour Hold","Escalated","Guest Review Received","Ready for Team Review"];
+          const keys=[...new Set([...order.filter(s=>brk[s]!=null),...Object.keys(brk)])];
+          const total=Object.values(brk).reduce((s,v)=>s+(v||0),0);
+          const resolved=brk["Resolved"]||0;const rate=pctOf(resolved,total);
+          body=(<div>
+            <p style={{fontSize:12,color:"#6b7280",marginBottom:8}}>Airbnb or negative reviews aged at least 3 business days. Responded = status Resolved.</p>
+            {keys.length?keys.map(s=><Row key={s} label={s} val={brk[s]||0} good={s==="Resolved"} bad={s!=="Resolved"&&s!=="Team Reviewed Guest"}/>):<p style={{fontSize:12,color:"#9ca3af"}}>No reviews in scope for this period.</p>}
+            {total>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"2px solid #e5e7eb"}}><Row label="Responded (Resolved)" val={`${resolved} / ${total} = ${rate??"–"}%`} strong/></div>}
+          </div>);
+        }
+        return(
+          <div onClick={()=>setKpiBreakdown(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,padding:20}}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:440,width:"100%",boxShadow:"0 20px 50px rgba(0,0,0,.3)",overflow:"hidden"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"18px 20px",borderBottom:"1px solid #f3f4f6"}}>
+                <div><div style={{fontWeight:700,fontSize:15,color:"#111827"}}>{labels[kpiBreakdown]||"Breakdown"}</div><div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{team} · {plbl(pk)}</div></div>
+                <button onClick={()=>setKpiBreakdown(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,color:"#6b7280",lineHeight:1,padding:"4px 8px"}}>×</button>
+              </div>
+              <div style={{padding:"16px 20px"}}>{body}</div>
             </div>
           </div>
         );

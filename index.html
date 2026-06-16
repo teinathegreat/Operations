@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.0.9";
+const APP_VERSION="3.1.1";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -6082,6 +6082,156 @@ function App(){
     // Per-response percent = sum / (5 × Nquestions) × 100. Responses deduped by form ID, stored
     // separately per type in csatData, aggregated by FY25 week and pushed into
     // data["Reputation and Resolutions"][w__N][kpiKey] so the existing dashboard tile picks it up.
+  // v3.1.0 — Claims Cleaning resolution KPI, auto-computed from the Case Tracker snapshot.
+  // A "cleaning claim" = CaseType "Claim" + SubCaseType "Additional Cleaning". Of the Completed
+  // ones, the KPI (key: claims_resolved) is the % resolved in UNDER 3 business days, i.e.
+  // WorkingDaysToComplete < 3. Bucketed by the FY25 week of the COMPLETION date so it lines up
+  // with every other KPI; the monthly figure POOLS all cases in that month's weeks (a rate, so
+  // we pool the cases rather than averaging weekly percentages — averaging distorts low volumes).
+  const applyCaseTrackerKPIs=(ctRows)=>{
+    if(!Array.isArray(ctRows)||!ctRows.length)return;
+    const TEAM="Reputation and Resolutions";
+    // NZ date order (d/m/yyyy) -> FY25 week. Do NOT reuse dateToWk: that helper assumes US m/d/y.
+    const dmyToWk=(s)=>{
+      const m=String(s||"").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if(!m)return null;
+      const iso=m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");
+      for(const[w,a,b] of FY25_WK_RANGES){if(iso>=a&&iso<=b)return w;}
+      return null;
+    };
+    // Dominant calendar month of an FY25 week (matches the dashboard's monthly view grouping).
+    const wkMonth=(w)=>{
+      const wr=FY25_WK_RANGES.find(r=>r[0]===w);if(!wr)return null;
+      const s=new Date(wr[1]+"T00:00:00Z");const cnt={};
+      for(let i=0;i<7;i++){const d=new Date(s);d.setUTCDate(d.getUTCDate()+i);const mn=d.toLocaleString("en-NZ",{month:"long",year:"numeric",timeZone:"UTC"});cnt[mn]=(cnt[mn]||0)+1;}
+      return Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0]?.[0]||null;
+    };
+    const pct=(p,t)=>Math.round((p/t)*1000)/10;
+    const combine=(fb,rev)=>{const p=(fb&&fb.p||0)+(rev&&rev.p||0);const t=(fb&&fb.t||0)+(rev&&rev.t||0);return t>0?pct(p,t):null;};
+    // Cleaning claims (Claim + Additional Cleaning) and Feedback cases, both bucketed by the FY
+    // week of completion. WorkingDaysToComplete < 3 = resolved within 3 business days.
+    const clP={},clT={},fbP={},fbT={};
+    ctRows.forEach(r=>{
+      if(String(r.Status||"").trim()!=="Completed")return;
+      const w=dmyToWk(r.CompletionDate);if(!w)return;
+      const raw=String(r.WorkingDaysToComplete||"").trim();if(raw==="")return;
+      const wd=parseInt(raw,10);if(isNaN(wd))return;
+      const ctype=String(r.CaseType||"").trim();
+      if(ctype==="Claim"&&String(r.SubCaseType||"").trim()==="Additional Cleaning"){clT[w]=(clT[w]||0)+1;if(wd<3)clP[w]=(clP[w]||0)+1;}
+      else if(ctype==="Feedback"){fbT[w]=(fbT[w]||0)+1;if(wd<3)fbP[w]=(fbP[w]||0)+1;}
+    });
+    const clMP={},clMT={},fbMP={},fbMT={};
+    Object.keys(clT).forEach(w=>{const ml=wkMonth(+w);if(ml){clMT[ml]=(clMT[ml]||0)+clT[w];clMP[ml]=(clMP[ml]||0)+(clP[w]||0);}});
+    Object.keys(fbT).forEach(w=>{const ml=wkMonth(+w);if(ml){fbMT[ml]=(fbMT[ml]||0)+fbT[w];fbMP[ml]=(fbMP[ml]||0)+(fbP[w]||0);}});
+    if(!Object.keys(clT).length&&!Object.keys(fbT).length)return;
+    setData(prev=>{
+      const team={...(prev[TEAM]||{})};
+      const stamp=nowNZ();
+      // claims_resolved (cleaning claims)
+      Object.keys(clT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};if(ex.claims_resolved!=null&&!ex._autoFilled)return;team[pk]={...ex,claims_resolved:pct(clP[w]||0,clT[w]),_autoFilled:stamp};});
+      Object.keys(clMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};if(ex.claims_resolved!=null&&!ex._autoFilled)return;team[pk]={...ex,claims_resolved:pct(clMP[ml]||0,clMT[ml]),_autoFilled:stamp};});
+      // feedback half + combined "Feedback and Review Resolution" (pooled with any stored review half)
+      Object.keys(fbT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};const fb={p:fbP[w]||0,t:fbT[w]};const fr=combine(fb,ex._revRes);const next={...ex,_fbRes:fb};if(fr!=null&&!(ex.feedback_resolution!=null&&!ex._autoFilled)){next.feedback_resolution=fr;next._autoFilled=stamp;}team[pk]=next;});
+      Object.keys(fbMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};const fb={p:fbMP[ml]||0,t:fbMT[ml]};const fr=combine(fb,ex._revRes);const next={...ex,_fbRes:fb};if(fr!=null&&!(ex.feedback_resolution!=null&&!ex._autoFilled)){next.feedback_resolution=fr;next._autoFilled=stamp;}team[pk]=next;});
+      return {...prev,[TEAM]:team};
+    });
+  };
+
+  // v3.1.1 — Review Tracker KPIs, auto-computed from the per-row review export (Type K upload).
+  // Sentiment: Airbnb/VRBO use the Sentiment column; Booking.com is derived from Rating
+  // (1-6 Negative, 7-8 Neutral, 9-10 Positive). "Responded" = ReviewStatus "Resolved".
+  // Review Resolution: of Resolved reviews, % closed within 3 business days (Mon-Fri 08:00-17:00)
+  // of Created -> Modified, bucketed by FY week of Modified. Pools into the combined "Feedback
+  // and Review Resolution" KPI with the Case Tracker feedback half. Airbnb & Negative Responded:
+  // of reviews that are Airbnb OR negative AND aged >=3 business days, % Resolved, by FY week of
+  // Created (newer reviews are excluded so they aren't counted as misses before they're due).
+  // A per-status breakdown of the in-scope reviews is stored for the scorecard click-through.
+  const applyReviewTrackerKPIs=(allRows,headers)=>{
+    if(!Array.isArray(allRows)||allRows.length<2||!Array.isArray(headers))return;
+    const TEAM="Reputation and Resolutions";
+    const ci=(n)=>headers.indexOf(n);
+    const cCreated=ci("Created"),cMod=ci("Modified"),cChan=ci("Channel"),cRat=ci("Rating"),cSent=ci("Sentiment"),cStat=ci("ReviewStatus");
+    if(cCreated<0||cMod<0||cChan<0||cStat<0)return;
+    const parseDt=(s)=>{
+      const m=String(s||"").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})\s*(AM|PM))?/i);
+      if(!m)return null;
+      let h=m[4]?parseInt(m[4],10):0;const mi=m[5]?parseInt(m[5],10):0;const ap=(m[6]||"").toUpperCase();
+      if(ap==="PM"&&h<12)h+=12;if(ap==="AM"&&h===12)h=0;
+      return new Date(Date.UTC(+m[3],+m[2]-1,+m[1],h,mi));
+    };
+    const isoOf=(dt)=>dt.getUTCFullYear()+"-"+String(dt.getUTCMonth()+1).padStart(2,"0")+"-"+String(dt.getUTCDate()).padStart(2,"0");
+    const wkOf=(iso)=>{for(const[w,a,b] of FY25_WK_RANGES){if(iso>=a&&iso<=b)return w;}return null;};
+    const wkMonth=(w)=>{const wr=FY25_WK_RANGES.find(r=>r[0]===w);if(!wr)return null;const s=new Date(wr[1]+"T00:00:00Z");const cnt={};for(let i=0;i<7;i++){const d=new Date(s);d.setUTCDate(d.getUTCDate()+i);const mn=d.toLocaleString("en-NZ",{month:"long",year:"numeric",timeZone:"UTC"});cnt[mn]=(cnt[mn]||0)+1;}return Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0]?.[0]||null;};
+    const bizHrs=(a,b)=>{
+      if(!(a instanceof Date)||!(b instanceof Date)||isNaN(a)||isNaN(b)||b<=a)return 0;
+      let total=0;let cur=new Date(Date.UTC(a.getUTCFullYear(),a.getUTCMonth(),a.getUTCDate()));
+      const last=new Date(Date.UTC(b.getUTCFullYear(),b.getUTCMonth(),b.getUTCDate()));
+      while(cur<=last){
+        const dow=cur.getUTCDay();
+        if(dow!==0&&dow!==6){
+          const ws=new Date(cur);ws.setUTCHours(8,0,0,0);const we=new Date(cur);we.setUTCHours(17,0,0,0);
+          const s=a>ws?a:ws;const e=b<we?b:we;if(e>s)total+=(e-s);
+        }
+        cur.setUTCDate(cur.getUTCDate()+1);
+      }
+      return total/3600000;
+    };
+    const bizDaysSince=(dt,now)=>{
+      if(!(dt instanceof Date)||isNaN(dt))return 0;
+      let n=0;let cur=new Date(Date.UTC(dt.getUTCFullYear(),dt.getUTCMonth(),dt.getUTCDate()));
+      const end=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()));
+      while(cur<end){const dow=cur.getUTCDay();if(dow!==0&&dow!==6)n++;cur.setUTCDate(cur.getUTCDate()+1);}
+      return n;
+    };
+    const classifySent=(chan,sent,rat)=>{
+      const ch=String(chan||"").trim().toLowerCase();
+      if(ch==="booking.com"){const r=parseInt(rat,10);if(isNaN(r))return null;return r<=6?"Negative":(r<=8?"Neutral":"Positive");}
+      return String(sent||"").trim()||null;
+    };
+    const NOW=new Date();
+    const RESP_DUE=3; // business days a review must age before it counts toward the responded rate
+    const revP={},revT={},abP={},abT={},brkW={},brkM={};
+    for(let i=1;i<allRows.length;i++){
+      const row=allRows[i];if(!row||!row.length)continue;
+      const status=String((cStat>=0?row[cStat]:"")||"").trim();
+      const chan=String((cChan>=0?row[cChan]:"")||"").trim();
+      const created=parseDt(cCreated>=0?row[cCreated]:"");
+      const modified=parseDt(cMod>=0?row[cMod]:"");
+      const sent=classifySent(chan,cSent>=0?row[cSent]:"",cRat>=0?row[cRat]:"");
+      if(status==="Resolved"&&modified){
+        const w=wkOf(isoOf(modified));
+        if(w){revT[w]=(revT[w]||0)+1;if(created&&bizHrs(created,modified)<RESP_DUE*9)revP[w]=(revP[w]||0)+1;}
+      }
+      const inScope=(chan==="Airbnb")||(sent==="Negative");
+      if(inScope&&created&&bizDaysSince(created,NOW)>=RESP_DUE){
+        const w=wkOf(isoOf(created));
+        if(w){
+          abT[w]=(abT[w]||0)+1;if(status==="Resolved")abP[w]=(abP[w]||0)+1;
+          const lbl=status||"(blank)";const ml=wkMonth(w);
+          (brkW[w]=brkW[w]||{})[lbl]=((brkW[w]||{})[lbl]||0)+1;
+          if(ml)(brkM[ml]=brkM[ml]||{})[lbl]=((brkM[ml]||{})[lbl]||0)+1;
+        }
+      }
+    }
+    const pct=(p,t)=>Math.round((p/t)*1000)/10;
+    const combine=(fb,rev)=>{const p=(fb&&fb.p||0)+(rev&&rev.p||0);const t=(fb&&fb.t||0)+(rev&&rev.t||0);return t>0?pct(p,t):null;};
+    const revMP={},revMT={},abMP={},abMT={};
+    Object.keys(revT).forEach(w=>{const ml=wkMonth(+w);if(ml){revMT[ml]=(revMT[ml]||0)+revT[w];revMP[ml]=(revMP[ml]||0)+(revP[w]||0);}});
+    Object.keys(abT).forEach(w=>{const ml=wkMonth(+w);if(ml){abMT[ml]=(abMT[ml]||0)+abT[w];abMP[ml]=(abMP[ml]||0)+(abP[w]||0);}});
+    if(!Object.keys(revT).length&&!Object.keys(abT).length)return;
+    setData(prev=>{
+      const team={...(prev[TEAM]||{})};
+      const stamp=nowNZ();
+      // review-resolution half + combined "Feedback and Review Resolution" (pooled with stored feedback half)
+      Object.keys(revT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};const rev={p:revP[w]||0,t:revT[w]};const fr=combine(ex._fbRes,rev);const next={...ex,_revRes:rev};if(fr!=null&&!(ex.feedback_resolution!=null&&!ex._autoFilled)){next.feedback_resolution=fr;next._autoFilled=stamp;}team[pk]=next;});
+      Object.keys(revMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};const rev={p:revMP[ml]||0,t:revMT[ml]};const fr=combine(ex._fbRes,rev);const next={...ex,_revRes:rev};if(fr!=null&&!(ex.feedback_resolution!=null&&!ex._autoFilled)){next.feedback_resolution=fr;next._autoFilled=stamp;}team[pk]=next;});
+      // airbnb_reviews + per-status breakdown for the click-through
+      Object.keys(abT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};if(ex.airbnb_reviews!=null&&!ex._autoFilled)return;team[pk]={...ex,airbnb_reviews:pct(abP[w]||0,abT[w]),_respondBreakdown:brkW[w]||{},_autoFilled:stamp};});
+      Object.keys(abMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};if(ex.airbnb_reviews!=null&&!ex._autoFilled)return;team[pk]={...ex,airbnb_reviews:pct(abMP[ml]||0,abMT[ml]),_respondBreakdown:brkM[ml]||{},_autoFilled:stamp};});
+      return {...prev,[TEAM]:team};
+    });
+  };
+
   // v2.9.2 — Case Tracker upload. Parses the full snapshot CSV and replaces the stored dataset.
   // Owner (Teina) and admins only. Records who uploaded and when for the "last updated" banner.
   const processCaseTrackerFile=(file)=>{
@@ -6096,8 +6246,9 @@ function App(){
         if(!headers.includes("CaseID")){toast2("⚠ That doesn't look like a Case Tracker export (no CaseID column).");return;}
         const snap={rows,headers,lastUpdated:new Date().toISOString(),uploadedBy:currentUser?.displayName||currentUser?.username||"Unknown",fileName:file.name,count:rows.length};
         setCaseTracker(snap);
+        applyCaseTrackerKPIs(rows);
         addAudit("Case Tracker Updated",`${rows.length} cases imported from ${file.name}`);
-        toast2(`✓ Case Tracker updated — ${rows.length} cases loaded.`);
+        toast2(`✓ Case Tracker updated — ${rows.length} cases loaded. Cleaning-claims KPI refreshed.`);
       }catch(err){console.error("Case Tracker parse error:",err);toast2("⚠ Could not parse that file. Check it's the Case Tracker CSV.");}
     };
     reader.readAsText(file,"utf-8");
@@ -6496,6 +6647,7 @@ function App(){
           const skipMsg=unassigned?` · ${unassigned} unassigned skipped`:"";
           toast2(`Review Tracker: ${recordCount} reviews across ${Object.keys(byPerson).length} agent(s), ${wkCount} week(s)${skipMsg}${unmsg}`);
           addAudit("Review Tracker Imported (per-row)",`${recordCount} reviews, ${Object.keys(byPerson).length} agents, ${wkCount} weeks`);
+          applyReviewTrackerKPIs(allRows,headers);
         }
 
         // ── TYPE J: Bachcare Review Tracker (pivot-table by date × first name) ──

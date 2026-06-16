@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.0.3";
+const APP_VERSION="3.0.4";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -2991,7 +2991,7 @@ Filtered records:
 \u0060\u0060\u0060json
 ${rowsJson}
 \u0060\u0060\u0060`;
-      const data2=await callClaudeAPI({maxTokens:isLarge?6000:isSmall?2500:4000,prompt,model:"claude-sonnet-4-20250514",purpose:"owner-withdrawals-feedback"});
+      const data2=await callClaudeAPI({maxTokens:isLarge?6000:isSmall?2500:4000,prompt,model:"claude-sonnet-4-6",purpose:"owner-withdrawals-feedback"});
       const text=data2?.content?.[0]?.text||"";
       if(!text){sendResult({error:"AI returned no content. Try again or with different filters."});return;}
       let cleaned=text.trim();
@@ -4285,7 +4285,7 @@ function App(){
     }
   };
   // ── Pro Features: Claude API call (proxy or direct) ───────────────────────
-  const callClaudeAPI=async({maxTokens=1024,prompt,model="claude-sonnet-4-20250514",purpose="general"})=>{
+  const callClaudeAPI=async({maxTokens=1024,prompt,model="claude-sonnet-4-6",purpose="general"})=>{
     const reqBody={model,max_tokens:maxTokens,messages:[{role:"user",content:prompt}]};
     if(useEdgeProxy){
       const url=sbUrlRef.current;const key=sbKeyRef.current;

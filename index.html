@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.0.2";
+const APP_VERSION="3.0.3";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -9073,7 +9073,7 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
                     setAiProgress("Graded "+matched+" of "+criteriaIds.length+" criteria.");
                     addAudit("Call Grade",team+" - "+agentName);
                     toast2("Done! Scroll down to see scores.");
-                  }catch(err){console.error(err);setAiStatus("error");setAiProgress("Something went wrong. Please try again or use a different recording.");toast2("Something went wrong. Try again.");}
+                  }catch(err){console.error("Audio grading error:",err);setAiStatus("error");const errMsg=err&&err.message?err.message:String(err||"Unknown error");setAiProgress("Failed: "+errMsg);toast2("Grading failed: "+errMsg);}
                 }} style={{...S.p1,opacity:(aiStatus==="transcribing"||aiStatus==="grading"||!agentName)?.6:1,background:"#0f766e"}}>
                   {aiStatus==="transcribing"?"Processing...":aiStatus==="grading"?"Grading...":"Process & Grade"}
                 </button>}

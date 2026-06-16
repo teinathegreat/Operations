@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.0.1";
+const APP_VERSION="3.0.2";
 // v2.5.8 — Module-scope wrapper that gives ProfileView a stable React component type. ProfileView
 // itself is defined inside App (it needs closure access to dozens of App-scope state values and
 // helpers), so its function reference changes on every App re-render. Rendered directly, React
@@ -8842,8 +8842,11 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
       }catch(err){
         console.error("Grading error:",err);
         setAiStatus("error");
-        setAiProgress("Something went wrong. Please try again or use a different call recording.");
-        toast2("Something went wrong. Try again.");
+        // v3.0.2 — show the actual error message so we can diagnose recurring failures
+        // instead of a generic "Something went wrong" that gives no information.
+        const errMsg=err&&err.message?err.message:String(err||"Unknown error");
+        setAiProgress("Failed: "+errMsg);
+        toast2("Grading failed: "+errMsg);
       }
     };
 
@@ -8968,47 +8971,47 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
                     const txData=await txResp.json();
                     const segments=txData.segments||[];
                     if(segments.length){
-                      // v2.9 — robust hallucination filter. The previous version only caught
-                      // CONSECUTIVE repeats; Whisper often alternates two phrases (A B A B A B…)
-                      // when fed a long prompt or silent audio, which beat consecutive-dedup.
-                      // New approach: count how many times each normalized segment text appears
-                      // across the whole transcript. Anything that appears 4+ times is a
-                      // hallucination loop, regardless of position.
-                      const normalize=(t)=>String(t||"").toLowerCase().replace(/[^a-z\s]/g,"").trim();
-                      const occurrenceCount={};
-                      segments.forEach(seg=>{const n=normalize(seg.text);if(n.length>3)occurrenceCount[n]=(occurrenceCount[n]||0)+1;});
-                      const hallucinatedTexts=new Set(Object.entries(occurrenceCount).filter(([,c])=>c>=4).map(([t])=>t));
-                      // Filter Whisper hallucinations: detect repeated phrases
-                      const cleanSegments=[];let prevText="";let repeatCount=0;let lastWasSilence=false;
-                      segments.forEach(seg=>{
-                        const text=seg.text.trim();
-                        const normalized=normalize(text);
-                        const prevNorm=normalize(prevText);
-                        // NEW: skip segments whose text is part of a hallucination loop
-                        if(hallucinatedTexts.has(normalized)){
-                          if(!lastWasSilence){cleanSegments.push({start:seg.start,text:"[silence or hallucinated audio]",filtered:true});lastWasSilence=true;}
-                          return;
-                        }
-                        // Check for exact or near-exact repeat (legacy consecutive check)
-                        if(normalized===prevNorm||normalized.length<15&&prevNorm.includes(normalized)){
-                          repeatCount++;
-                          if(repeatCount>=3)return; // Skip hallucinated repeats
-                        }else{
-                          // If we had a repeated section, mark it
-                          if(repeatCount>=3&&!lastWasSilence){cleanSegments.push({start:seg.start,text:"[silence]",filtered:true});lastWasSilence=true;}
-                          repeatCount=0;
-                        }
-                        // Also filter common hallucination phrases when repeated
-                        const hallucinations=["thank you","thanks for watching","bye","please subscribe","you","thank you for watching"];
-                        if(hallucinations.some(h=>normalized===h)&&seg.no_speech_prob>0.5)return;
-                        prevText=text;
-                        lastWasSilence=false;
-                        cleanSegments.push(seg);
-                      });
-                      cleanSegments.forEach(seg=>{
-                        const mins=Math.floor(seg.start/60);const secs=Math.floor(seg.start%60);
-                        localTranscript+="["+String(mins).padStart(2,"0")+":"+String(secs).padStart(2,"0")+"] "+(seg.filtered?seg.text:seg.text.trim())+"\n";
-                      });
+                      // v3.0.2 — wrapped in try/catch. If anything in the filter logic fails on
+                      // unexpected segment shapes, we fall back to the raw transcript text instead
+                      // of erroring out the whole grading flow. The previous filter assumed every
+                      // segment had a .text string; defensive normalize() handles undefined now.
+                      try{
+                        const normalize=(t)=>String(t==null?"":t).toLowerCase().replace(/[^a-z\s]/g,"").trim();
+                        const occurrenceCount={};
+                        segments.forEach(seg=>{if(!seg||typeof seg.text!=="string")return;const n=normalize(seg.text);if(n.length>3)occurrenceCount[n]=(occurrenceCount[n]||0)+1;});
+                        const hallucinatedTexts=new Set(Object.entries(occurrenceCount).filter(([,c])=>c>=4).map(([t])=>t));
+                        const cleanSegments=[];let prevText="";let repeatCount=0;let lastWasSilence=false;
+                        segments.forEach(seg=>{
+                          if(!seg||typeof seg.text!=="string")return;
+                          const text=seg.text.trim();
+                          const normalized=normalize(text);
+                          const prevNorm=normalize(prevText);
+                          if(hallucinatedTexts.has(normalized)){
+                            if(!lastWasSilence){cleanSegments.push({start:seg.start||0,text:"[silence or hallucinated audio]",filtered:true});lastWasSilence=true;}
+                            return;
+                          }
+                          if(normalized===prevNorm||normalized.length<15&&prevNorm.includes(normalized)){
+                            repeatCount++;
+                            if(repeatCount>=3)return;
+                          }else{
+                            if(repeatCount>=3&&!lastWasSilence){cleanSegments.push({start:seg.start||0,text:"[silence]",filtered:true});lastWasSilence=true;}
+                            repeatCount=0;
+                          }
+                          const hallucinations=["thank you","thanks for watching","bye","please subscribe","you","thank you for watching"];
+                          if(hallucinations.some(h=>normalized===h)&&seg.no_speech_prob>0.5)return;
+                          prevText=text;
+                          lastWasSilence=false;
+                          cleanSegments.push(seg);
+                        });
+                        cleanSegments.forEach(seg=>{
+                          const mins=Math.floor((seg.start||0)/60);const secs=Math.floor((seg.start||0)%60);
+                          localTranscript+="["+String(mins).padStart(2,"0")+":"+String(secs).padStart(2,"0")+"] "+(seg.filtered?seg.text:seg.text.trim())+"\n";
+                        });
+                      }catch(filterErr){
+                        // Filter blew up — fall back to flat text from Whisper, no formatting.
+                        console.warn("Hallucination filter failed, using raw text:",filterErr);
+                        localTranscript=segments.map(s=>(s&&s.text)?s.text:"").filter(Boolean).join(" ");
+                      }
                     }
                     else{localTranscript=txData.text||"";}
                     // Final cleanup: remove any remaining long runs of the same short phrase

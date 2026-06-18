@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.2.0";
+const APP_VERSION="3.2.1";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -3434,6 +3434,7 @@ function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivi
   const [subType,setSubType]=useState("process_created");
   const [subDate,setSubDate]=useState(todayNZ());
   const [subText,setSubText]=useState("");
+  const [detail,setDetail]=useState(null);
   const toISO=(d)=>{if(!d)return null;const s=String(d);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");const dt=new Date(s);return isNaN(dt)?null:dt.toISOString().slice(0,10);};
   const wkOf=(iso)=>{for(const[w,a,b] of FY25_WK_RANGES){if(iso>=a&&iso<=b)return w;}return null;};
   const moOf=(iso)=>{const dt=new Date(iso+"T00:00:00Z");return dt.toLocaleString("en-US",{month:"long",timeZone:"UTC"})+" "+dt.getUTCFullYear();};
@@ -3448,6 +3449,15 @@ function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivi
     (tlActivity||[]).forEach(a=>{if(a.tlName===name&&inPeriod(a.date)){if(a.type==="process_created")c.procCreated++;else if(a.type==="process_modified")c.procModified++;else if(a.type==="email")c.emails++;}});
     c.total=c.oneOnOnes+c.meetings+c.reviews+c.assessments+c.procCreated+c.procModified+c.emails;
     return c;
+  };
+  const itemsFor=(name,key)=>{
+    const out=[];
+    if(key==="oneOnOnes"){(meetingNotes||[]).forEach(m=>{if(m.createdBy===name&&inPeriod(m.date))out.push({date:toISO(m.date),label:"1-on-1 with "+(m.personName||"?"),sub:[m.personal,m.work,m.goalsDiscussed,m.general].filter(Boolean).join(" · ").slice(0,160)});});}
+    else if(key==="meetings"){(formalMeetings||[]).forEach(m=>{if(m.createdBy===name&&inPeriod(m.date))out.push({date:toISO(m.date),label:(m.type||"Meeting"),sub:[((m.attendees||[]).join(", ")),(m.minutes||"").slice(0,140)].filter(Boolean).join(" — ")});});}
+    else if(key==="reviews"){(callReviews||[]).forEach(r=>{if(r.reviewedBy===name&&inPeriod(r.date||r.createdAt))out.push({date:toISO(r.date||r.createdAt),label:"Call review: "+(r.agentName||"?"),sub:""});});}
+    else if(key==="assessments"){(assessHistory||[]).forEach(h=>{if(h.assessor===name&&inPeriod(h.date))out.push({date:toISO(h.date),label:"Assessment: "+(h.personName||"?"),sub:((h.skillCount||0)+" skills assessed")});});}
+    else{const tmap={procCreated:"process_created",procModified:"process_modified",emails:"email"};const t=tmap[key];(tlActivity||[]).forEach(a=>{if(a.tlName===name&&a.type===t&&inPeriod(a.date))out.push({date:a.date,label:tlabel[t]||t,sub:a.content});});}
+    return out.sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
   };
   const tls=isAdmin?Object.entries(teamLeads||{}).map(([team,name])=>({team,name})):[{team:currentUser?.team,name:currentUser?.displayName}];
   const submit=()=>{
@@ -3470,12 +3480,12 @@ function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivi
           <div style={{textAlign:"right"}}><div style={{fontSize:26,fontWeight:800,color:"#0d9488",lineHeight:1}}>{c.total}</div><div style={{fontSize:11,color:"#6b7280"}}>points</div></div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8}}>
-          {SOURCES.map(src=>(
-            <div key={src.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#f9fafb",borderRadius:8,padding:"8px 12px"}}>
+          {SOURCES.map(src=>{const has=c[src.key]>0;return (
+            <div key={src.key} onClick={()=>has&&setDetail({name:s.name,key:src.key})} title={has?"Click to see the breakdown":""} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#f9fafb",borderRadius:8,padding:"8px 12px",cursor:has?"pointer":"default",border:"1px solid "+(has?"#e5e7eb":"transparent")}}>
               <span style={{fontSize:12,color:"#374151"}}>{src.icon} {src.label}</span>
-              <span style={{fontSize:14,fontWeight:700,color:c[src.key]>0?"#111827":"#9ca3af"}}>{c[src.key]}</span>
+              <span style={{fontSize:14,fontWeight:700,color:has?"#0d9488":"#9ca3af",textDecoration:has?"underline":"none"}}>{c[src.key]}</span>
             </div>
-          ))}
+          );})}
         </div>
       </div>
     );
@@ -3531,6 +3541,28 @@ function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivi
           );})()}
         </div>
       )}
+      {detail&&(()=>{
+        const items=itemsFor(detail.name,detail.key);
+        const meta=SOURCES.find(x=>x.key===detail.key)||{label:detail.key,icon:""};
+        return (
+          <div onClick={()=>setDetail(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,padding:20}}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:520,width:"100%",maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 50px rgba(0,0,0,.3)",overflow:"hidden"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"18px 20px",borderBottom:"1px solid #f3f4f6"}}>
+                <div><div style={{fontWeight:700,fontSize:15,color:"#111827"}}>{meta.icon} {meta.label}</div><div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{detail.name} · {periodLabel} · {items.length} {items.length===1?"point":"points"}</div></div>
+                <button onClick={()=>setDetail(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,color:"#6b7280",lineHeight:1,padding:"4px 8px"}}>×</button>
+              </div>
+              <div style={{padding:"12px 20px",overflowY:"auto"}}>
+                {items.length?items.map((it,i)=>(
+                  <div key={i} style={{padding:"10px 0",borderBottom:i<items.length-1?"1px solid #f3f4f6":"none"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",gap:8}}><span style={{fontSize:13,fontWeight:600,color:"#111827"}}>{it.label}</span><span style={{fontSize:12,color:"#9ca3af",whiteSpace:"nowrap"}}>{it.date}</span></div>
+                    {it.sub&&<div style={{fontSize:12,color:"#6b7280",marginTop:3,whiteSpace:"pre-wrap"}}>{it.sub}</div>}
+                  </div>
+                )):<p style={{fontSize:13,color:"#9ca3af"}}>Nothing in this period.</p>}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

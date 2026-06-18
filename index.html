@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.1.2";
+const APP_VERSION="3.2.0";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -3422,6 +3422,119 @@ function RichTextEditor({value, onChange, minHeight}) {
   );
 }
 
+// v3.2.0 — TL Productivity: leadership work counted toward a TL's productivity.
+// Auto-pickup: 1-on-1s & meetings (createdBy=TL), call reviews (reviewedBy=TL),
+// capability assessments (assessor=TL). Manual submit (1 point each): process created,
+// process modified, email sent. Each TL sees only their own; admin sees all four.
+function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivity,callReviews,meetingNotes,formalMeetings,assessHistory,autoMonth,toast2,addAudit}){
+  const isLeader=currentUser?.role==="leader";
+  const [pt,setPt]=useState("week");
+  const [wkSel,setWkSel]=useState(AUTO_WEEK);
+  const [moSel,setMoSel]=useState(autoMonth);
+  const [subType,setSubType]=useState("process_created");
+  const [subDate,setSubDate]=useState(todayNZ());
+  const [subText,setSubText]=useState("");
+  const toISO=(d)=>{if(!d)return null;const s=String(d);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");const dt=new Date(s);return isNaN(dt)?null:dt.toISOString().slice(0,10);};
+  const wkOf=(iso)=>{for(const[w,a,b] of FY25_WK_RANGES){if(iso>=a&&iso<=b)return w;}return null;};
+  const moOf=(iso)=>{const dt=new Date(iso+"T00:00:00Z");return dt.toLocaleString("en-US",{month:"long",timeZone:"UTC"})+" "+dt.getUTCFullYear();};
+  const inPeriod=(raw)=>{const iso=toISO(raw);if(!iso)return false;return pt==="week"?wkOf(iso)===wkSel:moOf(iso)===moSel;};
+  const SOURCES=[{key:"oneOnOnes",label:"1-on-1s",icon:"🤝"},{key:"meetings",label:"Meetings",icon:"📅"},{key:"reviews",label:"Call reviews",icon:"📞"},{key:"assessments",label:"Capability assessments",icon:"🎓"},{key:"procCreated",label:"Processes created",icon:"📄"},{key:"procModified",label:"Processes modified",icon:"✏️"},{key:"emails",label:"Emails to team",icon:"✉️"}];
+  const countsFor=(name)=>{
+    const c={oneOnOnes:0,meetings:0,reviews:0,assessments:0,procCreated:0,procModified:0,emails:0};
+    (meetingNotes||[]).forEach(m=>{if(m.createdBy===name&&inPeriod(m.date))c.oneOnOnes++;});
+    (formalMeetings||[]).forEach(m=>{if(m.createdBy===name&&inPeriod(m.date))c.meetings++;});
+    (callReviews||[]).forEach(r=>{if(r.reviewedBy===name&&inPeriod(r.date||r.createdAt))c.reviews++;});
+    (assessHistory||[]).forEach(h=>{if(h.assessor===name&&inPeriod(h.date))c.assessments++;});
+    (tlActivity||[]).forEach(a=>{if(a.tlName===name&&inPeriod(a.date)){if(a.type==="process_created")c.procCreated++;else if(a.type==="process_modified")c.procModified++;else if(a.type==="email")c.emails++;}});
+    c.total=c.oneOnOnes+c.meetings+c.reviews+c.assessments+c.procCreated+c.procModified+c.emails;
+    return c;
+  };
+  const tls=isAdmin?Object.entries(teamLeads||{}).map(([team,name])=>({team,name})):[{team:currentUser?.team,name:currentUser?.displayName}];
+  const submit=()=>{
+    if(!subText.trim()){toast2&&toast2("Add the detail before you submit.");return;}
+    const entry={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),tlName:currentUser?.displayName,team:currentUser?.team,type:subType,content:subText.trim(),date:subDate,createdAt:new Date().toISOString()};
+    setTlActivity(prev=>[entry,...(prev||[])]);
+    addAudit&&addAudit("TL Productivity Submission",subType.replace(/_/g," ")+" by "+(currentUser?.displayName||""));
+    setSubText("");toast2&&toast2("Submitted. 1 point added.");
+  };
+  const delEntry=(id)=>{setTlActivity(prev=>(prev||[]).filter(a=>a.id!==id));};
+  const periodLabel=pt==="week"?("Week "+wkSel):moSel;
+  const textLabel=subType==="process_created"?"Describe the process you created":(subType==="process_modified"?"Describe what you modified":"Paste the email you sent");
+  const tlabel={process_created:"Process created",process_modified:"Process modified",email:"Email"};
+  const card=(s)=>{
+    const c=countsFor(s.name);
+    return (
+      <div key={s.name} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div><div style={{fontWeight:700,fontSize:15,color:"#111827"}}>{s.name}</div><div style={{fontSize:12,color:"#6b7280"}}>{s.team} · {periodLabel}</div></div>
+          <div style={{textAlign:"right"}}><div style={{fontSize:26,fontWeight:800,color:"#0d9488",lineHeight:1}}>{c.total}</div><div style={{fontSize:11,color:"#6b7280"}}>points</div></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8}}>
+          {SOURCES.map(src=>(
+            <div key={src.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#f9fafb",borderRadius:8,padding:"8px 12px"}}>
+              <span style={{fontSize:12,color:"#374151"}}>{src.icon} {src.label}</span>
+              <span style={{fontSize:14,fontWeight:700,color:c[src.key]>0?"#111827":"#9ca3af"}}>{c[src.key]}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div style={{maxWidth:900,margin:"0 auto"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12,marginBottom:16}}>
+        <div>
+          <h2 style={{margin:0,fontSize:20,fontWeight:800,color:"#111827"}}>TL Productivity</h2>
+          <p style={{margin:"4px 0 0",fontSize:13,color:"#6b7280"}}>Leadership work counted toward your productivity. Each item is worth 1 point.</p>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{display:"flex",background:"#f3f4f6",borderRadius:8,padding:2}}>
+            {["week","month"].map(p=><button key={p} onClick={()=>setPt(p)} style={{border:"none",borderRadius:6,padding:"6px 14px",fontSize:13,fontWeight:600,cursor:"pointer",background:pt===p?"#fff":"transparent",color:pt===p?"#0d9488":"#6b7280",boxShadow:pt===p?"0 1px 2px rgba(0,0,0,.1)":"none"}}>{p==="week"?"By Week":"By Month"}</button>)}
+          </div>
+          {pt==="week"
+            ?<select value={wkSel} onChange={e=>setWkSel(+e.target.value)} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #d1d5db",fontSize:13}}>{FY25_WK_RANGES.map(([w,a,b])=><option key={w} value={w}>{"Week "+w+" ("+a.slice(5)+" to "+b.slice(5)+")"}</option>)}</select>
+            :<select value={moSel} onChange={e=>setMoSel(e.target.value)} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #d1d5db",fontSize:13}}>{MONTHS.map(m=><option key={m} value={m}>{m}</option>)}</select>}
+        </div>
+      </div>
+      {tls.map(card)}
+      {isLeader&&(
+        <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"16px 18px",marginTop:6}}>
+          <div style={{fontWeight:700,fontSize:14,color:"#111827",marginBottom:10}}>Log a process or email</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+            {[["process_created","Process created"],["process_modified","Process modified"],["email","Email sent"]].map(([v,l])=><button key={v} onClick={()=>setSubType(v)} style={{border:"1px solid "+(subType===v?"#0d9488":"#d1d5db"),background:subType===v?"#f0fdfa":"#fff",color:subType===v?"#0d9488":"#374151",borderRadius:8,padding:"7px 14px",fontSize:13,fontWeight:600,cursor:"pointer"}}>{l}</button>)}
+          </div>
+          <div style={{display:"flex",gap:10,alignItems:"flex-start",flexWrap:"wrap"}}>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Date</label>
+              <input type="date" value={subDate} onChange={e=>setSubDate(e.target.value)} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #d1d5db",fontSize:13}}/>
+            </div>
+            <div style={{flex:1,minWidth:240,display:"flex",flexDirection:"column",gap:4}}>
+              <label style={{fontSize:11,color:"#6b7280",fontWeight:600}}>{textLabel}</label>
+              <textarea value={subText} onChange={e=>setSubText(e.target.value)} rows={subType==="email"?5:2} placeholder={textLabel} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #d1d5db",fontSize:13,resize:"vertical",fontFamily:"inherit"}}/>
+            </div>
+          </div>
+          <div style={{marginTop:10}}><button onClick={submit} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Submit for 1 point</button></div>
+          {(()=>{const mine=(tlActivity||[]).filter(a=>a.tlName===currentUser?.displayName).slice(0,12);if(!mine.length)return null;return (
+            <div style={{marginTop:16}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#6b7280",marginBottom:6}}>Your recent submissions</div>
+              <div style={{display:"grid",gap:6}}>
+                {mine.map(a=>(
+                  <div key={a.id} style={{display:"flex",gap:8,alignItems:"flex-start",background:"#f9fafb",borderRadius:8,padding:"8px 12px"}}>
+                    <span style={{fontSize:11,fontWeight:700,color:"#0d9488",whiteSpace:"nowrap"}}>{tlabel[a.type]||a.type}</span>
+                    <span style={{fontSize:11,color:"#9ca3af",whiteSpace:"nowrap"}}>{a.date}</span>
+                    <span style={{fontSize:12,color:"#374151",flex:1,whiteSpace:"pre-wrap",overflow:"hidden"}}>{a.content}</span>
+                    <button onClick={()=>delEntry(a.id)} style={{fontSize:11,color:"#dc2626",background:"none",border:"none",cursor:"pointer",whiteSpace:"nowrap"}}>Delete</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );})()}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App(){
   // v2.7 — localStorage mirror. Every change to critical state is also written to localStorage,
   // and on first paint we restore from that mirror so the dashboard is populated immediately
@@ -3475,6 +3588,8 @@ function App(){
   // matching csatData bucket and question labels.
   const[csatDetail,setCsatDetail]=useState(null);
   const[kpiBreakdown,setKpiBreakdown]=useState(null);
+  const[tlActivity,setTlActivity]=useState([]);
+  const _tlaLoaded=useRef(false);
   const[csatDetailScope,setCsatDetailScope]=useState("period");// "period" | "all"
   // Reset scope filter back to "current period" each time a new KPI is opened so the user always
   // lands on what's relevant to where they were on the dashboard. Closing (null) leaves it alone.
@@ -3493,7 +3608,7 @@ function App(){
   React.useEffect(()=>{
     const TAB_GROUPS={
       "daily":"tasks","to-do list":"tasks","action list":"tasks","planner":"tasks",
-      "dashboard":"insights","people":"insights","leaderboard":"insights","schedule":"insights","reports":"insights",
+      "dashboard":"insights","people":"insights","leaderboard":"insights","schedule":"insights","reports":"insights","tl productivity":"insights",
       "call reviews":"quality","reviews":"quality","case tracker":"quality","owner withdrawals":"quality",
       "quick references":"more",
       "settings":"admin","export":"admin","accounts":"admin","audit":"admin","weights":"admin","kpi targets":"admin","capabilities":"admin","daily config":"admin","review criteria":"admin"
@@ -5169,6 +5284,8 @@ function App(){
   // and CSAT uploads were silently dropped on refresh. Now we accept either shape.
   useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("csat"))return;if(!csatData||typeof csatData!=="object")return;const hasResponses=Array.isArray(csatData.responses);const hasBuckets=Array.isArray(csatData.post_case)||Array.isArray(csatData.claim)||Array.isArray(csatData.in_stay);if(!hasResponses&&!hasBuckets)return;dbSaveConfigKey("csat","data",csatData);},[csatData]);
   useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("casetracker"))return;if(!caseTracker||typeof caseTracker!=="object"||!Array.isArray(caseTracker.rows))return;dbSaveConfigKey("casetracker","data",caseTracker);},[caseTracker]);
+  useEffect(()=>{(async()=>{try{const sc=await dbLoadConfig("sys");let v=sc&&sc.tl_activity;if(v&&typeof v==="object"&&!Array.isArray(v)&&"_v" in v)v=v._v;if(Array.isArray(v)){suppressSaves();try{setTlActivity(v);}finally{releaseSaves();}}}catch(e){console.warn("tl_activity load failed",e);}finally{_tlaLoaded.current=true;}})();},[]);
+  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("sys"))return;if(!_tlaLoaded.current||!Array.isArray(tlActivity))return;dbSaveConfigKey("sys","tl_activity",tlActivity);},[tlActivity]);
   useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("timeline"))return;Object.entries(dailyTimelineData).forEach(([k,v])=>dbSaveConfigKey("timeline",k,v));},[dailyTimelineData]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("weights"))return;Object.entries(allWeights).forEach(([k,v])=>dbSaveConfigKey("weights",k,v));},[allWeights]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("sys"))return;dbSaveConfigKey("sys","call_review_teams",callReviewTeams);},[callReviewTeams]);
@@ -7597,7 +7714,7 @@ function App(){
     );
   }
 
-  const TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","Reviews","Case Tracker","Call Reviews","Owner Withdrawals","Quick References","Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"];
+  const TABS=["Home","Daily","To-Do List","Action List","Planner","Dashboard","People","Leaderboard","Schedule","Reports","TL Productivity","Reviews","Case Tracker","Call Reviews","Owner Withdrawals","Quick References","Settings","Export","Accounts","Audit","Weights","KPI Targets","Capabilities","Daily Config","Review Criteria"];
   const ePK=exPt==="month"?`m__${exMo}`:`w__${exWk}`;
 
 
@@ -11392,13 +11509,13 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         <div className="bc-sidebar-scroll" style={{padding:sbCollapsed?"12px 6px":"12px 10px",flex:1,overflowY:"auto"}}>
           {(()=>{
             // Tab metadata: icon + which group it belongs to
-            const ICONS={"Home":"🏠","Daily":"📝","To-Do List":"✅","Action List":"📋","Planner":"🗂️","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","Reviews":"⭐","Case Tracker":"📁","Call Reviews":"📞","Owner Withdrawals":"⚠️","Quick References":"📌","Expectations":"🎯","Settings":"⚙️","Export":"📤","Accounts":"🔑","Audit":"📜","Weights":"⚖️","KPI Targets":"🎯","Capabilities":"🎓","Daily Config":"📝","Review Criteria":"📋","Expectations Config":"🎯"};
+            const ICONS={"Home":"🏠","Daily":"📝","To-Do List":"✅","Action List":"📋","Planner":"🗂️","Dashboard":"📊","People":"👥","Leaderboard":"🏆","Schedule":"📅","Reports":"📋","TL Productivity":"📈","Reviews":"⭐","Case Tracker":"📁","Call Reviews":"📞","Owner Withdrawals":"⚠️","Quick References":"📌","Expectations":"🎯","Settings":"⚙️","Export":"📤","Accounts":"🔑","Audit":"📜","Weights":"⚖️","KPI Targets":"🎯","Capabilities":"🎓","Daily Config":"📝","Review Criteria":"📋","Expectations Config":"🎯"};
             const DISPLAY={"Daily":"Daily Reports","Reviews":"Review Tracker","Owner Withdrawals":"Withdraw Tracker"};
             // Group definitions
             const GROUPS=[
               {id:"home",label:null,tabs:["Home"]},
               {id:"tasks",label:"Tasks",tabs:["Daily","To-Do List","Action List","Planner"]},
-              {id:"insights",label:"Insights",tabs:["Dashboard","People","Leaderboard","Schedule","Reports"]},
+              {id:"insights",label:"Insights",tabs:["Dashboard","People","Leaderboard","Schedule","Reports","TL Productivity"]},
               {id:"quality",label:"Quality",tabs:["Call Reviews","Reviews","Case Tracker","Owner Withdrawals"]},
               {id:"more",label:"More",tabs:["Quick References","Expectations"]}
             ];
@@ -11410,6 +11527,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const badgeFor=(t)=>{if(t==="Action List")return actionListBadge;if(t==="To-Do List")return todoBadge;return 0;};
 
             const isAllowed=(t)=>{
+              if(t==="TL Productivity")return isAdmin||(currentUser?.role==="leader");
               if(ADMIN_GROUP.tabs.includes(t)){if(isAdmin)return true;return(myPerms.admin||[]).includes(t);}
               if(isAdmin)return true;
               return(myPerms.menu||[]).includes(t);
@@ -11965,6 +12083,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
         {tab==="schedule"&&<SchedTab/>}
 
         {tab==="reports"&&<ReportsTab/>}
+        {tab==="tl productivity"&&(isAdmin||currentUser?.role==="leader")&&<TLProductivityTab currentUser={currentUser} isAdmin={isAdmin} teamLeads={TEAM_LEADS} tlActivity={tlActivity} setTlActivity={setTlActivity} callReviews={callReviews} meetingNotes={meetingNotes} formalMeetings={formalMeetings} assessHistory={assessHistory} autoMonth={AUTO_MONTH} toast2={toast2} addAudit={addAudit}/>}
 
         {tab==="reviews"&&<ReviewsTab/>}
 

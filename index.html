@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.2.8";
+const APP_VERSION="3.2.9";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -10884,6 +10884,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
         const activeDate=drDate||(recordDates.length?recordDates[recordDates.length-1]:today);
         const customDayTasks=(customTasks||[]).filter(t=>t&&t.person===name&&t.date===activeDate).slice().sort((a,b)=>String(a.start||"").localeCompare(String(b.start||"")));
         const ctSwatches=["#7838E3","#F83056","#012864","#1A3C7E","#0d9488","#d97706","#dc2626","#2563eb","#16a34a","#6b7280"];
+        const events=getDayEvents(name,activeDate);
         // v3.2.8 — reconcile tickets to the authoritative closed count. Per-day closed counts
         // (icData.dayClosed, straight from the "closed conversations by day" import) are the truth
         // for a day. The timestamped export is usually a subset, so we keep those on the timeline
@@ -10907,7 +10908,6 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             if(_carry===activeDate){extraTickets=_remainder;ticketDayTotal=_tsToday+_remainder;}
           }
         }
-        const events=getDayEvents(name,activeDate);
         const inHours=events.filter(e=>e.minutes>=START*60&&e.minutes<=END*60);
         const outHours=events.filter(e=>e.minutes<START*60||e.minutes>END*60);
         // Cluster consecutive same-type events within 6 min into one chip (handles burst-closing).

@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.2.7";
+const APP_VERSION="3.2.8";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -6661,7 +6661,7 @@ function App(){
 
           // Build per-person per-week ticket counts — handles multi-week CSVs
           // Map each day column to its FY25 week number
-          const dayToWk={};
+          const dayToWk={};const dayToIso={};
           parsed.days.forEach(day=>{
             const mo=day.split(" ")[0];
             const yr=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep"].includes(mo)?2026:2025;
@@ -6669,6 +6669,7 @@ function App(){
               const d=new Date(day+" "+yr);
               if(isNaN(d.getTime()))return;
               const iso=d.toISOString().slice(0,10);
+              dayToIso[day]=iso;
               const match=FY25_WK_RANGES.find(([,s,e])=>iso>=s&&iso<=e);
               dayToWk[day]=match?match[0]:null;
             }catch{dayToWk[day]=null;}
@@ -6683,8 +6684,11 @@ function App(){
             if(!anyNonZero)return;
             const rName=getRosterName(agent);
             const teamName=getPersonTeam(rName);
-            if(!newIc[rName])newIc[rName]={team:teamName||"",weeks:{},months:{}};
+            if(!newIc[rName])newIc[rName]={team:teamName||"",weeks:{},months:{},dayClosed:{}};
             newIc[rName].team=teamName||newIc[rName].team;
+            if(!newIc[rName].dayClosed)newIc[rName].dayClosed={};
+            // v3.2.8 — keep per-day closed counts; these are the source of truth for the daily record.
+            Object.entries(counts).forEach(([day,v])=>{const iso=dayToIso[day];if(iso&&v>0)newIc[rName].dayClosed[iso]=(newIc[rName].dayClosed[iso]||0)+v;});
 
             // Aggregate per FY25 week
             allWks.forEach(wkN=>{
@@ -6715,6 +6719,7 @@ function App(){
                   merged[name].weeks=merged[name].weeks||{};
                   merged[name].weeks[w]={...(merged[name].weeks[w]||{}),...wd};
                 });
+                if(nd.dayClosed)merged[name].dayClosed={...(merged[name].dayClosed||{}),...nd.dayClosed};
               }
             });
             return merged;
@@ -10879,22 +10884,28 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
         const activeDate=drDate||(recordDates.length?recordDates[recordDates.length-1]:today);
         const customDayTasks=(customTasks||[]).filter(t=>t&&t.person===name&&t.date===activeDate).slice().sort((a,b)=>String(a.start||"").localeCompare(String(b.start||"")));
         const ctSwatches=["#7838E3","#F83056","#012864","#1A3C7E","#0d9488","#d97706","#dc2626","#2563eb","#16a34a","#6b7280"];
-        // v3.2.7 — reconcile tickets to the weekly stat. The weekly ticket count (icData) is the
-        // source of truth; the timestamped export usually captures fewer. We carry the shortfall
-        // (weekly total minus what's timestamped across the week) onto the person's main working
-        // day, so the daily record's ticket count matches the Overview. Shown as an untimed entry.
-        const _wkRange=FY25_WK_RANGES.find(([w,a,b])=>activeDate>=a&&activeDate<=b);
-        let extraTickets=0,weeklyTicketTotal=0;
-        if(_wkRange){
-          const _weeklyClosed=getIcStats(name,"week",_wkRange[0])?.closed||0;
-          weeklyTicketTotal=_weeklyClosed;
-          const _wkDays=[];let _d=new Date(_wkRange[1]+"T00:00:00");const _end=new Date(_wkRange[2]+"T00:00:00");for(;_d<=_end;_d.setDate(_d.getDate()+1))_wkDays.push(_d.toISOString().slice(0,10));
-          const _tl=dailyTimelineData[name]||{};const _dayTs={};let _weekTs=0;
-          _wkDays.forEach(dd=>{const arr=Array.isArray(_tl[dd])?_tl[dd]:[];const c=arr.filter(ev=>(ev.type||"ticket_closed")==="ticket_closed").length;_dayTs[dd]=c;_weekTs+=c;});
-          const _remainder=Math.max(0,_weeklyClosed-_weekTs);
-          let _carry=null;const _maxTs=Math.max(0,..._wkDays.map(dd=>_dayTs[dd]||0));
-          if(_maxTs>0)_carry=_wkDays.find(dd=>(_dayTs[dd]||0)===_maxTs);else _carry=_wkDays.find(dd=>getDayShifts(name,dd).length>0)||null;
-          if(_carry===activeDate)extraTickets=_remainder;
+        // v3.2.8 — reconcile tickets to the authoritative closed count. Per-day closed counts
+        // (icData.dayClosed, straight from the "closed conversations by day" import) are the truth
+        // for a day. The timestamped export is usually a subset, so we keep those on the timeline
+        // and show the remainder as an untimed entry, making the day's ticket count match the source.
+        const _tsToday=events.filter(e=>e.type==="ticket_closed").length;
+        const _dayClosed=(icData[name]&&icData[name].dayClosed)?icData[name].dayClosed[activeDate]:undefined;
+        let extraTickets=0,ticketDayTotal=0;
+        if(typeof _dayClosed==="number"){
+          ticketDayTotal=_dayClosed;extraTickets=Math.max(0,_dayClosed-_tsToday);
+        }else{
+          // Fallback if the per-day import hasn't been run yet: carry the weekly shortfall onto the rostered day.
+          const _wkRange=FY25_WK_RANGES.find(([w,a,b])=>activeDate>=a&&activeDate<=b);
+          if(_wkRange){
+            const _weeklyClosed=getIcStats(name,"week",_wkRange[0])?.closed||0;
+            const _wkDays=[];let _d=new Date(_wkRange[1]+"T00:00:00");const _end=new Date(_wkRange[2]+"T00:00:00");for(;_d<=_end;_d.setDate(_d.getDate()+1))_wkDays.push(_d.toISOString().slice(0,10));
+            const _tl=dailyTimelineData[name]||{};const _dayTs={};let _weekTs=0;
+            _wkDays.forEach(dd=>{const arr=Array.isArray(_tl[dd])?_tl[dd]:[];const c=arr.filter(ev=>(ev.type||"ticket_closed")==="ticket_closed").length;_dayTs[dd]=c;_weekTs+=c;});
+            const _remainder=Math.max(0,_weeklyClosed-_weekTs);
+            let _carry=_wkDays.find(dd=>getDayShifts(name,dd).length>0);
+            if(!_carry){const _maxTs=Math.max(0,..._wkDays.map(dd=>_dayTs[dd]||0));if(_maxTs>0)_carry=_wkDays.find(dd=>(_dayTs[dd]||0)===_maxTs);}
+            if(_carry===activeDate){extraTickets=_remainder;ticketDayTotal=_tsToday+_remainder;}
+          }
         }
         const events=getDayEvents(name,activeDate);
         const inHours=events.filter(e=>e.minutes>=START*60&&e.minutes<=END*60);
@@ -10986,7 +10997,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
           )}
           {(Object.values(counts).some(Boolean)||extraTickets>0)&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>{Object.entries(_DR_TYPES).map(([k,t])=>{const cnt=(counts[k]||0)+(k==="ticket_closed"?extraTickets:0);return cnt?<span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:14,padding:"3px 10px",fontSize:11,fontWeight:600}}>{t.ic} {t.label} · {cnt}</span>:null;})}</div>}
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,fontSize:12.5,flexWrap:"wrap"}}><span style={{fontWeight:700,color:"#111827"}}>{(()=>{try{return new Date(activeDate+"T00:00:00").toLocaleDateString("en-NZ",{weekday:"long"});}catch{return "";}})()}</span>{hasRoster?<React.Fragment><span style={{width:9,height:9,borderRadius:2,background:"#0d9488",display:"inline-block"}}/><span style={{color:"#0f766e",fontWeight:600}}>Rostered {bands.map((b,i)=>(i?", ":"")+fmt12(b.shiftS)+"–"+fmt12(b.shiftE)).join("")}</span></React.Fragment>:<span style={{color:"#9ca3af",fontWeight:500}}>No shift rostered</span>}{events.length>0&&<React.Fragment><span style={{color:"#d1d5db",margin:"0 2px"}}>|</span><span style={{color:"#475569",fontWeight:500}}>Started <b style={{color:"#0369a1",fontWeight:700}}>{fmt12(events[0].minutes)}</b></span><span style={{color:"#475569",fontWeight:500}}>· Finished <b style={{color:"#9333ea",fontWeight:700}}>{fmt12(events[events.length-1].minutes)}</b></span>{events.length>1&&<span style={{color:"#9ca3af",fontSize:11}}>({fmtDur(events[events.length-1].minutes-events[0].minutes)} span)</span>}</React.Fragment>}</div>
-          {extraTickets>0&&<div style={{display:"flex",alignItems:"flex-start",gap:8,background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12.5,color:"#065f46"}}><span style={{fontSize:15,lineHeight:1}}>🎫</span><span><b>+{extraTickets} tickets</b> from the weekly stat aren't timestamped, so they can't sit on the timeline below. They're counted in the ticket total above so the day matches the weekly total of {weeklyTicketTotal}.</span></div>}
+          {extraTickets>0&&<div style={{display:"flex",alignItems:"flex-start",gap:8,background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12.5,color:"#065f46"}}><span style={{fontSize:15,lineHeight:1}}>🎫</span><span><b>+{extraTickets} tickets</b> closed this day aren't in the timestamped feed, so they can't sit on the timeline below. They're included in the ticket count above so the day matches the closed total of {ticketDayTotal}.</span></div>}
           {drView==="timeline"?<React.Fragment>
           <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",padding:"18px 18px 18px 0"}}>
             <div style={{position:"relative",height:trackH,marginLeft:64}}>

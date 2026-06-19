@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.2.1";
+const APP_VERSION="3.2.4";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -3434,6 +3434,7 @@ function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivi
   const [subType,setSubType]=useState("process_created");
   const [subDate,setSubDate]=useState(todayNZ());
   const [subText,setSubText]=useState("");
+  const [subTl,setSubTl]=useState("");
   const [detail,setDetail]=useState(null);
   const toISO=(d)=>{if(!d)return null;const s=String(d);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");const dt=new Date(s);return isNaN(dt)?null:dt.toISOString().slice(0,10);};
   const wkOf=(iso)=>{for(const[w,a,b] of FY25_WK_RANGES){if(iso>=a&&iso<=b)return w;}return null;};
@@ -3460,12 +3461,15 @@ function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivi
     return out.sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
   };
   const tls=isAdmin?Object.entries(teamLeads||{}).map(([team,name])=>({team,name})):[{team:currentUser?.team,name:currentUser?.displayName}];
+  const subWho=isAdmin?subTl:currentUser?.displayName;
+  const subTeam=isAdmin?(Object.entries(teamLeads||{}).find(([t,n])=>n===subTl)?.[0]||""):currentUser?.team;
   const submit=()=>{
+    if(isAdmin&&!subTl){toast2&&toast2("Pick which Team Lead this is for.");return;}
     if(!subText.trim()){toast2&&toast2("Add the detail before you submit.");return;}
-    const entry={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),tlName:currentUser?.displayName,team:currentUser?.team,type:subType,content:subText.trim(),date:subDate,createdAt:new Date().toISOString()};
+    const entry={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),tlName:subWho,team:subTeam,type:subType,content:subText.trim(),date:subDate,createdAt:new Date().toISOString(),createdBy:currentUser?.displayName||""};
     setTlActivity(prev=>[entry,...(prev||[])]);
-    addAudit&&addAudit("TL Productivity Submission",subType.replace(/_/g," ")+" by "+(currentUser?.displayName||""));
-    setSubText("");toast2&&toast2("Submitted. 1 point added.");
+    addAudit&&addAudit("TL Productivity Submission",subType.replace(/_/g," ")+" for "+(subWho||"")+(isAdmin?(" by "+(currentUser?.displayName||"")):""));
+    setSubText("");toast2&&toast2("Submitted. 1 point added"+(isAdmin&&subWho?(" for "+subWho):"")+".");
   };
   const delEntry=(id)=>{setTlActivity(prev=>(prev||[]).filter(a=>a.id!==id));};
   const periodLabel=pt==="week"?("Week "+wkSel):moSel;
@@ -3507,9 +3511,10 @@ function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivi
         </div>
       </div>
       {tls.map(card)}
-      {isLeader&&(
+      {(isLeader||isAdmin)&&(
         <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"16px 18px",marginTop:6}}>
           <div style={{fontWeight:700,fontSize:14,color:"#111827",marginBottom:10}}>Log a process or email</div>
+          {isAdmin&&<div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:10}}><label style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Team Lead this is for</label><select value={subTl} onChange={e=>setSubTl(e.target.value)} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #d1d5db",fontSize:13,maxWidth:280}}><option value="">Select a Team Lead...</option>{Object.entries(teamLeads||{}).map(([t,n])=><option key={n} value={n}>{n+" ("+t+")"}</option>)}</select></div>}
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
             {[["process_created","Process created"],["process_modified","Process modified"],["email","Email sent"]].map(([v,l])=><button key={v} onClick={()=>setSubType(v)} style={{border:"1px solid "+(subType===v?"#0d9488":"#d1d5db"),background:subType===v?"#f0fdfa":"#fff",color:subType===v?"#0d9488":"#374151",borderRadius:8,padding:"7px 14px",fontSize:13,fontWeight:600,cursor:"pointer"}}>{l}</button>)}
           </div>
@@ -3524,9 +3529,9 @@ function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivi
             </div>
           </div>
           <div style={{marginTop:10}}><button onClick={submit} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Submit for 1 point</button></div>
-          {(()=>{const mine=(tlActivity||[]).filter(a=>a.tlName===currentUser?.displayName).slice(0,12);if(!mine.length)return null;return (
+          {(()=>{const mine=(tlActivity||[]).filter(a=>a.tlName===subWho).slice(0,12);if(!subWho||!mine.length)return null;return (
             <div style={{marginTop:16}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#6b7280",marginBottom:6}}>Your recent submissions</div>
+              <div style={{fontSize:12,fontWeight:700,color:"#6b7280",marginBottom:6}}>{isAdmin?("Recent submissions for "+subWho):"Your recent submissions"}</div>
               <div style={{display:"grid",gap:6}}>
                 {mine.map(a=>(
                   <div key={a.id} style={{display:"flex",gap:8,alignItems:"flex-start",background:"#f9fafb",borderRadius:8,padding:"8px 12px"}}>
@@ -3801,7 +3806,7 @@ function App(){
   // ── PROFILE VIEW ──
   const[profilePerson,setProfilePerson]=useState(null);
   // v2.5.4 — clear the 1:1 form draft when switching between people so person B doesn't see person A's typed notes
-  useEffect(()=>{setMtgDraft({personal:"",work:"",goals:"",followUp:"",leave:"",general:""});setDrDate(null);setDrHourExp({});},[profilePerson?.name]);
+  useEffect(()=>{setMtgDraft({personal:"",work:"",goals:"",followUp:"",leave:"",general:"",when:""});setDrDate(null);setDrHourExp({});},[profilePerson?.name]);
   // Lifted Leaderboard comparison state — kept at App level so it survives LeaderboardTab re-renders triggered by period changes
   const[lbCompareMode,setLbCompareMode]=useState(false);
   const[lbCompareA,setLbCompareA]=useState("");
@@ -4089,7 +4094,7 @@ function App(){
   // v2.5.4 — 1:1 form values stored in App-scope state (NOT in ProfileView) so they survive the
   // 30s ProfileView remount caused by heartbeat-triggered onlineUsers updates. The mtgRefs above
   // are kept for backwards-compatibility but no longer drive the input value.
-  const[mtgDraft,setMtgDraft]=useState({personal:"",work:"",goals:"",followUp:"",leave:"",general:""});
+  const[mtgDraft,setMtgDraft]=useState({personal:"",work:"",goals:"",followUp:"",leave:"",general:"",when:""});
   // v2.5.7 — Daily Record selection lifted from ProfileView to App scope. Without this, any App
   // re-render (e.g. a realtime event from another user's edit, or the 30s self-heal touching
   // state) remounts ProfileView and resets the date picker back to "today" — so a user looking
@@ -5595,7 +5600,9 @@ function App(){
     call_inbound:{ic:"📲",label:"Inbound call",c:"#2563eb",bg:"#eff6ff",bd:"#bfdbfe"},
     call_outbound:{ic:"📞",label:"Outbound call",c:"#0d9488",bg:"#f0fdfa",bd:"#99f6e4"},
     call_abandoned:{ic:"📵",label:"Abandoned call",c:"#dc2626",bg:"#fef2f2",bd:"#fecaca"},
-    review:{ic:"⭐",label:"Review",c:"#ca8a04",bg:"#fefce8",bd:"#fde68a"}
+    review:{ic:"⭐",label:"Review",c:"#ca8a04",bg:"#fefce8",bd:"#fde68a"},
+    one_on_one:{ic:"🤝",label:"1-on-1",c:"#7c3aed",bg:"#f5f3ff",bd:"#ddd6fe"},
+    meeting:{ic:"📅",label:"Meeting",c:"#0369a1",bg:"#f0f9ff",bd:"#bae6fd"}
   };
   const _toMinutes=(t)=>{const m=(t||"").match(/^(\d{1,2}):(\d{2})/);return m?(+m[1]*60+ +m[2]):null;};
   // Returns a normalized, time-sorted list of events for a person on a given NZ date (YYYY-MM-DD).
@@ -5643,6 +5650,28 @@ function App(){
         events.push({type:"review",time,minutes:min,label:"Review",detail:(r.channel?r.channel+" ":"")+(r.title||""),source:"review_records",cid:r.title||""});
       });
     }catch(e){console.error("getDayEvents reviews err",e);}
+    // v3.2.4 — meetings & 1-on-1s as timeline events. A 1-on-1 (meetingNotes) shows on the day of
+    // both the agent (personName) and the TL who ran it (createdBy). Formal/informal meetings
+    // (formalMeetings) show for every attendee + the creator. Times: a 1-on-1 date is a UTC ISO
+    // (converted to NZ here); meetings carry a local date + an optional HH:MM time field. Only
+    // timed entries land on the timeline; the bottom block below lists all of them (timed or not).
+    try{
+      const nzDT=(iso)=>{const d=new Date(iso);if(isNaN(d))return null;return{date:d.toLocaleDateString("en-CA",{timeZone:"Pacific/Auckland"}),time:d.toLocaleTimeString("en-GB",{timeZone:"Pacific/Auckland",hour:"2-digit",minute:"2-digit",hour12:false})};};
+      (meetingNotes||[]).forEach(m=>{
+        if(!m||(m.personName!==name&&m.createdBy!==name))return;
+        const dt=nzDT(m.date);if(!dt||dt.date!==isoDate)return;
+        const min=_toMinutes(dt.time);if(min==null)return;
+        const withWho=m.createdBy===name?("with "+(m.personName||"?")):("with "+(m.createdBy||"your lead"));
+        events.push({type:"one_on_one",time:dt.time,minutes:min,label:"1-on-1",detail:withWho,source:"meeting_notes"});
+      });
+      (formalMeetings||[]).forEach(m=>{
+        if(!m)return;const att=m.attendees||[];if(!att.includes(name)&&m.createdBy!==name)return;
+        if(String(m.date||"").slice(0,10)!==isoDate)return;
+        const min=m.time?_toMinutes(m.time):null;if(min==null)return;
+        const others=att.filter(a=>a!==name);
+        events.push({type:"meeting",time:m.time,minutes:min,label:(m.type||"Meeting"),detail:(m.type||"")+(others.length?((m.type?" · ":"")+others.join(", ")):""),source:"formal_meetings"});
+      });
+    }catch(e){console.error("getDayEvents meetings err",e);}
     events.sort((a,b)=>a.minutes-b.minutes);
     return events;
   };
@@ -5653,6 +5682,9 @@ function App(){
     try{const t=dailyTimelineData[name];if(t&&typeof t==="object")Object.keys(t).forEach(d=>{if(Array.isArray(t[d])&&t[d].length)set.add(d);});}catch(e){}
     // v2.7.7 — also include dates where reviews were actioned so the date picker lists them.
     try{const recs=icData&&icData[name]&&Array.isArray(icData[name].reviewRecords)?icData[name].reviewRecords:[];recs.forEach(r=>{if(r&&r.modDate)set.add(r.modDate);});}catch(e){}
+    // v3.2.4 — include days with a meeting or 1-on-1 so the picker lists them even with no tickets.
+    try{(meetingNotes||[]).forEach(m=>{if(m&&(m.personName===name||m.createdBy===name)){const d=new Date(m.date);if(!isNaN(d))set.add(d.toLocaleDateString("en-CA",{timeZone:"Pacific/Auckland"}));}});}catch(e){}
+    try{(formalMeetings||[]).forEach(m=>{if(m&&((m.attendees||[]).includes(name)||m.createdBy===name)){const md=String(m.date||"").slice(0,10);if(md)set.add(md);}});}catch(e){}
     return [...set].sort();
   };
   // Rostered shifts for a person on a given NZ date → [{s:"09:00",e:"17:30",net,label}]
@@ -5713,6 +5745,21 @@ function App(){
       return next;
     });
   };
+  // v3.2.3 — leadership points for a TL in a period, matching the TL Productivity tab's
+  // bucketing exactly (same toISO, same FY week ranges, same month label) so the folded
+  // scorecard number always equals the tab's point total. Each item = 1 point.
+  const tlLeadPoints=(leadName,pt,wk,mo)=>{
+    if(!leadName)return 0;
+    const toISO=(d)=>{if(!d)return null;const s=String(d);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");const dt=new Date(s);return isNaN(dt)?null:dt.toISOString().slice(0,10);};
+    const inP=(raw)=>{const iso=toISO(raw);if(!iso)return false;if(pt==="week"){for(const[w,a,b] of FY25_WK_RANGES){if(iso>=a&&iso<=b)return w===wk;}return false;}const dt=new Date(iso+"T00:00:00Z");return (dt.toLocaleString("en-US",{month:"long",timeZone:"UTC"})+" "+dt.getUTCFullYear())===mo;};
+    let n=0;
+    (meetingNotes||[]).forEach(m=>{if(m.createdBy===leadName&&inP(m.date))n++;});
+    (formalMeetings||[]).forEach(m=>{if(m.createdBy===leadName&&inP(m.date))n++;});
+    (callReviews||[]).forEach(r=>{if(r.reviewedBy===leadName&&inP(r.date||r.createdAt))n++;});
+    (assessHistory||[]).forEach(h=>{if(h.assessor===leadName&&inP(h.date))n++;});
+    (tlActivity||[]).forEach(a=>{if(a.tlName===leadName&&inP(a.date))n++;});
+    return n;
+  };
   const recalculateAllProductivity=()=>{
     // For every team × every period in icData, recalculate productivity using current weights
     setData(prev=>{
@@ -5755,13 +5802,28 @@ function App(){
               }
             }
           });
+          // v3.2.3 — fold leadership work into the lead's stored productivity_lead. Recomputed
+          // from scratch so it counts even with no front-line work, and kept OUT of totalPts so
+          // productivity_team stays front-line only.
+          if(tdata.lead){
+            const _lh=getSchedHours(tdata.lead,isWeek?"week":"month",wkN,mon);
+            if(_lh&&_lh>0){
+              const _ls=getIcStats(tdata.lead,isWeek?"week":"month",wkN,mon);
+              const _lfront=_ls?((_ls.closed||0)*tw.tickets+(_ls.emails||0)*tw.emails+(_ls.wfs||0)*tw.wfs+(_ls.calls||0)*tw.calls+(_ls.caseActions||0)*(tw.case_actions||0)+(_ls.reviews||0)*(tw.reviews||1)):0;
+              const _lrate=Math.round((_lfront+tlLeadPoints(tdata.lead,isWeek?"week":"month",wkN,mon))/_lh*100)/100;
+              if(_lrate>0)leadRate=_lrate;
+            }
+          }
           if(memberRates.length>0){
             const avgRate=totalHrs>0?Math.round(totalPts/totalHrs*100)/100:Math.round(memberRates.reduce((s,v)=>s+v,0)/memberRates.length*100)/100;
             const ex=(next[teamName]||{})[pk2]||{};
             next[teamName]={...(next[teamName]||{}),[pk2]:{...ex,productivity_team:avgRate}};
-            if(leadRate!==null){
-              next[teamName][pk2]={...next[teamName][pk2],productivity_lead:leadRate};
-            }
+          }
+          if(leadRate!==null){
+            const ex2=(next[teamName]||{})[pk2]||{};
+            next[teamName]={...(next[teamName]||{}),[pk2]:{...ex2,productivity_lead:leadRate}};
+            const _lid="lead_"+teamName.replace(/\s/g,"_");const _ik="_i_"+_lid;
+            next[_ik]={...(next[_ik]||{}),[pk2]:{...(next[_ik]?.[pk2]||{}),productivity:leadRate}};
           }
         });
       });
@@ -10214,6 +10276,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const[fmShow,setFmShow]=React.useState(false);
     const[fmEdit,setFmEdit]=React.useState(null);
     const[fmDate,setFmDate]=React.useState(todayNZ());
+    const[fmTime,setFmTime]=React.useState("");
     const[fmType,setFmType]=React.useState("Formal");
     const[fmAttendees,setFmAttendees]=React.useState([name]);
     const[fmMinutes,setFmMinutes]=React.useState("");
@@ -10245,7 +10308,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const addMeeting=()=>{const p=(mtgDraft.personal||"").trim();const w=(mtgDraft.work||"").trim();const g=(mtgDraft.goals||"").trim();const f=(mtgDraft.followUp||"").trim();const l=(mtgDraft.leave||"").trim();const gn=(mtgDraft.general||"").trim();if(!p&&!w&&!g&&!f&&!l&&!gn)return;const wkStats=getIcStats(name,"week",wk);const wkHrs=getSchedHours(name,"week",wk);const wkProd=wkStats&&wkHrs&&wkHrs>0?Math.round(((wkStats.closed||0)*tw.tickets+(wkStats.emails||0)*tw.emails+(wkStats.wfs||0)*tw.wfs+(wkStats.calls||0)*tw.calls+(wkStats.caseActions||0)*(tw.case_actions||0)+(wkStats.reviews||0)*(tw.reviews||1))/wkHrs*10)/10:null;
     // Calculate ranking
     var rank=null;const tMems=(roster[teamName]?.members||[]).map(m2=>{const s2=getIcStats(m2.name,"week",wk);const h2=getSchedHours(m2.name,"week",wk);const pr=s2&&h2&&h2>0?Math.round(((s2.closed||0)*tw.tickets+(s2.emails||0)*tw.emails+(s2.wfs||0)*tw.wfs+(s2.calls||0)*tw.calls+(s2.caseActions||0)*(tw.case_actions||0)+(s2.reviews||0)*(tw.reviews||1))/h2*10)/10:null;return{name:m2.name,prod:pr};}).filter(m2=>m2.prod!==null).sort((a,b)=>b.prod-a.prod);const ri=tMems.findIndex(m2=>m2.name===name);if(ri>=0)rank={position:ri+1,total:tMems.length};
-    const nowTS=new Date();const mtgNote={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),personName:name,teamName,date:nowTS.toISOString(),personal:p,work:w,goalsDiscussed:g,followUp:f,leave:l,general:gn,stats:{prod:wkProd,hrs:wkHrs,tickets:wkStats?.closed||0,emails:wkStats?.emails||0,calls:wkStats?.calls||0,wfs:wkStats?.wfs||0,week:wk,rank:rank},createdBy:currentUser?.displayName||"Admin",createdAt:nowTS.toISOString()};setMeetingNotes(prev=>[mtgNote,...prev]);dbUpsert("meeting_notes",mtgNote);setMtgDraft({personal:"",work:"",goals:"",followUp:"",leave:"",general:""});toast2("Note saved.");};
+    const nowTS=new Date();const mtgNote={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),personName:name,teamName,date:(mtgDraft.when?new Date(mtgDraft.when).toISOString():nowTS.toISOString()),personal:p,work:w,goalsDiscussed:g,followUp:f,leave:l,general:gn,stats:{prod:wkProd,hrs:wkHrs,tickets:wkStats?.closed||0,emails:wkStats?.emails||0,calls:wkStats?.calls||0,wfs:wkStats?.wfs||0,week:wk,rank:rank},createdBy:currentUser?.displayName||"Admin",createdAt:nowTS.toISOString()};setMeetingNotes(prev=>[mtgNote,...prev]);dbUpsert("meeting_notes",mtgNote);setMtgDraft({personal:"",work:"",goals:"",followUp:"",leave:"",general:"",when:""});toast2("Note saved.");};
     const mCStats=getIcStats(name,"week",wk);const mCHrs=getSchedHours(name,"week",wk);const mCProd=mCStats&&mCHrs&&mCHrs>0?Math.round(((mCStats.closed||0)*tw.tickets+(mCStats.emails||0)*tw.emails+(mCStats.wfs||0)*tw.wfs+(mCStats.calls||0)*tw.calls+(mCStats.caseActions||0)*(tw.case_actions||0)+(mCStats.reviews||0)*(tw.reviews||1))/mCHrs*10)/10:null;
     const mActiveGoals=goals.filter(g=>g.personName===name&&g.teamName===teamName&&g.status!=="complete");
     const pGoalsAll=goals.filter(g=>g.personName===name&&g.teamName===teamName).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -10622,7 +10685,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             </div>)}</div>}
           </div>
           <div style={{background:"#fff",borderRadius:10,border:"1px solid #e5e7eb",padding:"18px 20px",marginBottom:16}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}><div style={{fontWeight:700,fontSize:14,color:"#111827",flex:1}}>New 1:1 Meeting Note</div><span style={{fontSize:11,color:"#9ca3af"}}>{"Will log: "+new Date().toLocaleDateString("en-NZ",{day:"2-digit",month:"short",year:"numeric"})+" "+new Date().toLocaleTimeString("en-NZ",{hour:"2-digit",minute:"2-digit"})}</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}><div style={{fontWeight:700,fontSize:14,color:"#111827",flex:1}}>New 1:1 Meeting Note</div><div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,fontWeight:600,color:"#6b7280"}}>Date & time</span><input type="datetime-local" value={mtgDraft.when||new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16)} onChange={e=>setMtgDraft(p=>({...p,when:e.target.value}))} style={{padding:"6px 8px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:12,fontFamily:"inherit"}}/></div></div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
               <div><div style={{fontSize:11,fontWeight:700,color:"#7c3aed",marginBottom:4}}>{"💜 Personal Concerns"}</div><textarea value={mtgDraft.personal} onChange={e=>setMtgDraft(p=>({...p,personal:e.target.value}))} placeholder="How are they feeling? Any personal issues affecting work?" rows={3} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
               <div><div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:4}}>{"⚠️ Work Concerns"}</div><textarea value={mtgDraft.work} onChange={e=>setMtgDraft(p=>({...p,work:e.target.value}))} placeholder="Performance issues, workload, team dynamics?" rows={3} style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical"}}/></div>
@@ -10647,7 +10710,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
           const fmtMtgDate=(d)=>{if(!d)return"";try{const dt=new Date(d+"T12:00:00");return dt.toLocaleDateString("en-NZ",{weekday:"long",day:"numeric",month:"short",year:"numeric"});}catch(_){return d;}};
           const fmtMtgDateShort=(d)=>{if(!d)return"";try{const dt=new Date(d+"T12:00:00");return dt.toLocaleDateString("en-NZ",{day:"numeric",month:"short",year:"numeric"});}catch(_){return d;}};
 
-          const resetForm=()=>{setFmShow(false);setFmEdit(null);setFmDate(todayNZ());setFmType("Formal");setFmAttendees([name]);setFmMinutes("");setFmOther("");};
+          const resetForm=()=>{setFmShow(false);setFmEdit(null);setFmDate(todayNZ());setFmTime("");setFmType("Formal");setFmAttendees([name]);setFmMinutes("");setFmOther("");};
 
           const saveMtg=()=>{
             if(!fmDate){toast2("Please pick a date.");return;}
@@ -10655,13 +10718,13 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             if(!fmMinutes.trim()){toast2("Please add meeting minutes.");return;}
             const ts=new Date().toISOString();
             if(fmEdit){
-              const updated={...fmEdit,date:fmDate,type:fmType,attendees:[...fmAttendees],minutes:fmMinutes.trim(),updatedAt:ts,updatedBy:currentUser?.displayName||"Admin"};
+              const updated={...fmEdit,date:fmDate,time:fmTime,type:fmType,attendees:[...fmAttendees],minutes:fmMinutes.trim(),updatedAt:ts,updatedBy:currentUser?.displayName||"Admin"};
               setFormalMeetings(prev=>prev.map(m=>m.id===fmEdit.id?updated:m));
               dbUpsert("formal_meetings",updated);
               addAudit("Meeting Updated",fmType+" \u2014 "+fmDate+" \u2014 "+fmAttendees.join(", "));
               toast2("Updated.");
             } else {
-              const newM={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),date:fmDate,type:fmType,attendees:[...fmAttendees],minutes:fmMinutes.trim(),teamName:teamName,primaryPerson:name,createdBy:currentUser?.displayName||"Admin",createdAt:ts};
+              const newM={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),date:fmDate,time:fmTime,type:fmType,attendees:[...fmAttendees],minutes:fmMinutes.trim(),teamName:teamName,primaryPerson:name,createdBy:currentUser?.displayName||"Admin",createdAt:ts};
               setFormalMeetings(prev=>[newM,...prev]);
               dbUpsert("formal_meetings",newM);
               addAudit("Meeting Logged",fmType+" \u2014 "+fmDate+" \u2014 "+fmAttendees.join(", "));
@@ -10670,7 +10733,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             resetForm();
           };
 
-          const startEditMtg=(m)=>{setFmEdit(m);setFmDate(m.date);setFmType(m.type);setFmAttendees([...(m.attendees||[])]);setFmMinutes(m.minutes||"");setFmOther("");setFmShow(true);};
+          const startEditMtg=(m)=>{setFmEdit(m);setFmDate(m.date);setFmTime(m.time||"");setFmType(m.type);setFmAttendees([...(m.attendees||[])]);setFmMinutes(m.minutes||"");setFmOther("");setFmShow(true);};
 
           const delMtg=(m)=>{
             if(!window.confirm("Delete this meeting log? This cannot be undone."))return;
@@ -10699,9 +10762,12 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
 
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
                 <div>
-                  <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Date</div>
-                  <input type="date" value={fmDate} onChange={e=>setFmDate(e.target.value)} style={{width:"100%",padding:"8px 10px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
-                  {fmDate&&<div style={{fontSize:11,color:"#9ca3af",marginTop:4}}>{fmtMtgDate(fmDate)}</div>}
+                  <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Date & time</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <input type="date" value={fmDate} onChange={e=>setFmDate(e.target.value)} style={{flex:2,padding:"8px 10px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                    <input type="time" value={fmTime} onChange={e=>setFmTime(e.target.value)} style={{flex:1,padding:"8px 10px",border:"1px solid #e5e7eb",borderRadius:6,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  </div>
+                  {fmDate&&<div style={{fontSize:11,color:"#9ca3af",marginTop:4}}>{fmtMtgDate(fmDate)+(fmTime?(" \u00b7 "+fmTime):"")}</div>}
                 </div>
                 <div>
                   <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Meeting Type</div>
@@ -10750,6 +10816,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
                       <span style={{fontSize:11,fontWeight:700,color:st.c,background:st.bg,border:"1px solid "+st.bd,padding:"3px 10px",borderRadius:10}}>{st.ic+" "+m.type}</span>
                       <span style={{fontSize:13,fontWeight:600,color:"#111827"}}>{fmtMtgDate(m.date)}</span>
+                      {m.time&&<span style={{fontSize:12,color:"#9ca3af"}}>{m.time}</span>}
                     </div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:5,alignItems:"center"}}>
                       <span style={{fontSize:11,color:"#9ca3af",fontWeight:600,marginRight:4}}>Attendees:</span>
@@ -10900,6 +10967,34 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
                       {r.comment&&<div style={{fontSize:12.5,color:"#374151",background:"#fafafa",border:"1px solid #f3f4f6",borderRadius:6,padding:"8px 11px",lineHeight:1.5,fontStyle:"italic"}}>{"\u201c"+r.comment+"\u201d"}</div>}
                       {r.addComment&&<div style={{fontSize:11,color:"#6b7280",marginTop:4}}><b>Additional:</b> {r.addComment}</div>}
                       {r.link&&<div style={{marginTop:6}}><a href={r.link} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#0d9488",fontWeight:600,textDecoration:"none"}}>Open review {"\u2197"}</a></div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+          {/* v3.2.4 — Meetings & 1-on-1s on this day. Shows who and when so timeline gaps read
+              as "in a meeting". Note content stays in the 1:1 Notes and Meetings tabs. */}
+          {(()=>{
+            const nzD=(iso)=>{const d=new Date(iso);return isNaN(d)?null:{date:d.toLocaleDateString("en-CA",{timeZone:"Pacific/Auckland"}),time:d.toLocaleTimeString("en-GB",{timeZone:"Pacific/Auckland",hour:"2-digit",minute:"2-digit",hour12:false})};};
+            const oo=(meetingNotes||[]).map(m=>{if(!m||(m.personName!==name&&m.createdBy!==name))return null;const dt=nzD(m.date);return dt&&dt.date===activeDate?{kind:"1-on-1",time:dt.time,withWho:m.createdBy===name?(m.personName||"?"):(m.createdBy||"your lead"),ranByYou:m.createdBy===name}:null;}).filter(Boolean);
+            const mm=(formalMeetings||[]).map(m=>{if(!m||((!(m.attendees||[]).includes(name))&&m.createdBy!==name))return null;if(String(m.date||"").slice(0,10)!==activeDate)return null;return{kind:m.type||"Meeting",time:m.time||"",others:(m.attendees||[]).filter(a=>a!==name)};}).filter(Boolean);
+            const all=[...oo,...mm].sort((a,b)=>String(a.time||"~").localeCompare(String(b.time||"~")));
+            if(!all.length)return null;
+            return (
+              <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden",marginTop:12}}>
+                <div style={{padding:"10px 14px",background:"#f0f9ff",borderBottom:"1px solid #bae6fd",fontSize:13,fontWeight:700,color:"#0369a1",display:"flex",alignItems:"center",gap:8}}>
+                  <span>📅 Meetings & 1-on-1s on {fmtNZDate(activeDate)}</span>
+                  <span style={{fontSize:11,color:"#0284c7",fontWeight:600}}>· {all.length}</span>
+                </div>
+                <div>
+                  {all.map((it,i)=>(
+                    <div key={i} style={{padding:"11px 14px",borderTop:i?"1px solid #f3f4f6":"none",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontSize:11,fontWeight:700,color:"#fff",background:it.kind==="1-on-1"?"#7c3aed":"#0369a1",padding:"3px 9px",borderRadius:4}}>{it.kind==="1-on-1"?"🤝 1-on-1":"📅 "+it.kind}</span>
+                      {it.time?<span style={{fontSize:12,fontWeight:700,color:"#111827",fontFamily:"ui-monospace,Menlo,monospace"}}>{it.time}</span>:<span style={{fontSize:10,color:"#9ca3af",fontStyle:"italic"}}>no time set</span>}
+                      {it.kind==="1-on-1"
+                        ?<span style={{fontSize:12,color:"#6b7280"}}>{it.ranByYou?("with "+it.withWho):("with "+it.withWho+" (your lead)")}</span>
+                        :(it.others.length>0&&<span style={{fontSize:12,color:"#6b7280"}}>{"with "+it.others.join(", ")}</span>)}
                     </div>
                   ))}
                 </div>
@@ -11951,22 +12046,27 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 }
                 // Live computation for productivity (agents only, leader separate)
                 if(k.key==="productivity_team"){const liveTeamProd=avgProd(team,pt,mo,wk,false);if(liveTeamProd!==null)v=liveTeamProd;}
+                let prodLeadInfo=null;
                 if(k.key==="productivity_lead"){
                   const leadName=roster[team]?.lead;
                   if(leadName){const ls=getIcStats(leadName,pt,wk,mo);const lh=getSchedHours(leadName,pt,wk,mo);const tw5=getW(team);
-                  // v2.7.8 — was missing reviews here. This live computation runs AFTER and
-                  // OVERRIDES the stored productivity_lead value, so even though recalc was
-                  // writing 3.3 to storage (with reviews), this line read it back as 1.63
-                  // (without). The "ls.X" variable name pattern was the only one I didn't grep
-                  // for when adding reviews to every productivity formula in earlier passes.
-                  if(ls&&lh&&lh>0){v=Math.round(((ls.closed||0)*tw5.tickets+(ls.emails||0)*tw5.emails+(ls.wfs||0)*tw5.wfs+(ls.calls||0)*tw5.calls+(ls.caseActions||0)*(tw5.case_actions||0)+(ls.reviews||0)*(tw5.reviews||1))/lh*100)/100;}
+                  // v3.2.3 — fold leadership work into the displayed rate. This live computation
+                  // runs AFTER and OVERRIDES the stored productivity_lead, so the fold MUST live
+                  // here for the scorecard to show it: (front-line points + leadership points)/hours.
+                  // Counts even when the TL has no front-line stats (front=0), as long as hours>0.
+                  if(lh&&lh>0){
+                    const front=ls?((ls.closed||0)*tw5.tickets+(ls.emails||0)*tw5.emails+(ls.wfs||0)*tw5.wfs+(ls.calls||0)*tw5.calls+(ls.caseActions||0)*(tw5.case_actions||0)+(ls.reviews||0)*(tw5.reviews||1)):0;
+                    const leadPtsNow=tlLeadPoints(leadName,pt,wk,mo);
+                    v=Math.round((front+leadPtsNow)/lh*100)/100;
+                    prodLeadInfo={front:Math.round(front/lh*100)/100,pts:leadPtsNow,total:v};
+                  }
                   }
                 }
                 const p=isPass(v,k);return(
                 <tr key={k.key} style={{background:i%2?tDef.lightBg||"#f9fafb":"#fff",borderBottom:"1px solid "+(tDef.lightBg||"#f3f4f6")}}>
                   <td style={{padding:"9px 13px",color:"#111827",cursor:(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim"||k.key==="claims_resolved"||k.key==="feedback_resolution"||k.key==="airbnb_reviews")?"pointer":"default"}}
                       onClick={()=>{if(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")setCsatDetail(k.key);else if(k.key==="claims_resolved"||k.key==="feedback_resolution"||k.key==="airbnb_reviews")setKpiBreakdown(k.key);}}
-                      title={(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")?"Click to view all submitted responses":((k.key==="claims_resolved"||k.key==="feedback_resolution"||k.key==="airbnb_reviews")?"Click to see the breakdown":"")}>
+                      title={(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")?"Click to view all submitted responses":((k.key==="claims_resolved"||k.key==="feedback_resolution"||k.key==="airbnb_reviews")?"Click to see the breakdown":(k.key==="productivity_lead"&&prodLeadInfo?(prodLeadInfo.front+"/hr front-line"+(prodLeadInfo.pts>0?(" + "+prodLeadInfo.pts+" leadership point"+(prodLeadInfo.pts===1?"":"s")+" = "+prodLeadInfo.total+"/hr"):" (no leadership points logged this period)")):""))}>
                     {(k.dir==="bool"||k.key==="call_reviews_count"||k.key==="call_reviews_pass")?(()=>{
                       const wkMon=(()=>{
                         const _wkRange=FY25_WK_RANGES.find(([w])=>w===wk);

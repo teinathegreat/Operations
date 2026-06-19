@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.2.9";
+const APP_VERSION="3.3.0";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -7051,6 +7051,73 @@ function App(){
         }
 
         // ── TYPE C: Full conversation export (response times) ─────────────
+        else if(firstLine.includes("Action time")&&firstLine.includes("Action type")&&firstLine.includes("Action performed by")){
+          // ── Per-action close log: Conversation ID, Action ID, Action time, Action type, Action performed by ──
+          // Each "Close" row is one ticket closed at a timestamp (already Pacific/Auckland). This single
+          // report fills the daily-record timeline with real times AND the per-day / weekly / monthly
+          // closed counts. Only ticket closes are touched on import; emails/calls on a day are preserved.
+          const _lines=text.split(/\r?\n/).filter(l=>l.trim().length);
+          if(_lines.length<2){toast2("No rows found in the export.");return;}
+          const _hdr=_lines[0].split(",").map(h=>h.replace(/^"|"$/g,"").trim().toLowerCase());
+          const iConv=_hdr.indexOf("conversation id");
+          const iType=_hdr.indexOf("action type");
+          const iAgent=_hdr.indexOf("action performed by");
+          const iTime=_hdr.findIndex(h=>h.startsWith("action time"));
+          if(iTime<0||iType<0||iAgent<0){toast2("Action log: missing Action time / Action type / Action performed by columns.");return;}
+          const _maxCol=Math.max(iConv,iType,iAgent,iTime);
+          const newTL={};const dayCount={};const datesSeen=new Set();
+          for(let li=1;li<_lines.length;li++){
+            const p=_lines[li].split(",");
+            if(p.length<=_maxCol)continue;
+            const atype=(p[iType]||"").replace(/"/g,"").trim().toLowerCase();
+            if(atype!=="close")continue;
+            let agentRaw=(p[iAgent]||"").replace(/"/g,"").trim();
+            if(p.length>_hdr.length)agentRaw=p.slice(iAgent).join(",").replace(/"/g,"").trim();
+            if(!agentRaw||agentRaw.toLowerCase()==="fin")continue;
+            const ts=(p[iTime]||"").replace(/"/g,"").trim();
+            const m=ts.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/);
+            if(!m)continue;
+            const iso=m[1],hh=m[2],mm=m[3];
+            const nm=getRosterName(agentRaw);
+            datesSeen.add(iso);
+            (newTL[nm]=newTL[nm]||{});(newTL[nm][iso]=newTL[nm][iso]||[]);
+            newTL[nm][iso].push({type:"ticket_closed",time:hh+":"+mm,minutes:(+hh)*60+(+mm),cid:(p[iConv]||"").replace(/"/g,"").trim(),source:"action_log"});
+            (dayCount[nm]=dayCount[nm]||{});dayCount[nm][iso]=(dayCount[nm][iso]||0)+1;
+          }
+          const _agents=Object.keys(dayCount);
+          if(!_agents.length){toast2("No close actions found in the export.");return;}
+          let _minIso=null,_maxIso=null;datesSeen.forEach(d=>{if(!_minIso||d<_minIso)_minIso=d;if(!_maxIso||d>_maxIso)_maxIso=d;});
+          // Timeline: within the covered range, replace ticket closes only; keep emails/calls/other types.
+          setDailyTimelineWithSaves(prev=>{
+            const next={...(prev||{})};
+            _agents.forEach(nm=>{
+              const cur={...(next[nm]||{})};
+              Object.keys(cur).forEach(iso=>{if(iso>=_minIso&&iso<=_maxIso&&Array.isArray(cur[iso]))cur[iso]=cur[iso].filter(ev=>ev&&ev.type!=="ticket_closed");});
+              Object.entries(newTL[nm]).forEach(([iso,evs])=>{const kept=(Array.isArray(cur[iso])?cur[iso]:[]).filter(ev=>ev&&ev.type!=="ticket_closed");cur[iso]=[...kept,...evs];});
+              next[nm]=cur;
+            });
+            return next;
+          });
+          // Counts: set per-day closed + weekly closed (keep emails/wfs/calls already on the week).
+          setIcDataWithMonths(prev=>{
+            const merged={...(prev||{})};
+            _agents.forEach(nm=>{
+              const team=getPersonTeam(nm)||"";
+              if(!merged[nm])merged[nm]={team,weeks:{},months:{},dayClosed:{}};
+              merged[nm]={...merged[nm]};
+              merged[nm].team=merged[nm].team||team;
+              merged[nm].dayClosed={...(merged[nm].dayClosed||{})};
+              merged[nm].weeks={...(merged[nm].weeks||{})};
+              const wkTotals={};
+              Object.entries(dayCount[nm]).forEach(([iso,c])=>{merged[nm].dayClosed[iso]=c;const wr=FY25_WK_RANGES.find(([w,a,b])=>iso>=a&&iso<=b);if(wr)wkTotals[wr[0]]=(wkTotals[wr[0]]||0)+c;});
+              Object.entries(wkTotals).forEach(([wk,total])=>{merged[nm].weeks[wk]={...(merged[nm].weeks[wk]||{}),closed:total};});
+            });
+            return merged;
+          });
+          const _total=_agents.reduce((s,nm)=>s+Object.values(dayCount[nm]).reduce((a,b)=>a+b,0),0);
+          addAudit&&addAudit("Import","Close action log: "+_total+" closes, "+_agents.length+" agents, "+datesSeen.size+" days ("+_minIso+" to "+_maxIso+")");
+          toast2("Imported "+_total+" closes for "+_agents.length+" agents across "+datesSeen.size+" days.");
+        }
         else if(firstLine.includes("Conversation ID")||firstLine.includes("Conversation URL")){
           // Business hours: only count Mon-Fri 8:30am-5:00pm for Owner Support and R&R
           const WEEKEND_TEAMS=["Owner Support","Reputation and Resolutions"];

@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.2.4";
+const APP_VERSION="3.2.5";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -3627,6 +3627,8 @@ function App(){
   const[kpiBreakdown,setKpiBreakdown]=useState(null);
   const[tlActivity,setTlActivity]=useState([]);
   const _tlaLoaded=useRef(false);
+  const[customTasks,setCustomTasks]=useState([]);
+  const _ctLoaded=useRef(false);
   const[csatDetailScope,setCsatDetailScope]=useState("period");// "period" | "all"
   // Reset scope filter back to "current period" each time a new KPI is opened so the user always
   // lands on what's relevant to where they were on the dashboard. Closing (null) leaves it alone.
@@ -4102,6 +4104,8 @@ function App(){
   // persists across people as a UI preference; drDate and drHourExp reset on person switch.
   const[drDate,setDrDate]=useState(null);
   const[drView,setDrView]=useState("timeline");
+  const[ctOpen,setCtOpen]=useState(false);
+  const[ctDraft,setCtDraft]=useState({label:"",start:"",end:"",points:1,color:"#7838E3"});
   const[drHourExp,setDrHourExp]=useState({});
   const goalTitleRef=useRef(null);const goalDueRef=useRef(null);
   const[profTab,setProfTab]=useState("overview");
@@ -5323,6 +5327,8 @@ function App(){
   useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("casetracker"))return;if(!caseTracker||typeof caseTracker!=="object"||!Array.isArray(caseTracker.rows))return;dbSaveConfigKey("casetracker","data",caseTracker);},[caseTracker]);
   useEffect(()=>{(async()=>{try{const sc=await dbLoadConfig("sys");let v=sc&&sc.tl_activity;if(v&&typeof v==="object"&&!Array.isArray(v)&&"_v" in v)v=v._v;if(Array.isArray(v)){suppressSaves();try{setTlActivity(v);}finally{releaseSaves();}}}catch(e){console.warn("tl_activity load failed",e);}finally{_tlaLoaded.current=true;}})();},[]);
   useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("sys"))return;if(!_tlaLoaded.current||!Array.isArray(tlActivity))return;dbSaveConfigKey("sys","tl_activity",tlActivity);},[tlActivity]);
+  useEffect(()=>{(async()=>{try{const sc=await dbLoadConfig("sys");let v=sc&&sc.custom_tasks;if(v&&typeof v==="object"&&!Array.isArray(v)&&"_v" in v)v=v._v;if(Array.isArray(v)){suppressSaves();try{setCustomTasks(v);}finally{releaseSaves();}}}catch(e){console.warn("custom_tasks load failed",e);}finally{_ctLoaded.current=true;}})();},[]);
+  useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("sys"))return;if(!_ctLoaded.current||!Array.isArray(customTasks))return;dbSaveConfigKey("sys","custom_tasks",customTasks);},[customTasks]);
   useEffect(()=>{if(!saveEnabled.current||!isCloudConfirmed("timeline"))return;Object.entries(dailyTimelineData).forEach(([k,v])=>dbSaveConfigKey("timeline",k,v));},[dailyTimelineData]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("weights"))return;Object.entries(allWeights).forEach(([k,v])=>dbSaveConfigKey("weights",k,v));},[allWeights]);
   useEffect(()=>{if(!saveEnabled.current||!isAdmin||!isCloudConfirmed("sys"))return;dbSaveConfigKey("sys","call_review_teams",callReviewTeams);},[callReviewTeams]);
@@ -5685,6 +5691,7 @@ function App(){
     // v3.2.4 — include days with a meeting or 1-on-1 so the picker lists them even with no tickets.
     try{(meetingNotes||[]).forEach(m=>{if(m&&(m.personName===name||m.createdBy===name)){const d=new Date(m.date);if(!isNaN(d))set.add(d.toLocaleDateString("en-CA",{timeZone:"Pacific/Auckland"}));}});}catch(e){}
     try{(formalMeetings||[]).forEach(m=>{if(m&&((m.attendees||[]).includes(name)||m.createdBy===name)){const md=String(m.date||"").slice(0,10);if(md)set.add(md);}});}catch(e){}
+    try{(customTasks||[]).forEach(t=>{if(t&&t.person===name&&t.date)set.add(String(t.date).slice(0,10));});}catch(e){}
     return [...set].sort();
   };
   // Rostered shifts for a person on a given NZ date → [{s:"09:00",e:"17:30",net,label}]
@@ -5758,6 +5765,17 @@ function App(){
     (callReviews||[]).forEach(r=>{if(r.reviewedBy===leadName&&inP(r.date||r.createdAt))n++;});
     (assessHistory||[]).forEach(h=>{if(h.assessor===leadName&&inP(h.date))n++;});
     (tlActivity||[]).forEach(a=>{if(a.tlName===leadName&&inP(a.date))n++;});
+    return n;
+  };
+  // v3.2.5 — custom task points for an agent in a period. Custom tasks carry a flat point value
+  // (set per task) plus a date; we sum points for tasks dated in the selected week/month, using
+  // the same bucketing as everything else. Folded into productivity totals (agent + team).
+  const customTaskPoints=(person,pt,wk,mo)=>{
+    if(!person)return 0;
+    const toISO=(d)=>{if(!d)return null;const s=String(d);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");const dt=new Date(s);return isNaN(dt)?null:dt.toISOString().slice(0,10);};
+    const inP=(raw)=>{const iso=toISO(raw);if(!iso)return false;if(pt==="week"){for(const[w,a,b] of FY25_WK_RANGES){if(iso>=a&&iso<=b)return w===wk;}return false;}const dt=new Date(iso+"T00:00:00Z");return (dt.toLocaleString("en-US",{month:"long",timeZone:"UTC"})+" "+dt.getUTCFullYear())===mo;};
+    let n=0;
+    (customTasks||[]).forEach(t=>{if(t&&t.person===person&&inP(t.date))n+=(+t.points||0);});
     return n;
   };
   const recalculateAllProductivity=()=>{
@@ -5884,7 +5902,7 @@ function App(){
       allM.forEach(m=>{
         const s=getIcStats(m.name,p2,w2,m2);
         const h=getSchedHours(m.name,p2,w2,m2);
-        if(s&&h&&h>0){const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0)+(s.reviews||0)*(tw.reviews||1);totalPts+=pts;totalHrs+=h;}
+        if(s&&h&&h>0){const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0)+(s.reviews||0)*(tw.reviews||1)+customTaskPoints(m.name,p2,w2,m2);totalPts+=pts;totalHrs+=h;}
       });
       if(totalHrs>0)return Math.round(totalPts/totalHrs*100)/100;
     }
@@ -5893,7 +5911,7 @@ function App(){
     allM.forEach(m=>{
       const s=getIcStats(m.name,p2,w2,m2);
       const h=getSchedHours(m.name,p2,w2,m2);
-      if(s&&h&&h>0){const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0)+(s.reviews||0)*(tw.reviews||1);vs.push(Math.round(pts/h*100)/100);}
+      if(s&&h&&h>0){const pts=(s.closed||0)*tw.tickets+(s.emails||0)*tw.emails+(s.wfs||0)*tw.wfs+(s.calls||0)*tw.calls+(s.caseActions||0)*(tw.case_actions||0)+(s.reviews||0)*(tw.reviews||1)+customTaskPoints(m.name,p2,w2,m2);vs.push(Math.round(pts/h*100)/100);}
     });
     if(vs.length)return Math.round(vs.reduce((s,v)=>s+v,0)/vs.length*100)/100;
     // Fallback: stored values
@@ -8576,7 +8594,7 @@ function App(){
       const md=getID(leadId,iPt,iMo,iWk);
       const icStats=getIcStats(tR.lead,iPt,iWk,iMo);
       const hrs=getSchedHours(tR.lead,iPt,iWk,iMo);
-      if(icStats&&hrs&&hrs>0)return Math.round(((icStats.closed||0)*weights.tickets+(icStats.emails||0)*weights.emails+(icStats.wfs||0)*weights.wfs+(icStats.calls||0)*weights.calls+(icStats.caseActions||0)*(weights.case_actions||0)+(icStats.reviews||0)*(weights.reviews||1))/hrs*10)/10;
+      if(icStats&&hrs&&hrs>0)return Math.round(((icStats.closed||0)*weights.tickets+(icStats.emails||0)*weights.emails+(icStats.wfs||0)*weights.wfs+(icStats.calls||0)*weights.calls+(icStats.caseActions||0)*(weights.case_actions||0)+(icStats.reviews||0)*(weights.reviews||1)+customTaskPoints(tR.lead,iPt,iWk,iMo))/hrs*10)/10;
       if(md.productivity&&!isNaN(+md.productivity))return +md.productivity;
       return null;
     })();
@@ -8587,7 +8605,7 @@ function App(){
       const icStats=getIcStats(m.name,iPt,iWk,iMo);
       const hrs=getSchedHours(m.name,iPt,iWk,iMo);
       let prod=null;
-      if(icStats&&hrs&&hrs>0)prod=Math.round(((icStats.closed||0)*weights.tickets+(icStats.emails||0)*weights.emails+(icStats.wfs||0)*weights.wfs+(icStats.calls||0)*weights.calls+(icStats.caseActions||0)*(weights.case_actions||0)+(icStats.reviews||0)*(weights.reviews||1))/hrs*10)/10;
+      if(icStats&&hrs&&hrs>0)prod=Math.round(((icStats.closed||0)*weights.tickets+(icStats.emails||0)*weights.emails+(icStats.wfs||0)*weights.wfs+(icStats.calls||0)*weights.calls+(icStats.caseActions||0)*(weights.case_actions||0)+(icStats.reviews||0)*(weights.reviews||1)+customTaskPoints(m.name,iPt,iWk,iMo))/hrs*10)/10;
       else if(md.productivity&&!isNaN(+md.productivity))prod=+md.productivity;
       return{...m,isLead:false,prod};
     }).sort((a,b)=>{
@@ -10283,7 +10301,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const[fmOther,setFmOther]=React.useState("");
     const stats=getIcStats(name,pt,wk,mo);
     const hrs=getSchedHours(name,pt,wk,mo);
-    const prod=stats&&hrs&&hrs>0?Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0)+(stats.reviews||0)*(tw.reviews||1))/hrs*10)/10:null;
+    const prod=stats&&hrs&&hrs>0?Math.round(((stats.closed||0)*tw.tickets+(stats.emails||0)*tw.emails+(stats.wfs||0)*tw.wfs+(stats.calls||0)*tw.calls+(stats.caseActions||0)*(tw.case_actions||0)+(stats.reviews||0)*(tw.reviews||1)+customTaskPoints(name,pt,wk,mo))/hrs*10)/10:null;
     const tAvg=avgProd(teamName,pt,mo,wk);
     const mems=[...(roster[teamName]?.members||[]).map(m2=>m2.name)];if(roster[teamName]?.lead)mems.push(roster[teamName].lead);
     const mStats=mems.map(n=>{const s=getIcStats(n,pt,wk,mo);const h=getSchedHours(n,pt,wk,mo);return{name:n,stats:s,hrs:h};}).filter(m2=>m2.stats&&m2.hrs&&m2.hrs>0);
@@ -10851,6 +10869,8 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
         const START=7,END=21,HOUR_PX=56;const totalMin=(END-START)*60;const trackH=(END-START)*HOUR_PX;
         const recordDates=getRecordDates(name);const today=todayNZ();
         const activeDate=drDate||(recordDates.length?recordDates[recordDates.length-1]:today);
+        const customDayTasks=(customTasks||[]).filter(t=>t&&t.person===name&&t.date===activeDate).slice().sort((a,b)=>String(a.start||"").localeCompare(String(b.start||"")));
+        const ctSwatches=["#7838E3","#F83056","#012864","#1A3C7E","#0d9488","#d97706","#dc2626","#2563eb","#16a34a","#6b7280"];
         const events=getDayEvents(name,activeDate);
         const inHours=events.filter(e=>e.minutes>=START*60&&e.minutes<=END*60);
         const outHours=events.filter(e=>e.minutes<START*60||e.minutes>END*60);
@@ -10878,7 +10898,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
           else rosterReason="no shift rostered on this date (day off, or this date isn't in the uploaded roster)";
         }
         // Gaps: when a roster exists, only flag gaps inside the rostered availability window; else whole day.
-        const GAP_MIN=60;const gaps=[];
+        const GAP_MIN=60;let gaps=[];
         if(inHours.length){
           const segs=[];
           if(hasRoster)segs.push([availStart,inHours[0].minutes]);
@@ -10887,6 +10907,13 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
           segs.forEach(([from,to])=>{if(to-from>=GAP_MIN&&(!hasRoster||inBand((from+to)/2)||inBand(from)||inBand(to)))gaps.push({from:Math.max(from,START*60),to:Math.min(to,END*60),mins:to-from});});
         }else if(hasRoster&&availEnd-availStart>=GAP_MIN){
           gaps.push({from:availStart,to:availEnd,mins:availEnd-availStart});
+        }
+        // v3.2.5 — custom tasks cover real work, so carve them out of idle-gap flagging.
+        const _ctIvals=customDayTasks.map(t=>[_toMinutes(t.start),_toMinutes(t.end)]).filter(([a,b])=>a!=null&&b!=null&&b>a);
+        if(_ctIvals.length&&gaps.length){
+          const trimmed=[];
+          gaps.forEach(g=>{let segs=[[g.from,g.to]];_ctIvals.forEach(([ta,tb])=>{const ns=[];segs.forEach(([sf,st])=>{if(tb<=sf||ta>=st){ns.push([sf,st]);}else{if(ta>sf)ns.push([sf,ta]);if(tb<st)ns.push([tb,st]);}});segs=ns;});segs.forEach(([sf,st])=>{if(st-sf>=GAP_MIN)trimmed.push({from:sf,to:st,mins:st-sf});});});
+          gaps=trimmed;
         }
         const counts={};events.forEach(e=>{counts[e.type]=(counts[e.type]||0)+1;});
         const byHour={};const byHourEvents={};events.forEach(e=>{const h=Math.floor(e.minutes/60);if(!byHour[h])byHour[h]={};byHour[h][e.type]=(byHour[h][e.type]||0)+1;(byHourEvents[h]=byHourEvents[h]||[]).push(e);});
@@ -10906,12 +10933,32 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             <input type="date" value={activeDate} onChange={e=>setDrDate(e.target.value)} style={{fontSize:13,padding:"6px 10px",border:"1px solid #e5e7eb",borderRadius:8,color:"#111827",fontWeight:600}}/>
             <button onClick={()=>shiftDate(1)} style={btn}>→</button>
             <button onClick={()=>setDrDate(today)} style={btn}>Today</button>
+            <button onClick={()=>{setCtDraft({label:"",start:"",end:"",points:1,color:"#7838E3"});setCtOpen(o=>!o);}} style={{background:ctOpen?"#7838E3":"#fff",border:"1px solid "+(ctOpen?"#7838E3":"#c4b5fd"),color:ctOpen?"#fff":"#6d28d9",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:13,fontWeight:700}}>+ Custom Task</button>
             <span style={{fontSize:13,color:"#6b7280",marginLeft:4}}>{fmtNZDate(activeDate)} · <b style={{color:"#111827"}}>{events.length}</b> event{events.length===1?"":"s"}</span>
             <div style={{display:"inline-flex",border:"1px solid #e5e7eb",borderRadius:8,overflow:"hidden",marginLeft:"auto"}}>
               {[["timeline","Timeline"],["list","List"],["hourly","Hourly"]].map(([v,lbl])=><button key={v} onClick={()=>setDrView(v)} style={{padding:"7px 14px",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",background:drView===v?"#0d9488":"#fff",color:drView===v?"#fff":"#6b7280"}}>{lbl}</button>)}
             </div>
             {recordDates.length>0&&<select value={recordDates.includes(activeDate)?activeDate:""} onChange={e=>{if(e.target.value)setDrDate(e.target.value);}} style={{fontSize:12,padding:"6px 10px",border:"1px solid #e5e7eb",borderRadius:8,background:"#fff",color:"#4b5563",cursor:"pointer"}}><option value="">Jump to a day with data…</option>{recordDates.slice().reverse().map(d=><option key={d} value={d}>{fmtNZDate(d)}</option>)}</select>}
           </div>
+          {ctOpen&&(
+            <div style={{background:"#faf5ff",border:"1px solid #e9d5ff",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#6d28d9",marginBottom:10}}>New custom task for {name} on {fmtNZDate(activeDate)}</div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-end"}}>
+                <div style={{display:"flex",flexDirection:"column",gap:4,flex:"1 1 200px",minWidth:160}}><label style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Task</label><input type="text" value={ctDraft.label} onChange={e=>setCtDraft(d=>({...d,label:e.target.value}))} placeholder="e.g. Training, project work, phone cover" style={{padding:"8px 10px",borderRadius:8,border:"1px solid #d1d5db",fontSize:13}}/></div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Start</label><input type="time" value={ctDraft.start} onChange={e=>setCtDraft(d=>({...d,start:e.target.value}))} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #d1d5db",fontSize:13}}/></div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:11,color:"#6b7280",fontWeight:600}}>End</label><input type="time" value={ctDraft.end} onChange={e=>setCtDraft(d=>({...d,end:e.target.value}))} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #d1d5db",fontSize:13}}/></div>
+                <div style={{display:"flex",flexDirection:"column",gap:4,width:90}}><label style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Points</label><input type="number" min="0" step="0.5" value={ctDraft.points} onChange={e=>setCtDraft(d=>({...d,points:e.target.value}))} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #d1d5db",fontSize:13}}/></div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginTop:12,flexWrap:"wrap"}}>
+                <label style={{fontSize:11,color:"#6b7280",fontWeight:600,marginRight:2}}>Colour</label>
+                {ctSwatches.map(c=><button key={c} onClick={()=>setCtDraft(d=>({...d,color:c}))} title={c} style={{width:24,height:24,borderRadius:6,background:c,border:ctDraft.color===c?"3px solid #111827":"2px solid #fff",boxShadow:"0 0 0 1px #d1d5db",cursor:"pointer",padding:0}}/>)}
+              </div>
+              <div style={{display:"flex",gap:8,marginTop:14}}>
+                <button onClick={()=>{const s=_toMinutes(ctDraft.start),e=_toMinutes(ctDraft.end);if(s==null||e==null){toast2&&toast2("Add a start and end time.");return;}if(e<=s){toast2&&toast2("End time must be after start time.");return;}const pts=+ctDraft.points;if(isNaN(pts)||pts<0){toast2&&toast2("Enter a valid point value.");return;}const task={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),person:name,team:teamName,date:activeDate,start:ctDraft.start,end:ctDraft.end,points:pts,label:(ctDraft.label||"").trim()||"Custom task",color:ctDraft.color||"#7838E3",createdBy:currentUser?.displayName||"",createdAt:new Date().toISOString()};setCustomTasks(prev=>[...(prev||[]),task]);addAudit&&addAudit("Custom Task",task.label+" ("+task.points+" pts) for "+name+" on "+activeDate);setCtOpen(false);toast2&&toast2(task.points+" pts added to "+name+"'s productivity.");}} style={{background:"#7838E3",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Save task</button>
+                <button onClick={()=>setCtOpen(false)} style={{background:"#fff",color:"#6b7280",border:"1px solid #d1d5db",borderRadius:8,padding:"9px 16px",fontSize:13,fontWeight:600,cursor:"pointer"}}>Cancel</button>
+              </div>
+            </div>
+          )}
           {Object.values(counts).some(Boolean)&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>{Object.entries(_DR_TYPES).map(([k,t])=>counts[k]?<span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,color:t.c,borderRadius:14,padding:"3px 10px",fontSize:11,fontWeight:600}}>{t.ic} {t.label} · {counts[k]}</span>:null)}</div>}
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,fontSize:12.5,flexWrap:"wrap"}}><span style={{fontWeight:700,color:"#111827"}}>{(()=>{try{return new Date(activeDate+"T00:00:00").toLocaleDateString("en-NZ",{weekday:"long"});}catch{return "";}})()}</span>{hasRoster?<React.Fragment><span style={{width:9,height:9,borderRadius:2,background:"#0d9488",display:"inline-block"}}/><span style={{color:"#0f766e",fontWeight:600}}>Rostered {bands.map((b,i)=>(i?", ":"")+fmt12(b.shiftS)+"–"+fmt12(b.shiftE)).join("")}</span></React.Fragment>:<span style={{color:"#9ca3af",fontWeight:500}}>No shift rostered</span>}{events.length>0&&<React.Fragment><span style={{color:"#d1d5db",margin:"0 2px"}}>|</span><span style={{color:"#475569",fontWeight:500}}>Started <b style={{color:"#0369a1",fontWeight:700}}>{fmt12(events[0].minutes)}</b></span><span style={{color:"#475569",fontWeight:500}}>· Finished <b style={{color:"#9333ea",fontWeight:700}}>{fmt12(events[events.length-1].minutes)}</b></span>{events.length>1&&<span style={{color:"#9ca3af",fontSize:11}}>({fmtDur(events[events.length-1].minutes-events[0].minutes)} span)</span>}</React.Fragment>}</div>
           {drView==="timeline"?<React.Fragment>
@@ -10920,6 +10967,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
               {bands.map((b,i)=>{const aTop=(b.availS-START*60)/totalMin*trackH;const aH=(b.availE-b.availS)/totalMin*trackH;const sTop=(Math.max(b.shiftS,START*60)-START*60)/totalMin*trackH;const sH=(Math.min(b.shiftE,END*60)-Math.max(b.shiftS,START*60))/totalMin*trackH;return <React.Fragment key={"band"+i}><div style={{position:"absolute",top:aTop,height:aH,left:0,right:0,background:"#f0fdfa",borderTop:"1px dashed #5eead4",borderBottom:"1px dashed #5eead4",pointerEvents:"none"}}/><div style={{position:"absolute",top:sTop,height:Math.max(2,sH),left:0,width:4,background:"#0d9488",borderRadius:2,pointerEvents:"none"}}/><span style={{position:"absolute",top:aTop+2,left:8,fontSize:9,fontWeight:800,color:"#0d9488",letterSpacing:".05em",pointerEvents:"none",opacity:.7}}>ROSTERED</span></React.Fragment>;})}
               {Array.from({length:END-START+1}).map((_,i)=><div key={i} style={{position:"absolute",top:i*HOUR_PX,left:0,right:0,borderTop:"1px solid #f1f5f9"}}><span style={{position:"absolute",left:-60,top:-7,fontSize:10,color:"#9ca3af",width:52,textAlign:"right"}}>{fmt12((START+i)*60)}</span></div>)}
               {gaps.map((g,i)=>{const top=(g.from-START*60)/totalMin*trackH;const h=(g.to-g.from)/totalMin*trackH;return <div key={"g"+i} style={{position:"absolute",top,height:h,left:0,right:8,background:"repeating-linear-gradient(45deg,#fef2f2,#fef2f2 6px,transparent 6px,transparent 13px)",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><span style={{fontSize:10,fontWeight:700,color:"#dc2626",background:"#fff",padding:"2px 9px",borderRadius:10,border:"1px solid #fecaca"}}>{fmtDur(g.mins)} gap</span></div>;})}
+              {customDayTasks.map((tk,i)=>{const s=_toMinutes(tk.start),e=_toMinutes(tk.end);if(s==null||e==null||e<=s)return null;const top=(Math.max(s,START*60)-START*60)/totalMin*trackH;const h=(Math.min(e,END*60)-Math.max(s,START*60))/totalMin*trackH;if(h<=0)return null;const col=tk.color||"#7838E3";return <div key={"ct"+(tk.id||i)} title={(tk.label||"Custom task")+" · "+fmt12(s)+"–"+fmt12(e)+" · "+(+tk.points||0)+" pts"} style={{position:"absolute",top,height:Math.max(16,h),left:0,right:8,background:col+"22",border:"1px solid "+col,borderLeft:"4px solid "+col,borderRadius:6,boxSizing:"border-box",padding:"3px 9px",overflow:"hidden",display:"flex",flexDirection:"column",justifyContent:"center"}}><span style={{fontSize:11,fontWeight:800,color:col,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{tk.label||"Custom task"}</span>{h>=26&&<span style={{fontSize:10,fontWeight:600,color:col,opacity:.9,whiteSpace:"nowrap"}}>{fmt12(s)}–{fmt12(e)} · {(+tk.points||0)} pts</span>}</div>;})}
               {placed.map((c,i)=>{const t=_DR_TYPES[c.type]||_DR_TYPES.ticket_closed;const detailStr=Object.entries(c.details).map(([d,n])=>n>1?d+"×"+n:d).join(", ");const timeRange=c.minutes===c.maxMin?fmt12(c.minutes):fmt12(c.minutes)+"–"+fmt12(c.maxMin);const link=(c.type==="ticket_closed"&&c.cids&&c.cids.length===1)?ticketUrl(c.cids[0]):null;const chipStyle={display:"flex",alignItems:"center",gap:5,background:t.bg,border:"1px solid "+t.bd,borderRadius:7,padding:"3px 8px",fontSize:11,fontWeight:600,color:t.c,height:"100%",boxSizing:"border-box",overflow:"hidden",whiteSpace:"nowrap",boxShadow:"0 1px 2px rgba(0,0,0,.04)",textDecoration:"none"};const inner=<React.Fragment><span style={{fontFamily:"ui-monospace,Menlo,monospace",fontSize:10,opacity:.8,flexShrink:0}}>{fmt12(c.minutes)}</span><span style={{flexShrink:0}}>{t.ic}</span><span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{t.label}{c.count>1?" ×"+c.count:""}</span>{link&&<span style={{flexShrink:0,opacity:.65,fontSize:10}}>↗</span>}</React.Fragment>;const titleTxt=timeRange+" · "+t.label+(c.count>1?" ×"+c.count:"")+(detailStr?" ("+dShow(detailStr)+")":"")+(link?" · click to open in Intercom":(c.type==="ticket_closed"&&c.cids&&c.cids.length>1?" · open individual tickets in List view":""));return <div key={i} title={titleTxt} style={{position:"absolute",top:c._top,left:"calc("+c._lane+" * (100% - 8px)/"+laneCount+")",width:"calc((100% - 8px)/"+laneCount+")",height:CHIP_H,paddingRight:4,boxSizing:"border-box"}}>{link?<a href={link} target="_blank" rel="noopener noreferrer" style={{...chipStyle,cursor:"pointer"}}>{inner}</a>:<span style={chipStyle}>{inner}</span>}</div>;})}
               {inHours.length===0&&<div style={{position:"absolute",top:trackH/2-24,left:0,right:0,textAlign:"center",color:"#9ca3af",fontSize:13,padding:"0 20px"}}>No timed activity recorded for {fmtNZDate(activeDate)}.<div style={{fontSize:11,marginTop:4}}>Once reports with timestamps are connected, the day will fill in here.</div></div>}
             </div>
@@ -11001,6 +11049,28 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
               </div>
             );
           })()}
+          {/* v3.2.5 — Custom tasks on this day. Ad-hoc work outside the point system; points fold
+              into the agent's and team's weekly/monthly productivity. Colour-coded to differentiate. */}
+          {customDayTasks.length>0&&(
+            <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden",marginTop:12}}>
+              <div style={{padding:"10px 14px",background:"#faf5ff",borderBottom:"1px solid #e9d5ff",fontSize:13,fontWeight:700,color:"#6d28d9",display:"flex",alignItems:"center",gap:8}}>
+                <span>🧩 Custom tasks on {fmtNZDate(activeDate)}</span>
+                <span style={{fontSize:11,color:"#7c3aed",fontWeight:600}}>· {customDayTasks.length} · {customDayTasks.reduce((s,t)=>s+(+t.points||0),0)} pts added</span>
+              </div>
+              <div>
+                {customDayTasks.map((tk,i)=>(
+                  <div key={tk.id||i} style={{padding:"11px 14px",borderTop:i?"1px solid #f3f4f6":"none",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                    <span style={{width:12,height:12,borderRadius:3,background:tk.color||"#7838E3",flexShrink:0,border:"1px solid rgba(0,0,0,.12)"}}/>
+                    <span style={{fontSize:13,fontWeight:700,color:"#111827"}}>{tk.label||"Custom task"}</span>
+                    {tk.start&&tk.end&&<span style={{fontSize:12,color:"#6b7280",fontFamily:"ui-monospace,Menlo,monospace"}}>{fmt12(_toMinutes(tk.start))}–{fmt12(_toMinutes(tk.end))}</span>}
+                    <span style={{fontSize:11,fontWeight:700,color:"#6d28d9",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:4,padding:"2px 8px"}}>{(+tk.points||0)} pts</span>
+                    {tk.createdBy&&<span style={{fontSize:11,color:"#9ca3af"}}>added by {tk.createdBy}</span>}
+                    <button onClick={()=>{if(window.confirm("Delete this custom task? Its points will come back off "+name+"'s productivity."))setCustomTasks(prev=>(prev||[]).filter(x=>x.id!==tk.id));}} style={{marginLeft:"auto",background:"none",border:"1px solid #fecaca",color:"#dc2626",borderRadius:6,padding:"3px 11px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Delete</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>;
       })()}
     </div></div>);
@@ -11438,7 +11508,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
       const wfPts=icStats?.wfs||0;
       const emailPts=icStats?.emails||0;
       const callPts=icStats?.calls||0;
-      const _tw=getW(teamName);const autoScore=icStats&&hrs&&hrs>0?Math.round(((icStats.closed||0)*_tw.tickets+(icStats.emails||0)*_tw.emails+(icStats.wfs||0)*_tw.wfs+(icStats.calls||0)*_tw.calls+(icStats.caseActions||0)*(_tw.case_actions||0)+(icStats.reviews||0)*(_tw.reviews||1))/hrs*10)/10:null;
+      const _tw=getW(teamName);const autoScore=icStats&&hrs&&hrs>0?Math.round(((icStats.closed||0)*_tw.tickets+(icStats.emails||0)*_tw.emails+(icStats.wfs||0)*_tw.wfs+(icStats.calls||0)*_tw.calls+(icStats.caseActions||0)*(_tw.case_actions||0)+(icStats.reviews||0)*(_tw.reviews||1)+customTaskPoints(name,iPt,iWk,iMo))/hrs*10)/10:null;
 const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawProd>0)?rawProd:(!isNaN(autoScore)&&autoScore!==null&&autoScore>0?autoScore:NaN);const av=+ap;const bars=!isNaN(pv)&&pv>0&&!isNaN(av)&&av>0;const bMax=bars?Math.max(pv,av)*1.3:1;
     const iEmailTxt=()=>{
       const sk=d._kpis||[];const ps=sk.filter(k=>isPass(d[k.key],k)===true);const fl=sk.filter(k=>isPass(d[k.key],k)===false);
@@ -11484,7 +11554,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
           const wfPts2=icStats?.wfs||0;
           const emailPts2=icStats?.emails||0;
           const callPts2=icStats?.calls||0;
-          const _tw2=getW(tname);const autoScore=icStats&&hrs?Math.round((icStats.closed*_tw2.tickets+emailPts2*_tw2.emails+wfPts2*_tw2.wfs+callPts2*_tw2.calls+(icStats.caseActions||0)*(_tw2.case_actions||0)+(icStats.reviews||0)*(_tw2.reviews||1))/hrs*10)/10:null;
+          const _tw2=getW(tname);const autoScore=icStats&&hrs?Math.round((icStats.closed*_tw2.tickets+emailPts2*_tw2.emails+wfPts2*_tw2.wfs+callPts2*_tw2.calls+(icStats.caseActions||0)*(_tw2.case_actions||0)+(icStats.reviews||0)*(_tw2.reviews||1)+customTaskPoints(name,iPt,iWk,iMo))/hrs*10)/10:null;
           return(
             <>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(115px,1fr))",gap:9,marginBottom:icStats?10:14}}>
@@ -12057,7 +12127,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   if(lh&&lh>0){
                     const front=ls?((ls.closed||0)*tw5.tickets+(ls.emails||0)*tw5.emails+(ls.wfs||0)*tw5.wfs+(ls.calls||0)*tw5.calls+(ls.caseActions||0)*(tw5.case_actions||0)+(ls.reviews||0)*(tw5.reviews||1)):0;
                     const leadPtsNow=tlLeadPoints(leadName,pt,wk,mo);
-                    v=Math.round((front+leadPtsNow)/lh*100)/100;
+                    v=Math.round((front+leadPtsNow+customTaskPoints(leadName,pt,wk,mo))/lh*100)/100;
                     prodLeadInfo={front:Math.round(front/lh*100)/100,pts:leadPtsNow,total:v};
                   }
                   }
@@ -12174,7 +12244,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
               </tbody>
             </table>
           </div>
-          {(()=>{const mems3=(roster[team]?.members||[]).map(m3=>m3.name);const tw3=getW(team);const tAvg2=avgProd(team,pt,mo,wk);if(!tAvg2||!mems3.length)return null;const rows=mems3.map(mn=>{const st=getIcStats(mn,pt,wk,mo);const hr=getSchedHours(mn,pt,wk,mo);const actual=st&&hr&&hr>0?Math.round(((st.closed||0)*tw3.tickets+(st.emails||0)*tw3.emails+(st.wfs||0)*tw3.wfs+(st.calls||0)*tw3.calls+(st.caseActions||0)*(tw3.case_actions||0)+(st.reviews||0)*(tw3.reviews||1))/hr*10)/10:null;const expected=hr?Math.round(tAvg2*hr*10)/10:null;return{name:mn,actual,expected,hrs:hr,diff:actual&&expected?Math.round((actual*hr-expected)*10)/10:null};}).filter(r=>r.actual!==null).sort((a,b)=>(b.diff||0)-(a.diff||0));if(!rows.length)return null;return<div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:16}}>
+          {(()=>{const mems3=(roster[team]?.members||[]).map(m3=>m3.name);const tw3=getW(team);const tAvg2=avgProd(team,pt,mo,wk);if(!tAvg2||!mems3.length)return null;const rows=mems3.map(mn=>{const st=getIcStats(mn,pt,wk,mo);const hr=getSchedHours(mn,pt,wk,mo);const actual=st&&hr&&hr>0?Math.round(((st.closed||0)*tw3.tickets+(st.emails||0)*tw3.emails+(st.wfs||0)*tw3.wfs+(st.calls||0)*tw3.calls+(st.caseActions||0)*(tw3.case_actions||0)+(st.reviews||0)*(tw3.reviews||1)+customTaskPoints(mn,pt,wk,mo))/hr*10)/10:null;const expected=hr?Math.round(tAvg2*hr*10)/10:null;return{name:mn,actual,expected,hrs:hr,diff:actual&&expected?Math.round((actual*hr-expected)*10)/10:null};}).filter(r=>r.actual!==null).sort((a,b)=>(b.diff||0)-(a.diff||0));if(!rows.length)return null;return<div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:16}}>
             <div style={{padding:"12px 16px",borderBottom:"1px solid #e5e7eb",fontWeight:700,fontSize:13,color:"#111827"}}>{"Expected vs Actual (team avg: "+tAvg2+" pts/hr)"}</div>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead><tr style={{background:"#f9fafb"}}><th style={{padding:"7px 12px",textAlign:"left",color:"#6b7280",fontSize:11}}>Name</th><th style={{padding:"7px 12px",textAlign:"center",color:"#6b7280",fontSize:11}}>Hours</th><th style={{padding:"7px 12px",textAlign:"center",color:"#6b7280",fontSize:11}}>Expected Pts</th><th style={{padding:"7px 12px",textAlign:"center",color:"#6b7280",fontSize:11}}>Actual Pts</th><th style={{padding:"7px 12px",textAlign:"center",color:"#6b7280",fontSize:11}}>Diff</th></tr></thead>

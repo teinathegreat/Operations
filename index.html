@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.3.4";
+const APP_VERSION="3.3.5";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -9447,10 +9447,10 @@ function App(){
         </div>
       </div>
 
-      {formOpen&&<ReviewForm month={selMonth} team={myTeam} agents={allAgents}
-        existing={editReview}
-        onClose={()=>{const k="_revForm_"+(editReview?.id||"new");delete window[k];setFormOpen(false);setEditReview(null);}}
-        onSave={(rev)=>{
+      {formOpen&&<StableProfilePanel key={"cr-review-form-"+(editReview?.id||"new")} render={()=>ReviewForm({month:selMonth,team:myTeam,agents:allAgents,
+        existing:editReview,
+        onClose:()=>{const k="_revForm_"+(editReview?.id||"new");delete window[k];setFormOpen(false);setEditReview(null);},
+        onSave:(rev)=>{
           dbUpsert("call_reviews",rev);
           if(editReview){
             setCallReviews(prev=>prev.map(r=>r.id===rev.id?rev:r));
@@ -9462,7 +9462,7 @@ function App(){
           const k="_revForm_"+(editReview?.id||"new");delete window[k];
           setFormOpen(false);setEditReview(null);
           toast2("Review saved.");
-        }}/>}
+        }})}/>}
 
       {/* View review modal */}
       {viewReview&&<Modal title="Call Review Details" onClose={()=>setViewReview(null)}>
@@ -9565,7 +9565,6 @@ function App(){
   }
 
   function ReviewForm({month,team,agents,existing,onClose,onSave}){
-    React.useEffect(()=>{console.log("ReviewForm MOUNTED");return()=>console.log("ReviewForm UNMOUNTED");},[]);
     // Use window global as a "ref" that survives unmounts during the same review session
     const stateKey="_revForm_"+(existing?.id||"new");
     const savedState=window[stateKey]||{};

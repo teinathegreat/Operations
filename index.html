@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.3.0";
+const APP_VERSION="3.3.4";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -3422,7 +3422,7 @@ function RichTextEditor({value, onChange, minHeight}) {
   );
 }
 
-// v3.2.0 — TL Productivity: leadership work counted toward a TL's productivity.
+// TL Productivity: a log of leadership work for visibility. Does NOT count toward productivity.
 // Auto-pickup: 1-on-1s & meetings (createdBy=TL), call reviews (reviewedBy=TL),
 // capability assessments (assessor=TL). Manual submit (1 point each): process created,
 // process modified, email sent. Each TL sees only their own; admin sees all four.
@@ -3472,7 +3472,7 @@ function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivi
     if(subType==="email")entry.to=subTo.trim();
     setTlActivity(prev=>[entry,...(prev||[])]);
     addAudit&&addAudit("TL Productivity Submission",subType.replace(/_/g," ")+" for "+(subWho||"")+(isAdmin?(" by "+(currentUser?.displayName||"")):""));
-    setSubText("");setSubTo("");toast2&&toast2("Submitted. 1 point added"+(isAdmin&&subWho?(" for "+subWho):"")+".");
+    setSubText("");setSubTo("");toast2&&toast2("Logged"+(isAdmin&&subWho?(" for "+subWho):"")+".");
   };
   const delEntry=(id)=>{setTlActivity(prev=>(prev||[]).filter(a=>a.id!==id));};
   const periodLabel=pt==="week"?("Week "+wkSel):moSel;
@@ -3484,7 +3484,7 @@ function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivi
       <div key={s.name} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:12,padding:"16px 18px",marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <div><div style={{fontWeight:700,fontSize:15,color:"#111827"}}>{s.name}</div><div style={{fontSize:12,color:"#6b7280"}}>{s.team} · {periodLabel}</div></div>
-          <div style={{textAlign:"right"}}><div style={{fontSize:26,fontWeight:800,color:"#0d9488",lineHeight:1}}>{c.total}</div><div style={{fontSize:11,color:"#6b7280"}}>points</div></div>
+          <div style={{textAlign:"right"}}><div style={{fontSize:26,fontWeight:800,color:"#0d9488",lineHeight:1}}>{c.total}</div><div style={{fontSize:11,color:"#6b7280"}}>logged</div></div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8}}>
           {SOURCES.map(src=>{const has=c[src.key]>0;return (
@@ -3502,7 +3502,7 @@ function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivi
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12,marginBottom:16}}>
         <div>
           <h2 style={{margin:0,fontSize:20,fontWeight:800,color:"#111827"}}>TL Productivity</h2>
-          <p style={{margin:"4px 0 0",fontSize:13,color:"#6b7280"}}>Leadership work counted toward your productivity. Each item is worth 1 point.</p>
+          <p style={{margin:"4px 0 0",fontSize:13,color:"#6b7280"}}>A log of leadership work for visibility. This does not count toward productivity.</p>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <div style={{display:"flex",background:"#f3f4f6",borderRadius:8,padding:2}}>
@@ -3535,7 +3535,7 @@ function TLProductivityTab({currentUser,isAdmin,teamLeads,tlActivity,setTlActivi
               <textarea value={subText} onChange={e=>setSubText(e.target.value)} rows={subType==="email"?5:2} placeholder={textLabel} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #d1d5db",fontSize:13,resize:"vertical",fontFamily:"inherit"}}/>
             </div>
           </div>
-          <div style={{marginTop:10}}><button onClick={submit} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Submit for 1 point</button></div>
+          <div style={{marginTop:10}}><button onClick={submit} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Log it</button></div>
           {(()=>{const mine=(tlActivity||[]).filter(a=>a.tlName===subWho).slice(0,12);if(!subWho||!mine.length)return null;return (
             <div style={{marginTop:16}}>
               <div style={{fontSize:12,fontWeight:700,color:"#6b7280",marginBottom:6}}>{isAdmin?("Recent submissions for "+subWho):"Your recent submissions"}</div>
@@ -3655,7 +3655,7 @@ function App(){
   React.useEffect(()=>{
     const TAB_GROUPS={
       "daily":"tasks","to-do list":"tasks","action list":"tasks","planner":"tasks",
-      "dashboard":"insights","people":"insights","leaderboard":"insights","schedule":"insights","reports":"insights","tl productivity":"insights",
+      "dashboard":"insights","people":"insights","leaderboard":"insights","schedule":"insights","reports":"insights",
       "call reviews":"quality","reviews":"quality","case tracker":"quality","owner withdrawals":"quality",
       "quick references":"more",
       "settings":"admin","export":"admin","accounts":"admin","audit":"admin","weights":"admin","kpi targets":"admin","capabilities":"admin","daily config":"admin","review criteria":"admin"
@@ -5828,15 +5828,15 @@ function App(){
               }
             }
           });
-          // v3.2.3 — fold leadership work into the lead's stored productivity_lead. Recomputed
-          // from scratch so it counts even with no front-line work, and kept OUT of totalPts so
-          // productivity_team stays front-line only.
+          // Team Lead productivity is the TL's own front-line work only. Leadership submissions
+          // (1-on-1s, meetings, processes, emails) are logged on the TL Productivity page for
+          // visibility but do NOT count toward this number.
           if(tdata.lead){
             const _lh=getSchedHours(tdata.lead,isWeek?"week":"month",wkN,mon);
             if(_lh&&_lh>0){
               const _ls=getIcStats(tdata.lead,isWeek?"week":"month",wkN,mon);
               const _lfront=_ls?((_ls.closed||0)*tw.tickets+(_ls.emails||0)*tw.emails+(_ls.wfs||0)*tw.wfs+(_ls.calls||0)*tw.calls+(_ls.caseActions||0)*(tw.case_actions||0)+(_ls.reviews||0)*(tw.reviews||1)):0;
-              const _lrate=Math.round((_lfront+tlLeadPoints(tdata.lead,isWeek?"week":"month",wkN,mon))/_lh*100)/100;
+              const _lrate=Math.round(_lfront/_lh*100)/100;
               if(_lrate>0)leadRate=_lrate;
             }
           }
@@ -9536,16 +9536,15 @@ function App(){
             <div style={{fontSize:11,fontWeight:600,color:"#475569",textTransform:"uppercase",letterSpacing:".04em",flex:1}}>Employee Summary</div>
             <button onClick={()=>{
               const revCriteria=getReviewCriteria(viewReview.team||myTeam);
-              const passed=revCriteria.filter(cr=>viewReview.criteria?.[cr.id]===true);
-              const failed=revCriteria.filter(cr=>viewReview.criteria?.[cr.id]===false);
               let summary="CALL REVIEW — "+viewReview.agentName+"\n";
               summary+="Date: "+fmtNZDate(viewReview.date)+" · Score: "+viewReview.score+"/"+revCriteria.length+" · "+(viewReview.passed?"PASS ✓":"NEEDS IMPROVEMENT ✗")+"\n";
               if(viewReview.callType)summary+="Call Type: "+viewReview.callType+"\n";
               if(viewReview.callLength)summary+="Duration: "+viewReview.callLength+"\n";
               summary+="\n";
               if(viewReview.callSummary)summary+="CALL SUMMARY\n"+viewReview.callSummary+"\n\n";
-              if(passed.length){summary+="WHAT YOU DID WELL ✅\n";passed.forEach(cr=>{const r=viewReview.aiReasoning?.[cr.id];summary+="• "+cr.label+(r?" — "+r:"")+"\n";});summary+="\n";}
-              if(failed.length){summary+="AREAS TO IMPROVE ❌\n";failed.forEach(cr=>{const r=viewReview.aiReasoning?.[cr.id];summary+="• "+cr.label+(r?" — "+r:"")+"\n";});summary+="\n";}
+              const _isNA=(r)=>{const t=(r||"").trim().toLowerCase();return t.startsWith("n/a")||t.startsWith("not needed")||t.startsWith("not required")||t.startsWith("not applicable");};
+              summary+="CRITERIA BREAKDOWN\n";
+              revCriteria.forEach(cr=>{const r=viewReview.aiReasoning?.[cr.id];const hit=viewReview.criteria?.[cr.id]===true;const na=hit&&_isNA(r);summary+=(na?"◽":(hit?"✅":"❌"))+" "+cr.label+" — "+(na?"Not needed this call":(hit?"Met":"Missed"))+"\n";if(r)summary+="   "+String(r).replace(/\n/g,"\n   ")+"\n";summary+="\n";});
               if(viewReview.notes)summary+="COACHING FEEDBACK\n"+viewReview.notes+"\n\n";
               if(viewReview.improvementPlan)summary+="HOW TO REACH 10/10 🎯\n"+viewReview.improvementPlan+"\n\n";
               if(viewReview.advisories)summary+="ADVISORIES\n"+viewReview.advisories+"\n\n";
@@ -9632,9 +9631,11 @@ function App(){
       "You are an experienced call centre quality coach for Bachcare, a New Zealand holiday home management company. You're reviewing a phone call to help the agent improve."+intensityPrompt+
       "\n\nCRITICAL OUTPUT RULES:\n- NEVER mention transcription, transcript, recording, audio quality, or speech-to-text in your feedback, summary, advisories, or reasoning. Write as if you listened to the call directly.\n- If there are repeated words or phrases (like repeated thank you), ignore them — treat them as a single occurrence.\n- If the call starts abruptly without a greeting, in Standard intensity assume the greeting happened. In Firm/Strict, only fail if there is clear evidence the agent skipped it.\n- Write all feedback as coaching from someone who listened to the call, not someone who read a transcript.\n- Write every reason, the feedback, advisories and improvement plan in plain, natural, conversational English — the way a supportive team leader actually talks to someone. Do NOT use clinical, jargon-y, or robotic phrasing. For example, never write something like 'Revealed internal hierarchy to customer'; instead write it the way a person would say it, e.g. 'Told the customer they'd need to check with their manager — that can make us look less capable, so it's better to just say you'll look into it and sort it out behind the scenes.'\n- The company is always \"Bachcare\". If the audio renders it as a close-sounding variant (e.g. \"BadgeCare\", \"Batchcare\", \"Bach Care\", \"Badge Care\", \"Bachelor\"), that is simply the agent's accent coming through — read it as \"Bachcare\" and NEVER fault, mark down, or even mention the agent saying the company name wrongly. Assume they said it correctly.\n- Be fair and contextual: judge each criterion against what THIS call was actually about. Do NOT invent failures for things that don't fit the call. If the customer called about one specific issue or item, not asking about other hypothetical issues they never raised is NOT a miss — treat that as fine. Only flag a missed opportunity if it would genuinely have helped this particular call.\n- Match each concern to the RIGHT criterion. Optimistic, warm words like \"hopefully\", \"happy to\", \"we'd love to\" ARE positive language — never fail a positive-language style criterion for them. Concerns about hedging, confidence, or vague timing belong only to the confidence and clear-expectations criteria, not to positive language."+
       (diarized?"\n- The transcript below is LABELED with \"Agent:\" and \"Customer:\" prefixes for each line. USE these labels — never grade the agent for something the customer said, and never give the agent credit for something the customer offered up unprompted.":"")+
+      "\n\nFAIR & PROPORTIONATE TO THE CALL (this matters as much as catching faults):\n- Weigh every criterion against what THIS call actually needed. The reason for the call and how involved it is decide how much is expected. A quick, simple call (a one-line factual question, a quick confirmation) does NOT need the full treatment — a long recap, formal expectation-setting, or drawn-out empathy can be unnecessary, and skipping them is fine. A complex, emotional, or high-stakes call DOES need the agent to go the extra mile, and lighter handling there is a genuine miss.\n- If a criterion genuinely did not apply or was not needed for this call, do NOT fail it. Set \"pass\" to true and begin the reason with \"N/A —\" then a short plain explanation of why it wasn't needed for this kind of call (for example: \"N/A — this was a 40-second call just to confirm a checkout time, so a full summary of agreed actions wasn't necessary\"). Counting a not-needed criterion as met keeps the score fair.\n- Be honest in BOTH directions: don't invent a need that wasn't there just to fail someone, and don't wave through something the call genuinely required. Aim for a rating the agent would agree is fair — relaxed about what didn't matter for this call, but clear and firm about what DID matter and was missed. Those genuine misses are what DEFINITELY needs improvement and must still be flagged with evidence and a 'Try instead'.\n- Under Firm or Strict intensity, be conservative about calling something not needed — only mark N/A when a criterion is clearly inapplicable to this call."+
+      "\n\nON HOLD / GATHERING INFORMATION (read this carefully before judging professionalism or confidence):\n- Sometimes the agent puts the customer on hold to look something up or check with a colleague. While on hold the customer CANNOT hear the agent. If the agent forgot to mute, the recording can capture the agent talking to colleagues, thinking out loud, or asking someone in the office for information. This backstage talk is NOT part of the customer-facing conversation and must NOT be graded as if the customer heard it.\n- Example: if the agent says 'what's the booking ref?' or 'let me just check with [name]' to a COLLEAGUE while the customer is on hold, that is normal information-gathering — it is NOT revealing internal hierarchy to the customer, NOT a confidence or autonomy fail, and NOT unprofessional. Only treat internal language or manager-deferral as a fault when the agent says it DIRECTLY to the customer where the customer can hear it.\n- Putting a customer on a brief hold to get the right answer is GOOD practice. Never fault the agent for 'uncertainty', 'flipping through screens', or hesitation when they have appropriately placed the customer on hold to confirm something. Getting the correct answer beats guessing.\n- Signs a stretch is on-hold/backstage: the agent announces a hold ('bear with me', 'let me put you on hold', 'one moment'), the dialogue stops addressing the customer and becomes the agent talking to a third party or themselves, or a new voice appears that is clearly a colleague rather than the caller. Speaker labels can be unreliable across these stretches — use judgement.\n- Where a segment was on hold, judge ONLY the customer-facing parts: how clearly the agent set up the hold, whether the wait felt reasonable for the customer, and how confidently they returned with the answer. If the hold was set up well and the agent came back with a clear answer, that is a PASS on the relevant criteria even if the backstage talk was messy. The one thing that can still be a fault is leaving the customer on hold with no warning or for an unreasonably long time with no check-back — judge that from the customer's side only."+
       "\n\nESCALATION RULES:\n- The ONLY valid reason for an agent to escalate a call to a manager is if the customer explicitly demands to speak to a manager and is pushing for it.\n- Agents should NEVER say things like 'Let me ask my team leader' or 'I need to check with my manager' on the call. Instead they should say 'Let me look into this for you' and then contact their manager privately.\n- If the agent used phrases that revealed they need manager approval, that's a fail on confidence/autonomy even if the call wasn't formally escalated.\n- If the call was transferred or escalated, determine whether the customer demanded it or the agent offered it unnecessarily."+
       "\n\nBACHCARE FOLLOW-UP & TIMEFRAME STYLE (apply this whenever you coach on expectations, timeframes, or call closings):\n- Bachcare does NOT promise fixed deadlines like 'within 24 hours'. The preferred commitment is personal ownership: the agent keeps the customer updated on progress and, even if there is no progress, still gives them an update by the END OF THE AGENT'S SHIFT that day.\n- A commitment like 'I'll keep you posted on progress, and even if I have no update I'll come back to you by the end of my shift today' is a STRONG, clear expectation — score it as meeting the standard, and prefer this style in every 'Try instead' you write. Never suggest a fixed hour-count.\n- Example for setting expectations / closing: 'I'll chase this up and keep you updated. Even if there's nothing new yet, I'll make sure to come back to you by the end of my shift today.'\n- Example for calling someone (e.g. a manager or property manager): 'I'll give them a ring right now. They can get busy, so if they don't pick up I'll keep trying through the day — and either way I'll update you by the end of my shift today, even if there's no news yet.'"+
-      "\n\nACTIVE FAULT-FINDING — be a discerning coach, not a generous grader:\n- For EVERY criterion result, the `reason` field MUST quote a specific moment from the call with its timestamp, labelling the speaker by NAME — use \""+agentName.split(" ")[0]+":\" for the agent and \"Customer:\" for the caller (never the generic word \"Agent\"). For a PASS: \"[01:23] "+agentName.split(" ")[0]+": '<short quote>' — <brief why it meets the criterion>\". For a FAIL, give the evidence the same way, then a line break, then a concrete coaching tip showing the better move, then a short reason WHY that approach is better so they understand the thinking — not just what to change: \"[01:23] "+agentName.split(" ")[0]+": '<short quote>' — <why it falls short>\n→ Try instead: <a specific, natural example of what "+agentName.split(" ")[0]+" could have said or done at that moment>\n→ Why: <a brief, plain explanation of why this is the better approach and how it helps the customer or "+agentName.split(" ")[0]+">\". ALWAYS include the 'Why' line on every Doesn't Meet. A finding without evidence is a weaker finding. If you genuinely cannot find any evidence one way or the other, say so plainly in the reason and lean toward fail.\n- Look ACTIVELY for failure before defaulting to pass. Real calls have rough edges — find them.\n- Common silent failures to check for explicitly on every call:\n  * Agent didn't summarise the agreed actions before closing the call.\n  * Agent didn't paraphrase the customer's issue back to confirm understanding.\n  * Agent used hedge language ('I think', 'probably', 'maybe', 'I'll try to', 'hopefully') instead of decisive language.\n  * Agent gave a vague timeline ('soon', 'shortly', 'as soon as I can') with no real commitment. NOTE: at Bachcare the standard is NOT a fixed deadline like '24 hours' — it is a personal commitment to keep the customer updated on progress and, even if there is no progress, to give them an update by the end of the agent's shift. Treat 'I'll keep you updated and come back to you by the end of my shift today' as a clear, acceptable expectation, and never coach toward a fixed hour-count.\n  * Agent missed an emotional beat (frustration, urgency, confusion, gratitude) without acknowledging it verbally.\n  * Agent let the customer drive the conversation instead of leading it (frequent dead air, customer repeating themselves, agent only reacting).\n  * Agent didn't confirm contact details or who is responsible for the next step.\n  * Agent said 'I'll try' instead of 'I will'.\n  * Agent revealed internal-only language (referring to team leads, internal systems, manager approval) on the customer-facing call.\n  * Agent talked over the customer or cut them off mid-sentence.\n  * Agent gave information that sounds uncertain (long pauses before answers, audible flipping through screens, 'um let me see').\n- If you cannot find clear positive evidence the agent met a criterion, fail it and state in the reason what they should have said or done."+
+      "\n\nACTIVE FAULT-FINDING — be a discerning coach, not a generous grader:\n- For EVERY criterion result, the `reason` field MUST quote a specific moment from the call with its timestamp, labelling the speaker by NAME — use \""+agentName.split(" ")[0]+":\" for the agent and \"Customer:\" for the caller (never the generic word \"Agent\"). For a PASS: \"[01:23] "+agentName.split(" ")[0]+": '<short quote>' — <brief why it meets the criterion>\". For a FAIL, give the evidence the same way, then a line break, then a concrete coaching tip showing the better move, then a short reason WHY that approach is better so they understand the thinking — not just what to change: \"[01:23] "+agentName.split(" ")[0]+": '<short quote>' — <why it falls short>\n→ Try instead: <a specific, natural example of what "+agentName.split(" ")[0]+" could have said or done at that moment>\n→ Why: <a brief, plain explanation of why this is the better approach and how it helps the customer or "+agentName.split(" ")[0]+">\". ALWAYS include the 'Why' line on every Doesn't Meet. A finding without evidence is a weaker finding. If you genuinely cannot find any evidence one way or the other, say so plainly in the reason and lean toward fail.\n- Look ACTIVELY for failure before defaulting to pass. Real calls have rough edges — find them.\n- Common silent failures to check for explicitly on every call:\n  * Agent didn't summarise the agreed actions before closing the call.\n  * Agent didn't paraphrase the customer's issue back to confirm understanding.\n  * Agent used hedge language ('I think', 'probably', 'maybe', 'I'll try to', 'hopefully') instead of decisive language.\n  * Agent gave a vague timeline ('soon', 'shortly', 'as soon as I can') with no real commitment. NOTE: at Bachcare the standard is NOT a fixed deadline like '24 hours' — it is a personal commitment to keep the customer updated on progress and, even if there is no progress, to give them an update by the end of the agent's shift. Treat 'I'll keep you updated and come back to you by the end of my shift today' as a clear, acceptable expectation, and never coach toward a fixed hour-count.\n  * Agent missed an emotional beat (frustration, urgency, confusion, gratitude) without acknowledging it verbally.\n  * Agent let the customer drive the conversation instead of leading it (frequent dead air, customer repeating themselves, agent only reacting).\n  * Agent didn't confirm contact details or who is responsible for the next step.\n  * Agent said 'I'll try' instead of 'I will'.\n  * Agent revealed internal-only language (referring to team leads, internal systems, manager approval) on the customer-facing call.\n  * Agent talked over the customer or cut them off mid-sentence.\n  * Agent gave information that sounds uncertain (long pauses before answers, audible flipping through screens, 'um let me see').\n- If a criterion was genuinely needed for this call and you cannot find clear positive evidence the agent met it, fail it and state in the reason what they should have said or done. (If it was not needed for this call, follow the proportionate-grading rule above: mark it N/A with pass true instead of failing.)"+
       "\n\nGrade the agent against each criterion, and also provide:\n- A brief call summary (2-3 sentences describing what the call was about).\n- Constructive feedback written in a warm, coaching tone. Highlight what the agent did well first — quote a specific moment. Then areas to improve — quote specific moments. Don't sound robotic or generic.\n- Advisories: ALWAYS include something here. If there are genuine concerns (compliance issues, incorrect info, escalation problems), flag them clearly with a quote. If the call was good, note one specific strength and one minor opportunity. Never leave this empty.\n- Call type: determine if this was an 'Inbound' or 'Outbound' call based on the greeting and context.\n- Escalation: determine if the call was escalated or if the agent unnecessarily deferred to management.\n- A path to a perfect score (improvementPlan): a short, prioritised list of the specific, concrete things "+agentName.split(" ")[0]+" can do next time to turn the failed criteria into passes and reach a perfect 10/10 — base it strictly on what was actually graded, point to the real missed moments, and write it naturally like a coach would say it. If every criterion already passed, instead note the key strengths to keep doing to stay at that level."+
       "\n\nRespond ONLY in this exact JSON format, no other text:\n{\"results\":[{\"id\":\"CRITERION_ID\",\"pass\":true/false,\"reason\":\"[MM:SS] <speaker>: '<quote>' — <judgement>; on a FAIL add a line break then '→ Try instead: ...'\"}],\"summary\":\"what the call was about\",\"feedback\":\"constructive coaching feedback with quoted moments\",\"advisories\":\"always provide something here\",\"improvementPlan\":\"prioritised, concrete steps to reach 10/10\",\"callType\":\"Inbound or Outbound\",\"escalated\":true/false,\"escalationJustified\":true/false/null,\"escalationNotes\":\"brief note on escalation or empty string\"}"+
       "\n\nThe agent's first name is: "+agentName.split(" ")[0]+". Only use their first name in feedback, summary, and advisories. Never use their last name."+
@@ -11816,7 +11817,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const GROUPS=[
               {id:"home",label:null,tabs:["Home"]},
               {id:"tasks",label:"Tasks",tabs:["Daily","To-Do List","Action List","Planner"]},
-              {id:"insights",label:"Insights",tabs:["Dashboard","People","Leaderboard","Schedule","Reports","TL Productivity"]},
+              {id:"insights",label:"Insights",tabs:["Dashboard","People","Leaderboard","Schedule","Reports"]},
               {id:"quality",label:"Quality",tabs:["Call Reviews","Reviews","Case Tracker","Owner Withdrawals"]},
               {id:"more",label:"More",tabs:["Quick References","Expectations"]}
             ];
@@ -11828,7 +11829,6 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             const badgeFor=(t)=>{if(t==="Action List")return actionListBadge;if(t==="To-Do List")return todoBadge;return 0;};
 
             const isAllowed=(t)=>{
-              if(t==="TL Productivity")return isAdmin||(currentUser?.role==="leader");
               if(ADMIN_GROUP.tabs.includes(t)){if(isAdmin)return true;return(myPerms.admin||[]).includes(t);}
               if(isAdmin)return true;
               return(myPerms.menu||[]).includes(t);
@@ -12191,23 +12191,9 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             ))}
           </div>;
           })()}
-          {/* Overall Progress Bar */}
-          {(()=>{const totalKpis=kpis.length;const passedPct=totalKpis?Math.round(passN/totalKpis*100):0;const barC=passedPct>=80?"#059669":passedPct>=50?"#d97706":"#dc2626";return<div style={{background:"#fff",borderRadius:10,border:"1px solid #e5e7eb",padding:"14px 18px",marginBottom:16}}>
-            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
-              <span style={{fontSize:13,fontWeight:700,color:"#111827"}}>Overall KPI Progress</span>
-              <span style={{fontSize:24,fontWeight:800,color:barC,marginLeft:"auto"}}>{passedPct+"%"}</span>
-            </div>
-            <div style={{height:12,background:"#f1f5f9",borderRadius:6,overflow:"hidden"}}>
-              <div style={{height:12,borderRadius:6,background:passedPct>=80?"linear-gradient(90deg,#059669,#34d399)":passedPct>=50?"linear-gradient(90deg,#d97706,#fbbf24)":"linear-gradient(90deg,#dc2626,#f87171)",width:passedPct+"%",transition:"width .4s"}}/>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",marginTop:6,fontSize:10,color:"#9ca3af"}}>
-              <span>{passN+" of "+totalKpis+" KPIs passing"}</span>
-              <span>{passedPct>=80?"On track ✓":passedPct>=50?"Needs improvement":"Attention required"}</span>
-            </div>
-          </div>;})()}
           <div style={{background:"#fff",borderRadius:11,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:12}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,borderLeft:"4px solid "+(tDef.color||"#e5e7eb"),overflow:"visible"}}>
-              <thead><tr style={{background:tDef.lightBg||"#f9fafb"}}>{["KPI","Target","Actual","Progress","Status"].map(h=><th key={h} style={{padding:"9px 13px",textAlign:h==="KPI"?"left":"center",fontWeight:600,color:tDef.color||"#4b5563",borderBottom:"1px solid "+(tDef.color||"#e5e7eb"),fontSize:12,width:h==="Progress"?"140px":undefined}}>{h}</th>)}</tr></thead>
+              <thead><tr style={{background:tDef.lightBg||"#f9fafb"}}>{["KPI","Target","Actual","Status"].map(h=><th key={h} style={{padding:"9px 13px",textAlign:h==="KPI"?"left":"center",fontWeight:600,color:tDef.color||"#4b5563",borderBottom:"1px solid "+(tDef.color||"#e5e7eb"),fontSize:12}}>{h}</th>)}</tr></thead>
               <tbody>{kpis.map((k,i)=>{
                 // Live computation for call review KPIs
                 let v=pData[k.key];
@@ -12220,27 +12206,32 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                 }
                 // Live computation for productivity (agents only, leader separate)
                 if(k.key==="productivity_team"){const liveTeamProd=avgProd(team,pt,mo,wk,false);if(liveTeamProd!==null)v=liveTeamProd;}
-                let prodLeadInfo=null;
                 if(k.key==="productivity_lead"){
                   const leadName=roster[team]?.lead;
                   if(leadName){const ls=getIcStats(leadName,pt,wk,mo);const lh=getSchedHours(leadName,pt,wk,mo);const tw5=getW(team);
-                  // v3.2.3 — fold leadership work into the displayed rate. This live computation
-                  // runs AFTER and OVERRIDES the stored productivity_lead, so the fold MUST live
-                  // here for the scorecard to show it: (front-line points + leadership points)/hours.
-                  // Counts even when the TL has no front-line stats (front=0), as long as hours>0.
+                  // Team Lead productivity = the TL's own front-line work (plus any custom tasks).
+                  // Leadership submissions (1-on-1s, meetings, processes, emails) are logged on the
+                  // TL Productivity page for visibility but do NOT count toward this number.
                   if(lh&&lh>0){
                     const front=ls?((ls.closed||0)*tw5.tickets+(ls.emails||0)*tw5.emails+(ls.wfs||0)*tw5.wfs+(ls.calls||0)*tw5.calls+(ls.caseActions||0)*(tw5.case_actions||0)+(ls.reviews||0)*(tw5.reviews||1)):0;
-                    const leadPtsNow=tlLeadPoints(leadName,pt,wk,mo);
-                    v=Math.round((front+leadPtsNow+customTaskPoints(leadName,pt,wk,mo))/lh*100)/100;
-                    prodLeadInfo={front:Math.round(front/lh*100)/100,pts:leadPtsNow,total:v};
+                    const ctp=customTaskPoints(leadName,pt,wk,mo);
+                    if(ls||ctp>0)v=Math.round((front+ctp)/lh*100)/100;
                   }
                   }
                 }
-                const p=isPass(v,k);return(
+                let crWeekDone=null,crWeekReq=null;
+                if(k.key==="call_reviews_count"&&pt==="week"){
+                  const _wr=FY25_WK_RANGES.find(([w])=>w===wk);
+                  const _memC=(roster[team]?.members||[]).length;
+                  // weekly requirement = members x (monthly target / 4), i.e. 2 per agent per week when target is >8/month
+                  crWeekReq=_memC*Math.max(1,Math.round(k.thresh/4));
+                  crWeekDone=_wr?callReviews.filter(r=>{if(r.team!==team)return false;const d=new Date(r.date||r.createdAt);if(isNaN(d))return false;const iso=d.toLocaleDateString("en-CA",{timeZone:"Pacific/Auckland"});return iso>=_wr[1]&&iso<=_wr[2];}).length:0;
+                }
+                let p=crWeekReq!=null?(crWeekDone>=crWeekReq):isPass(v,k);return(
                 <tr key={k.key} style={{background:i%2?tDef.lightBg||"#f9fafb":"#fff",borderBottom:"1px solid "+(tDef.lightBg||"#f3f4f6")}}>
                   <td style={{padding:"9px 13px",color:"#111827",cursor:(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim"||k.key==="claims_resolved"||k.key==="feedback_resolution"||k.key==="airbnb_reviews")?"pointer":"default"}}
                       onClick={()=>{if(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")setCsatDetail(k.key);else if(k.key==="claims_resolved"||k.key==="feedback_resolution"||k.key==="airbnb_reviews")setKpiBreakdown(k.key);}}
-                      title={(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")?"Click to view all submitted responses":((k.key==="claims_resolved"||k.key==="feedback_resolution"||k.key==="airbnb_reviews")?"Click to see the breakdown":(k.key==="productivity_lead"&&prodLeadInfo?(prodLeadInfo.front+"/hr front-line"+(prodLeadInfo.pts>0?(" + "+prodLeadInfo.pts+" leadership point"+(prodLeadInfo.pts===1?"":"s")+" = "+prodLeadInfo.total+"/hr"):" (no leadership points logged this period)")):""))}>
+                      title={(k.key==="csat_in_stay"||k.key==="post_case_csat"||k.key==="csat_owner_claim")?"Click to view all submitted responses":((k.key==="claims_resolved"||k.key==="feedback_resolution"||k.key==="airbnb_reviews")?"Click to see the breakdown":"")}>
                     {(k.dir==="bool"||k.key==="call_reviews_count"||k.key==="call_reviews_pass")?(()=>{
                       const wkMon=(()=>{
                         const _wkRange=FY25_WK_RANGES.find(([w])=>w===wk);
@@ -12252,7 +12243,10 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                       })();
                       const mon=pt==="month"?mo:wkMon;
                       const shortMon=mon?mon.split(" ")[0].toUpperCase():null;
-                      return <span>{shortMon&&<span style={{color:"#0d9488",fontWeight:700,marginRight:5}}>({shortMon})</span>}{k.label}</span>;
+                      const crWeekView=k.key==="call_reviews_count"&&pt==="week";
+                      const pfx=crWeekView?("W"+wk):shortMon;
+                      const lbl=crWeekView?"Call Reviews/Week":k.label;
+                      return <span>{pfx&&<span style={{color:"#0d9488",fontWeight:700,marginRight:5}}>({pfx})</span>}{lbl}</span>;
                     })():k.label}
                   </td>
                   <td style={{padding:"9px 13px",textAlign:"center",color:"#6b7280"}}>{k.target}</td>
@@ -12288,6 +12282,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                         title="Click to edit">
                         {(()=>{
                           if(k.key==="call_reviews_count"){
+                            if(crWeekReq!=null)return <span style={{fontWeight:700}}>{crWeekDone}<span style={{color:"#9ca3af",fontWeight:400}}>/{crWeekReq}</span></span>;
                             const crMC=(roster[team]?.members||[]).length;
                             const crTotal=crMC*k.thresh;
                             const curMon2=pt==="month"?mo:(()=>{const wr2=FY25_WK_RANGES.find(([w])=>w===wk);if(!wr2)return mo;const s3=new Date(wr2[1]+"T00:00:00Z");const cnt2={};for(let i2=0;i2<7;i2++){const d4=new Date(s3);d4.setUTCDate(d4.getUTCDate()+i2);const mn2=d4.toLocaleString("en-NZ",{month:"long",year:"numeric",timeZone:"UTC"});cnt2[mn2]=(cnt2[mn2]||0)+1;}return Object.entries(cnt2).sort((a,b)=>b[1]-a[1])[0]?.[0]||mo;})();
@@ -12326,23 +12321,6 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                       </span>
                     )}
                   </td>
-                  <td style={{padding:"9px 13px",textAlign:"center"}}>{(()=>{
-                    if(k.dir==="bool"){const done=[true,"yes","Yes","1",1].includes(v);return<div style={{display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:"100%",maxWidth:120,height:8,background:"#f1f5f9",borderRadius:4,overflow:"hidden"}}><div style={{height:8,background:done?"#059669":"#e5e7eb",borderRadius:4,width:done?"100%":"0%",transition:"width .3s"}}/></div></div>;}
-                    if(v===undefined||v===null||v==="")return<div style={{display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:"100%",maxWidth:120,height:8,background:"#f1f5f9",borderRadius:4}}><div style={{height:8,background:"#e5e7eb",borderRadius:4,width:"0%"}}/></div></div>;
-                    const num=parseFloat(v);if(isNaN(num))return null;
-                    let pct;
-                    // Special: call_reviews_count uses total reviews / total needed
-                    if(k.key==="call_reviews_count"){
-                      const crMC2=(roster[team]?.members||[]).length;
-                      const crTotal2=crMC2*k.thresh;
-                      const curMon3=pt==="month"?mo:(()=>{const wr3=FY25_WK_RANGES.find(([w])=>w===wk);if(!wr3)return mo;const s4=new Date(wr3[1]+"T00:00:00Z");const cnt3={};for(let i3=0;i3<7;i3++){const d5=new Date(s4);d5.setUTCDate(d5.getUTCDate()+i3);const mn3=d5.toLocaleString("en-NZ",{month:"long",year:"numeric",timeZone:"UTC"});cnt3[mn3]=(cnt3[mn3]||0)+1;}return Object.entries(cnt3).sort((a,b)=>b[1]-a[1])[0]?.[0]||mo;})();
-                      const crDone2=callReviews.filter(r=>r.team===team&&r.month===curMon3).length;
-                      pct=crTotal2>0?Math.round(Math.min(100,crDone2/crTotal2*100)):0;
-                    }else if(k.dir==="lt"){pct=num<=0?100:num>=k.thresh*2?0:Math.round(Math.max(0,Math.min(100,(1-num/k.thresh)*50+50)));}
-                    else{pct=k.thresh<=0?100:Math.round(Math.min(100,num/k.thresh*100));}
-                    const passed=isPass(v,k);const barColor=passed?"#059669":pct>=70?"#d97706":"#dc2626";
-                    return<div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"center"}}><div style={{width:"100%",maxWidth:100,height:8,background:"#f1f5f9",borderRadius:4,overflow:"hidden"}}><div style={{height:8,background:barColor,borderRadius:4,width:Math.min(pct,100)+"%",transition:"width .3s"}}/></div><span style={{fontSize:10,fontWeight:700,color:barColor,minWidth:30}}>{pct+"%"}</span></div>;
-                  })()}</td>
                   <td style={{padding:"9px 13px",textAlign:"center"}}><Badge pass={p}/>{pData._autoFilled&&!v&&<span style={{fontSize:9,color:"#9ca3af",display:"block"}}>auto</span>}</td>
                 </tr>);})}
               </tbody>
@@ -12382,14 +12360,13 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
           </div>}
         </>}
 
-        {tab==="people"&&<PeopleTab/>}
+        {tab==="people"&&<StableProfilePanel key="tab-people" render={PeopleTab}/>}
 
         {tab==="leaderboard"&&<LeaderboardTab/>}
 
         {tab==="schedule"&&<SchedTab/>}
 
         {tab==="reports"&&<ReportsTab/>}
-        {tab==="tl productivity"&&(isAdmin||currentUser?.role==="leader")&&<TLProductivityTab currentUser={currentUser} isAdmin={isAdmin} teamLeads={TEAM_LEADS} tlActivity={tlActivity} setTlActivity={setTlActivity} callReviews={callReviews} meetingNotes={meetingNotes} formalMeetings={formalMeetings} assessHistory={assessHistory} autoMonth={AUTO_MONTH} toast2={toast2} addAudit={addAudit}/>}
 
         {tab==="reviews"&&<ReviewsTab/>}
 
@@ -12443,7 +12420,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
           </div></div>
         </div>}
 
-        {tab==="call reviews"&&<CallReviewsTab/>}
+        {tab==="call reviews"&&<StableProfilePanel key="tab-cr" render={CallReviewsTab}/>}
         {tab==="audit"&&(isAdmin||(myPerms.admin||[]).includes("Audit"))&&<div style={{maxWidth:820}}>
           {/* Edit Requests */}
           <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:16}}>

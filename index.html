@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.3.6";
+const APP_VERSION="3.3.7";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -5148,6 +5148,17 @@ function App(){
     }
   };
   useEffect(()=>syncRows("call_reviews",callReviews,"cr"),[callReviews]);
+  // Self-heal the Case Tracker KPIs (cleaning claims / feedback) from already-loaded case data so a
+  // figure computed by an older rule (e.g. before Feedback was excluded from claims) corrects itself
+  // without a manual re-upload. Owner only, runs once per session after the case data has loaded.
+  const _ctKpiHealed=useRef(false);
+  useEffect(()=>{
+    if(!isOwner||_ctKpiHealed.current)return;
+    const rows=(caseTracker&&Array.isArray(caseTracker.rows))?caseTracker.rows:null;
+    if(!rows||!rows.length)return;
+    _ctKpiHealed.current=true;
+    applyCaseTrackerKPIs(rows);
+  },[caseTracker,isOwner]);
   useEffect(()=>syncRows("action_items",actionItems,"ai"),[actionItems]);
   useEffect(()=>syncRows("todos",todos,"td"),[todos]);
   useEffect(()=>syncRows("daily_reports",dailyReports,"dr"),[dailyReports]);
@@ -6354,9 +6365,13 @@ function App(){
       const w=dmyToWk(r.CompletionDate);if(!w)return;
       const raw=String(r.WorkingDaysToComplete||"").trim();if(raw==="")return;
       const wd=parseInt(raw,10);if(isNaN(wd))return;
-      const ctype=String(r.CaseType||"").trim();
-      if(ctype==="Claim"&&String(r.SubCaseType||"").trim()==="Additional Cleaning"){clT[w]=(clT[w]||0)+1;if(wd<3)clP[w]=(clP[w]||0)+1;}
-      else if(ctype==="Feedback"){fbT[w]=(fbT[w]||0)+1;if(wd<3)fbP[w]=(fbP[w]||0)+1;}
+      const ctype=String(r.CaseType||"").trim().toLowerCase();
+      const sctype=String(r.SubCaseType||"").trim().toLowerCase();
+      // Cleaning claim = CaseType "Claim" AND SubCaseType "Additional Cleaning". A Feedback case is
+      // NEVER a cleaning claim, even when its SubCaseType is "Additional Cleaning" — it goes to the
+      // separate feedback bucket below and must not inflate the claims number.
+      if(ctype==="claim"&&sctype==="additional cleaning"){clT[w]=(clT[w]||0)+1;if(wd<3)clP[w]=(clP[w]||0)+1;}
+      else if(ctype==="feedback"){fbT[w]=(fbT[w]||0)+1;if(wd<3)fbP[w]=(fbP[w]||0)+1;}
     });
     const clMP={},clMT={},fbMP={},fbMT={};
     Object.keys(clT).forEach(w=>{const ml=wkMonth(+w);if(ml){clMT[ml]=(clMT[ml]||0)+clT[w];clMP[ml]=(clMP[ml]||0)+(clP[w]||0);}});

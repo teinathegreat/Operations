@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.3.5";
+const APP_VERSION="3.3.6";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -6444,7 +6444,7 @@ function App(){
       if(inScope&&created&&bizDaysSince(created,NOW)>=RESP_DUE){
         const w=wkOf(isoOf(created));
         if(w){
-          abT[w]=(abT[w]||0)+1;if(status==="Resolved")abP[w]=(abP[w]||0)+1;
+          abT[w]=(abT[w]||0)+1;if(status==="Resolved"||status==="Team Reviewed Guest")abP[w]=(abP[w]||0)+1;
           const lbl=status||"(blank)";const ml=wkMonth(w);
           (brkW[w]=brkW[w]||{})[lbl]=((brkW[w]||{})[lbl]||0)+1;
           if(ml)(brkM[ml]=brkM[ml]||{})[lbl]=((brkM[ml]||{})[lbl]||0)+1;
@@ -12218,6 +12218,12 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   }
                   }
                 }
+                if(k.key==="airbnb_reviews"&&pData._autoFilled&&pData._respondBreakdown){
+                  // Responded = Resolved OR Team Reviewed Guest (both count as us responding).
+                  const _brk=pData._respondBreakdown;const _tot=Object.values(_brk).reduce((s,x)=>s+(x||0),0);
+                  const _resp=(_brk["Resolved"]||0)+(_brk["Team Reviewed Guest"]||0);
+                  if(_tot>0)v=Math.round((_resp/_tot)*1000)/10;
+                }
                 let crWeekDone=null,crWeekReq=null;
                 if(k.key==="call_reviews_count"&&pt==="week"){
                   const _wr=FY25_WK_RANGES.find(([w])=>w===wk);
@@ -14986,11 +14992,12 @@ const teamMap={
           const order=["Resolved","Team Reviewed Guest","72 Hour Hold","Escalated","Guest Review Received","Ready for Team Review"];
           const keys=[...new Set([...order.filter(s=>brk[s]!=null),...Object.keys(brk)])];
           const total=Object.values(brk).reduce((s,v)=>s+(v||0),0);
-          const resolved=brk["Resolved"]||0;const rate=pctOf(resolved,total);
+          const RESPONDED=["Resolved","Team Reviewed Guest"];
+          const resolved=RESPONDED.reduce((s,st)=>s+(brk[st]||0),0);const rate=pctOf(resolved,total);
           body=(<div>
-            <p style={{fontSize:12,color:"#6b7280",marginBottom:8}}>Airbnb or negative reviews aged at least 3 business days. Responded = status Resolved.</p>
-            {keys.length?keys.map(s=><Row key={s} label={s} val={brk[s]||0} good={s==="Resolved"} bad={s!=="Resolved"&&s!=="Team Reviewed Guest"}/>):<p style={{fontSize:12,color:"#9ca3af"}}>No reviews in scope for this period.</p>}
-            {total>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"2px solid #e5e7eb"}}><Row label="Responded (Resolved)" val={`${resolved} / ${total} = ${rate??"–"}%`} strong/></div>}
+            <p style={{fontSize:12,color:"#6b7280",marginBottom:8}}>Airbnb or negative reviews aged at least 3 business days. Responded = status Resolved or Team Reviewed Guest.</p>
+            {keys.length?keys.map(s=><Row key={s} label={s} val={brk[s]||0} good={RESPONDED.includes(s)} bad={!RESPONDED.includes(s)}/>):<p style={{fontSize:12,color:"#9ca3af"}}>No reviews in scope for this period.</p>}
+            {total>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"2px solid #e5e7eb"}}><Row label="Responded" val={`${resolved} / ${total} = ${rate??"–"}%`} strong/></div>}
           </div>);
         }
         return(

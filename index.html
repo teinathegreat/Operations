@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.3.8";
+const APP_VERSION="3.3.9";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -6404,6 +6404,7 @@ function App(){
     const TEAM="Reputation and Resolutions";
     const ci=(n)=>headers.indexOf(n);
     const cCreated=ci("Created"),cMod=ci("Modified"),cChan=ci("Channel"),cRat=ci("Rating"),cSent=ci("Sentiment"),cStat=ci("ReviewStatus");
+    const cCom=ci("ReviewComment"),cAdd=ci("AdditionalComment"),cCust=ci("Customer");
     if(cCreated<0||cMod<0||cChan<0||cStat<0)return;
     const parseDt=(s)=>{
       const m=String(s||"").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})\s*(AM|PM))?/i);
@@ -6443,7 +6444,7 @@ function App(){
     };
     const NOW=new Date();
     const RESP_DUE=3; // business days a review must age before it counts toward the responded rate
-    const revP={},revT={},abP={},abT={},brkW={},brkM={};
+    const revP={},revT={},abP={},abT={},brkW={},brkM={},revListW={},revListM={};
     for(let i=1;i<allRows.length;i++){
       const row=allRows[i];if(!row||!row.length)continue;
       const status=String((cStat>=0?row[cStat]:"")||"").trim();
@@ -6459,10 +6460,14 @@ function App(){
       if(inScope&&created&&bizDaysSince(created,NOW)>=RESP_DUE){
         const w=wkOf(isoOf(created));
         if(w){
-          abT[w]=(abT[w]||0)+1;if(status==="Resolved"||status==="Team Reviewed Guest")abP[w]=(abP[w]||0)+1;
+          abT[w]=(abT[w]||0)+1;if(status==="Resolved")abP[w]=(abP[w]||0)+1;
           const lbl=status||"(blank)";const ml=wkMonth(w);
           (brkW[w]=brkW[w]||{})[lbl]=((brkW[w]||{})[lbl]||0)+1;
           if(ml)(brkM[ml]=brkM[ml]||{})[lbl]=((brkM[ml]||{})[lbl]||0)+1;
+          const _rc=String((cCom>=0?row[cCom]:"")||"").trim()||String((cAdd>=0?row[cAdd]:"")||"").trim();
+          const _detail={s:lbl,g:String((cCust>=0?row[cCust]:"")||"").trim(),c:_rc.length>240?_rc.slice(0,240)+"…":_rc};
+          (revListW[w]=revListW[w]||[]).push(_detail);
+          if(ml)(revListM[ml]=revListM[ml]||[]).push(_detail);
         }
       }
     }
@@ -6479,8 +6484,8 @@ function App(){
       Object.keys(revT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};const rev={p:revP[w]||0,t:revT[w]};const fr=combine(ex._fbRes,rev);const next={...ex,_revRes:rev};if(fr!=null&&!(ex.feedback_resolution!=null&&!ex._autoFilled)){next.feedback_resolution=fr;next._autoFilled=stamp;}team[pk]=next;});
       Object.keys(revMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};const rev={p:revMP[ml]||0,t:revMT[ml]};const fr=combine(ex._fbRes,rev);const next={...ex,_revRes:rev};if(fr!=null&&!(ex.feedback_resolution!=null&&!ex._autoFilled)){next.feedback_resolution=fr;next._autoFilled=stamp;}team[pk]=next;});
       // airbnb_reviews + per-status breakdown for the click-through
-      Object.keys(abT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};if(ex.airbnb_reviews!=null&&!ex._autoFilled)return;team[pk]={...ex,airbnb_reviews:pct(abP[w]||0,abT[w]),_respondBreakdown:brkW[w]||{},_autoFilled:stamp};});
-      Object.keys(abMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};if(ex.airbnb_reviews!=null&&!ex._autoFilled)return;team[pk]={...ex,airbnb_reviews:pct(abMP[ml]||0,abMT[ml]),_respondBreakdown:brkM[ml]||{},_autoFilled:stamp};});
+      Object.keys(abT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};if(ex.airbnb_reviews!=null&&!ex._autoFilled)return;team[pk]={...ex,airbnb_reviews:pct(abP[w]||0,abT[w]),_respondBreakdown:brkW[w]||{},_respondReviews:revListW[w]||[],_autoFilled:stamp};});
+      Object.keys(abMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};if(ex.airbnb_reviews!=null&&!ex._autoFilled)return;team[pk]={...ex,airbnb_reviews:pct(abMP[ml]||0,abMT[ml]),_respondBreakdown:brkM[ml]||{},_respondReviews:revListM[ml]||[],_autoFilled:stamp};});
       return {...prev,[TEAM]:team};
     });
   };
@@ -12234,9 +12239,10 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
                   }
                 }
                 if(k.key==="airbnb_reviews"&&pData._autoFilled&&pData._respondBreakdown){
-                  // Responded = Resolved OR Team Reviewed Guest (both count as us responding).
+                  // Responded = status Resolved only. Other statuses (Team Reviewed Guest, Ready for
+                  // Team Review, Escalated, New) do NOT count toward the rate.
                   const _brk=pData._respondBreakdown;const _tot=Object.values(_brk).reduce((s,x)=>s+(x||0),0);
-                  const _resp=(_brk["Resolved"]||0)+(_brk["Team Reviewed Guest"]||0);
+                  const _resp=(_brk["Resolved"]||0);
                   if(_tot>0)v=Math.round((_resp/_tot)*1000)/10;
                 }
                 let crWeekDone=null,crWeekReq=null;
@@ -15004,15 +15010,41 @@ const teamMap={
           </div>);
         } else if(kpiBreakdown==="airbnb_reviews"){
           const brk=bd._respondBreakdown||{};
-          const order=["Resolved","Team Reviewed Guest","72 Hour Hold","Escalated","Guest Review Received","Ready for Team Review"];
-          const keys=[...new Set([...order.filter(s=>brk[s]!=null),...Object.keys(brk)])];
+          const reviews=Array.isArray(bd._respondReviews)?bd._respondReviews:null;
+          const STATUS_INFO=[
+            ["Resolved","The guest's review has been responded to and the case is complete.",true],
+            ["Team Reviewed Guest","The guest has been reviewed by the team.",false],
+            ["Ready for Team Review","The 72-hour post-checkout hold has passed, and the team is ready to review the guest.",false],
+            ["Escalated","A review has been escalated into a case due to multiple concerns or where confirmation is needed that reported issues have been addressed.",false],
+            ["New","Recently added to the tracker and not yet actioned.",false],
+          ];
           const total=Object.values(brk).reduce((s,v)=>s+(v||0),0);
-          const RESPONDED=["Resolved","Team Reviewed Guest"];
-          const resolved=RESPONDED.reduce((s,st)=>s+(brk[st]||0),0);const rate=pctOf(resolved,total);
+          const resolved=brk["Resolved"]||0;const rate=pctOf(resolved,total);
+          const known=STATUS_INFO.map(x=>x[0]);
+          const extra=Object.keys(brk).filter(s=>!known.includes(s)&&(brk[s]||0)>0).map(s=>[s,"",false]);
+          const cntFor=(st)=>reviews?reviews.filter(r=>r.s===st).length:(brk[st]||0);
+          const renderStatus=(tuple)=>{
+            const st=tuple[0],desc=tuple[1],good=tuple[2];const n=cntFor(st);
+            return (<div key={st} style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10}}>
+                <span style={{fontWeight:700,fontSize:14,color:good?"#059669":"#111827"}}>{st}</span>
+                <span style={{fontWeight:800,fontSize:14,color:good?"#059669":(n>0?"#111827":"#9ca3af")}}>{n}</span>
+              </div>
+              {desc&&<p style={{margin:"2px 0 0",fontSize:11,color:"#9ca3af",lineHeight:1.45}}>{desc}{good?" Counts toward the rate.":""}</p>}
+              {reviews&&reviews.filter(r=>r.s===st).map((r,i)=><div key={i} style={{marginTop:6,paddingLeft:10,borderLeft:"2px solid "+(good?"#a7f3d0":"#e5e7eb")}}>
+                {r.g&&<div style={{fontSize:12,fontWeight:600,color:"#374151"}}>{r.g}</div>}
+                <div style={{fontSize:12,color:"#4b5563",lineHeight:1.45}}>{r.c?r.c:<span style={{color:"#9ca3af",fontStyle:"italic"}}>No comment</span>}</div>
+              </div>)}
+            </div>);
+          };
           body=(<div>
-            <p style={{fontSize:12,color:"#6b7280",marginBottom:8}}>Airbnb or negative reviews aged at least 3 business days. Responded = status Resolved or Team Reviewed Guest.</p>
-            {keys.length?keys.map(s=><Row key={s} label={s} val={brk[s]||0} good={RESPONDED.includes(s)} bad={!RESPONDED.includes(s)}/>):<p style={{fontSize:12,color:"#9ca3af"}}>No reviews in scope for this period.</p>}
-            {total>0&&<div style={{marginTop:8,paddingTop:8,borderTop:"2px solid #e5e7eb"}}><Row label="Responded" val={`${resolved} / ${total} = ${rate??"–"}%`} strong/></div>}
+            <p style={{fontSize:12,color:"#6b7280",marginBottom:12}}>Airbnb or negative reviews aged at least 3 business days. Only the <b>Resolved</b> status counts toward the rate.</p>
+            {total===0?<p style={{fontSize:12,color:"#9ca3af"}}>No reviews in scope for this period.</p>:<React.Fragment>
+              {STATUS_INFO.map(renderStatus)}
+              {extra.map(renderStatus)}
+              {!reviews&&<p style={{fontSize:11,color:"#9ca3af",fontStyle:"italic",marginTop:4}}>Re-import the Review Tracker to list the individual reviews and their comments under each status.</p>}
+            </React.Fragment>}
+            {total>0&&<div style={{marginTop:10,paddingTop:10,borderTop:"2px solid #e5e7eb"}}><Row label="Responded (Resolved)" val={`${resolved} / ${total} = ${rate??"–"}%`} strong/></div>}
           </div>);
         }
         return(
@@ -15022,7 +15054,7 @@ const teamMap={
                 <div><div style={{fontWeight:700,fontSize:15,color:"#111827"}}>{labels[kpiBreakdown]||"Breakdown"}</div><div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{team} · {plbl(pk)}</div></div>
                 <button onClick={()=>setKpiBreakdown(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,color:"#6b7280",lineHeight:1,padding:"4px 8px"}}>×</button>
               </div>
-              <div style={{padding:"16px 20px"}}>{body}</div>
+              <div style={{padding:"16px 20px",maxHeight:"70vh",overflowY:"auto"}}>{body}</div>
             </div>
           </div>
         );

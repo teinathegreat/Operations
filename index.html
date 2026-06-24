@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.3.7";
+const APP_VERSION="3.3.8";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -12382,11 +12382,11 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
 
         {tab==="people"&&<StableProfilePanel key="tab-people" render={PeopleTab}/>}
 
-        {tab==="leaderboard"&&<LeaderboardTab/>}
+        {tab==="leaderboard"&&<StableProfilePanel key="tab-leaderboard" render={LeaderboardTab}/>}
 
         {tab==="schedule"&&<SchedTab/>}
 
-        {tab==="reports"&&<ReportsTab/>}
+        {tab==="reports"&&<StableProfilePanel key="tab-reports" render={ReportsTab}/>}
 
         {tab==="reviews"&&<ReviewsTab/>}
 
@@ -14701,7 +14701,7 @@ const teamMap={
         ))}
       </Modal>}
 
-      {iMember&&<IndivPanel/>}
+      {iMember&&<StableProfilePanel key={"indiv-"+(iMember.id||iMember.name)} render={IndivPanel}/>}
       {profilePerson&&<StableProfilePanel key={profilePerson.name} render={ProfileView}/>}
       {monRevModal&&<MonthlyReviewModal
         config={monRevModal}

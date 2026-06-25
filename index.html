@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.4.6";
+const APP_VERSION="3.4.7";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -15027,9 +15027,12 @@ const teamMap={
           const r=bd._clRes||{p:0,t:0};const rate=pctOf(r.p,r.t);
           const cases=Array.isArray(bd._clCases)?bd._clCases:null;
           const inT=cases?cases.filter(c=>c.ok):[];const against=cases?cases.filter(c=>!c.ok):[];
-          const caseRow=(c,i)=>(<div key={(c.id||"")+"_"+i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",fontSize:12,borderBottom:"1px solid #f9fafb"}}>
-            {c.link?<a href={c.link} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb",fontWeight:600,textDecoration:"none"}}>{c.id||"(no ID)"}</a>:<span style={{fontWeight:600,color:"#374151"}}>{c.id||"(no ID)"}</span>}
-            <span style={{color:c.ok?"#059669":"#dc2626",fontWeight:600}}>{c.status==="Completed"&&c.days!=null?`${c.days} day${c.days===1?"":"s"}`:(c.status||"Not completed")}</span>
+          const caseRow=(c,i)=>(<div key={(c.id||"")+"_"+i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"5px 0",fontSize:12,borderBottom:"1px solid #f9fafb"}}>
+            <div style={{minWidth:0}}>
+              {c.link?<a href={c.link} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb",fontWeight:600,textDecoration:"none"}}>{c.id||"(no ID)"}</a>:<span style={{fontWeight:600,color:"#374151"}}>{c.id||"(no ID)"}</span>}
+              {c.status&&c.status!=="Completed"&&<div style={{fontSize:10,color:"#9ca3af",marginTop:1}}>{c.status}</div>}
+            </div>
+            <span style={{color:c.ok?"#059669":"#dc2626",fontWeight:600,whiteSpace:"nowrap"}}>{c.days!=null?`${c.days} day${c.days===1?"":"s"}`:"—"}</span>
           </div>);
           body=(<div>
             <p style={{fontSize:12,color:"#6b7280",marginBottom:8}}>All cleaning claims (Claim · Additional Cleaning) created this period count. In time = completed in under 3 business days. Anything not completed, or completed in 3+ business days, counts against.</p>

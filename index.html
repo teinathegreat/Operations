@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.4.7";
+const APP_VERSION="3.4.8";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -2450,6 +2450,39 @@ const CLAUDE_MODEL="claude-sonnet-4-6";
 // (early return doesn't fire because we only mount this when profilePerson is set), so the hook
 // count is stable across renders and React error #310 cannot occur.
 function StableProfilePanel({render}){return render();}
+// Per-case note + plan of action for unresolved cleaning claims. Keyed by CaseID so it survives
+// Case Tracker re-imports. Editable by owner/admin/leaders; everyone else reads.
+function ClaimNoteEditor({caseId,note,canEdit,onSave}){
+  const [editing,setEditing]=React.useState(false);
+  const [n,setN]=React.useState((note&&note.note)||"");
+  const [p,setP]=React.useState((note&&note.plan)||"");
+  React.useEffect(()=>{if(!editing){setN((note&&note.note)||"");setP((note&&note.plan)||"");}},[note&&note.note,note&&note.plan,editing]);
+  const has=note&&(((note.note||"").length>0)||((note.plan||"").length>0));
+  const taStyle={width:"100%",fontSize:12,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,resize:"vertical",fontFamily:"inherit",boxSizing:"border-box"};
+  if(editing){
+    return (<div style={{marginTop:6,marginBottom:6,background:"#faf7ff",border:"1px solid #ece4fb",borderRadius:8,padding:10}}>
+      <div style={{fontSize:10,fontWeight:700,color:"#6b7280",marginBottom:3}}>Note (why it's unresolved)</div>
+      <textarea value={n} onChange={e=>setN(e.target.value)} rows={2} style={taStyle} placeholder="Reason this case is still open..."/>
+      <div style={{fontSize:10,fontWeight:700,color:"#6b7280",margin:"7px 0 3px"}}>Plan of action</div>
+      <textarea value={p} onChange={e=>setP(e.target.value)} rows={2} style={taStyle} placeholder="Next steps to resolve..."/>
+      <div style={{display:"flex",gap:6,marginTop:7}}>
+        <button onClick={()=>{onSave(caseId,{note:n,plan:p});setEditing(false);}} style={{fontSize:11,fontWeight:600,padding:"5px 12px",background:"#5C2D91",color:"#fff",border:"none",borderRadius:6,cursor:"pointer"}}>Save</button>
+        <button onClick={()=>{setEditing(false);setN((note&&note.note)||"");setP((note&&note.plan)||"");}} style={{fontSize:11,fontWeight:600,padding:"5px 12px",background:"#fff",color:"#6b7280",border:"1px solid #d1d5db",borderRadius:6,cursor:"pointer"}}>Cancel</button>
+      </div>
+    </div>);
+  }
+  if(has){
+    return (<div style={{marginTop:6,marginBottom:6,background:"#faf7ff",border:"1px solid #ece4fb",borderRadius:8,padding:"8px 10px"}}>
+      {note.note&&<div style={{fontSize:12,color:"#374151",lineHeight:1.45}}><span style={{fontWeight:700}}>Note: </span>{note.note}</div>}
+      {note.plan&&<div style={{fontSize:12,color:"#374151",lineHeight:1.45,marginTop:3}}><span style={{fontWeight:700}}>Plan: </span>{note.plan}</div>}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:5}}>
+        {note.by?<span style={{fontSize:10,color:"#9ca3af"}}>{note.by}{note.at?" · "+new Date(note.at).toLocaleDateString("en-NZ",{day:"numeric",month:"short"}):""}</span>:<span/>}
+        {canEdit&&<button onClick={()=>setEditing(true)} style={{fontSize:10,fontWeight:600,color:"#5C2D91",background:"none",border:"none",cursor:"pointer",padding:0}}>Edit</button>}
+      </div>
+    </div>);
+  }
+  return canEdit?(<button onClick={()=>setEditing(true)} style={{fontSize:11,fontWeight:600,color:"#5C2D91",background:"none",border:"1px dashed #c4b5fd",borderRadius:6,cursor:"pointer",padding:"4px 10px",marginTop:6,marginBottom:4}}>+ Add note</button>):null;
+}
 const ACCOUNTS=[
   {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
   {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
@@ -4185,6 +4218,7 @@ function App(){
   // Replace semantics — each upload swaps the whole snapshot, so size stays bounded (~150KB).
   const caseTrackerFileRef=useRef();
   const[caseTracker,setCaseTracker]=useState(()=>mirrorRead("casetracker",{rows:[],headers:[],lastUpdated:null,uploadedBy:null,fileName:null,count:0}));
+  const[claimNotes,setClaimNotes]=useState(()=>mirrorRead("claimnotes",{}));
 
   // v2.9.1 — Run-once migration: add Akash Chaturvedi to Owner Support roster and
   // consolidate any data stored under name variants ("Akash", "Chaturvedi", "Akash C"
@@ -5100,6 +5134,7 @@ function App(){
           const tlv=await dbLoadConfig("timeline");if(tlv&&typeof tlv==="object"&&!dirtyHasPrefix("timeline"))setDailyTimelineData(tlv);
           const csv2=await dbLoadConfig("csat");if(csv2&&csv2.data&&typeof csv2.data==="object"&&(Array.isArray(csv2.data.responses)||Array.isArray(csv2.data.post_case)||Array.isArray(csv2.data.claim)||Array.isArray(csv2.data.in_stay))&&!dirtyConfigRef.current.has("csat:data"))setCsatData(csv2.data);
           const ctv=await dbLoadConfig("casetracker");if(ctv&&ctv.data&&typeof ctv.data==="object"&&Array.isArray(ctv.data.rows)&&!dirtyConfigRef.current.has("casetracker:data"))setCaseTracker(ctv.data);
+          const cnv=await dbLoadConfig("claimnotes");if(cnv&&cnv.data&&typeof cnv.data==="object"&&!dirtyConfigRef.current.has("claimnotes:data"))setClaimNotes(cnv.data);
           // Backfill call reviews a stranded session may have missed. MERGE (not replace): server rows win,
           // but any review created locally and not yet returned by the read is preserved — so this can never
           // make a just-submitted review vanish.
@@ -5283,6 +5318,7 @@ function App(){
           else if(prefix==="tgt")objMerge(setTgtOwners);
           else if(prefix==="csat"){if(key==="data"&&value&&typeof value==="object"&&(Array.isArray(value.responses)||Array.isArray(value.post_case)||Array.isArray(value.claim)||Array.isArray(value.in_stay))){if(!dirtyConfigRef.current.has(row.id)){setCsatData(value);try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}}}}
           else if(prefix==="casetracker"){if(key==="data"&&value&&typeof value==="object"&&Array.isArray(value.rows)){if(!dirtyConfigRef.current.has(row.id)){setCaseTracker(value);try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}}}}
+          else if(prefix==="claimnotes"){if(key==="data"&&value&&typeof value==="object"){if(!dirtyConfigRef.current.has(row.id)){setClaimNotes(value);try{lastSavedConfigRef.current.set(row.id,JSON.stringify(value));}catch{}}}}
           else if(prefix==="sys"){
             if(key==="app_data"&&value&&typeof value==="object"){
               // v2.4.3: app_data is now JUST data (no _tc/_r). Strip them in case an old client wrote them.
@@ -5399,6 +5435,7 @@ function App(){
   useEffect(()=>{try{localStorage.setItem("bc_mirror_roster",JSON.stringify(roster));}catch(e){console.warn("roster mirror failed:",e?.message);}},[roster]);
   useEffect(()=>{try{localStorage.setItem("bc_mirror_csat",JSON.stringify(csatData));}catch(e){console.warn("csat mirror failed:",e?.message);}},[csatData]);
   useEffect(()=>{try{localStorage.setItem("bc_mirror_casetracker",JSON.stringify(caseTracker));}catch(e){console.warn("casetracker mirror failed:",e?.message);}},[caseTracker]);
+  useEffect(()=>{try{localStorage.setItem("bc_mirror_claimnotes",JSON.stringify(claimNotes));}catch(e){}},[claimNotes]);
   useEffect(()=>{try{localStorage.setItem("bc_mirror_ic",JSON.stringify(icData));}catch(e){console.warn("ic mirror failed:",e?.message);}},[icData]);
   useEffect(()=>{try{localStorage.setItem("bc_mirror_sched",JSON.stringify(schedData));}catch(e){console.warn("sched mirror failed:",e?.message);}},[schedData]);
   useEffect(()=>{try{localStorage.setItem("bc_mirror_weights",JSON.stringify(allWeights));}catch(e){console.warn("weights mirror failed:",e?.message);}},[allWeights]);
@@ -6528,6 +6565,21 @@ function App(){
 
   // v2.9.2 — Case Tracker upload. Parses the full snapshot CSV and replaces the stored dataset.
   // Owner (Teina) and admins only. Records who uploaded and when for the "last updated" banner.
+  // Save (or clear) a cleaning-claim note + plan of action, keyed by CaseID, persisted to Supabase.
+  const saveClaimNote=(caseId,fields)=>{
+    if(!caseId)return;
+    const noteTxt=((fields&&fields.note)||"").trim();
+    const planTxt=((fields&&fields.plan)||"").trim();
+    const next={...claimNotes};
+    if(noteTxt||planTxt){
+      next[caseId]={note:noteTxt,plan:planTxt,by:currentUser?.displayName||currentUser?.username||"",at:new Date().toISOString()};
+    }else{
+      delete next[caseId];
+    }
+    setClaimNotes(next);
+    dbSaveConfigAll("claimnotes",{data:next});
+    addAudit("Claim Note Saved","Case "+caseId);
+  };
   const processCaseTrackerFile=(file)=>{
     if(!file){return;}
     if(!(isAdmin||isOwner)){toast2("⚠ Only the owner or an admin can upload the Case Tracker.");return;}
@@ -15027,6 +15079,7 @@ const teamMap={
           const r=bd._clRes||{p:0,t:0};const rate=pctOf(r.p,r.t);
           const cases=Array.isArray(bd._clCases)?bd._clCases:null;
           const inT=cases?cases.filter(c=>c.ok):[];const against=cases?cases.filter(c=>!c.ok):[];
+          const canEditClaimNotes=isOwner||isAdmin||(currentUser&&currentUser.role==="leader");
           const caseRow=(c,i)=>(<div key={(c.id||"")+"_"+i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"5px 0",fontSize:12,borderBottom:"1px solid #f9fafb"}}>
             <div style={{minWidth:0}}>
               {c.link?<a href={c.link} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb",fontWeight:600,textDecoration:"none"}}>{c.id||"(no ID)"}</a>:<span style={{fontWeight:600,color:"#374151"}}>{c.id||"(no ID)"}</span>}
@@ -15034,12 +15087,13 @@ const teamMap={
             </div>
             <span style={{color:c.ok?"#059669":"#dc2626",fontWeight:600,whiteSpace:"nowrap"}}>{c.days!=null?`${c.days} day${c.days===1?"":"s"}`:"—"}</span>
           </div>);
+          const againstRow=(c,i)=>(<div key={(c.id||"")+"_a_"+i} style={{paddingBottom:2}}>{caseRow(c,i)}<ClaimNoteEditor caseId={c.id} note={claimNotes[c.id]} canEdit={canEditClaimNotes} onSave={saveClaimNote}/></div>);
           body=(<div>
             <p style={{fontSize:12,color:"#6b7280",marginBottom:8}}>All cleaning claims (Claim · Additional Cleaning) created this period count. In time = completed in under 3 business days. Anything not completed, or completed in 3+ business days, counts against.</p>
             <Row label="Claims" val={r.t}/>
             <Row label="In time (under 3 business days)" val={rate!=null?`${r.p} (${rate}%)`:r.p} good/>
             <Row label="Counts against" val={Math.max(0,r.t-r.p)} bad/>
-            {cases&&against.length>0&&<div style={{marginTop:12}}><div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:2}}>Counts against</div>{against.map(caseRow)}</div>}
+            {cases&&against.length>0&&<div style={{marginTop:12}}><div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:4}}>Counts against</div>{against.map(againstRow)}</div>}
             {cases&&inT.length>0&&<div style={{marginTop:12}}><div style={{fontSize:11,fontWeight:700,color:"#059669",marginBottom:2}}>In time</div>{inT.map(caseRow)}</div>}
             {!cases&&r.t>0&&<p style={{fontSize:11,color:"#9ca3af",fontStyle:"italic",marginTop:8}}>Re-import the Case Tracker to list the individual cases with links here.</p>}
             {!r.t&&<p style={{fontSize:12,color:"#9ca3af",marginTop:8}}>No cleaning claims for this period.</p>}

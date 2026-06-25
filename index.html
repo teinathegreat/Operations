@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.4.2";
+const APP_VERSION="3.4.4";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -6378,32 +6378,39 @@ function App(){
     };
     const pct=(p,t)=>Math.round((p/t)*1000)/10;
     const combine=(fb,rev)=>{const p=(fb&&fb.p||0)+(rev&&rev.p||0);const t=(fb&&fb.t||0)+(rev&&rev.t||0);return t>0?pct(p,t):null;};
-    // Cleaning claims (Claim + Additional Cleaning) and Feedback cases, both bucketed by the FY
-    // week of completion. WorkingDaysToComplete < 3 = resolved within 3 business days.
-    const clP={},clT={},fbP={},fbT={};
+    // Cleaning claims: CaseType "Claim" + SubCaseType "Additional Cleaning" + Status "Completed",
+    // bucketed by the FY week of the CREATED date, in time when WorkingDaysToComplete is under 3.
+    // Feedback cases keep their own rule (completion week, WorkingDaysToComplete < 3) and are NEVER
+    // counted as cleaning claims even when their SubCaseType is "Additional Cleaning".
+    const clP={},clT={},fbP={},fbT={},clCasesW={};
     ctRows.forEach(r=>{
       if(String(r.Status||"").trim()!=="Completed")return;
-      const w=dmyToWk(r.CompletionDate);if(!w)return;
-      const raw=String(r.WorkingDaysToComplete||"").trim();if(raw==="")return;
-      const wd=parseInt(raw,10);if(isNaN(wd))return;
       const ctype=String(r.CaseType||"").trim().toLowerCase();
       const sctype=String(r.SubCaseType||"").trim().toLowerCase();
-      // Cleaning claim = CaseType "Claim" AND SubCaseType "Additional Cleaning". A Feedback case is
-      // NEVER a cleaning claim, even when its SubCaseType is "Additional Cleaning" — it goes to the
-      // separate feedback bucket below and must not inflate the claims number.
-      if(ctype==="claim"&&sctype==="additional cleaning"){clT[w]=(clT[w]||0)+1;if(wd<3)clP[w]=(clP[w]||0)+1;}
-      else if(ctype==="feedback"){fbT[w]=(fbT[w]||0)+1;if(wd<3)fbP[w]=(fbP[w]||0)+1;}
+      if(ctype==="claim"&&sctype==="additional cleaning"){
+        const w=dmyToWk(r.Created);if(!w)return;
+        const raw=String(r.WorkingDaysToComplete||"").trim();if(raw==="")return;
+        const d=parseInt(raw,10);if(isNaN(d))return;
+        const ok=d<3;
+        clT[w]=(clT[w]||0)+1;if(ok)clP[w]=(clP[w]||0)+1;
+        (clCasesW[w]=clCasesW[w]||[]).push({id:String(r.CaseID||"").trim(),link:String(r.LinkToCase||"").trim(),days:d,ok:ok});
+      }else if(ctype==="feedback"){
+        const w=dmyToWk(r.CompletionDate);if(!w)return;
+        const raw=String(r.WorkingDaysToComplete||"").trim();if(raw==="")return;
+        const wd=parseInt(raw,10);if(isNaN(wd))return;
+        fbT[w]=(fbT[w]||0)+1;if(wd<3)fbP[w]=(fbP[w]||0)+1;
+      }
     });
-    const clMP={},clMT={},fbMP={},fbMT={};
-    Object.keys(clT).forEach(w=>{const ml=wkMonth(+w);if(ml){clMT[ml]=(clMT[ml]||0)+clT[w];clMP[ml]=(clMP[ml]||0)+(clP[w]||0);}});
+    const clMP={},clMT={},fbMP={},fbMT={},clCasesM={};
+    Object.keys(clT).forEach(w=>{const ml=wkMonth(+w);if(ml){clMT[ml]=(clMT[ml]||0)+clT[w];clMP[ml]=(clMP[ml]||0)+(clP[w]||0);(clCasesM[ml]=clCasesM[ml]||[]).push(...(clCasesW[w]||[]));}});
     Object.keys(fbT).forEach(w=>{const ml=wkMonth(+w);if(ml){fbMT[ml]=(fbMT[ml]||0)+fbT[w];fbMP[ml]=(fbMP[ml]||0)+(fbP[w]||0);}});
     if(!Object.keys(clT).length&&!Object.keys(fbT).length)return;
     setData(prev=>{
       const team={...(prev[TEAM]||{})};
       const stamp=nowNZ();
       // claims_resolved (cleaning claims)
-      Object.keys(clT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};if(ex.claims_resolved!=null&&!ex._autoFilled)return;team[pk]={...ex,claims_resolved:pct(clP[w]||0,clT[w]),_clRes:{p:clP[w]||0,t:clT[w]},_autoFilled:stamp};});
-      Object.keys(clMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};if(ex.claims_resolved!=null&&!ex._autoFilled)return;team[pk]={...ex,claims_resolved:pct(clMP[ml]||0,clMT[ml]),_clRes:{p:clMP[ml]||0,t:clMT[ml]},_autoFilled:stamp};});
+      Object.keys(clT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};if(ex.claims_resolved!=null&&!ex._autoFilled)return;team[pk]={...ex,claims_resolved:pct(clP[w]||0,clT[w]),_clRes:{p:clP[w]||0,t:clT[w]},_clCases:clCasesW[w]||[],_autoFilled:stamp};});
+      Object.keys(clMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};if(ex.claims_resolved!=null&&!ex._autoFilled)return;team[pk]={...ex,claims_resolved:pct(clMP[ml]||0,clMT[ml]),_clRes:{p:clMP[ml]||0,t:clMT[ml]},_clCases:clCasesM[ml]||[],_autoFilled:stamp};});
       // feedback half + combined "Feedback and Review Resolution" (pooled with any stored review half)
       Object.keys(fbT).forEach(w=>{const pk="w__"+w;const ex=team[pk]||{};const fb={p:fbP[w]||0,t:fbT[w]};const fr=combine(fb,ex._revRes);const next={...ex,_fbRes:fb};if(fr!=null&&!(ex.feedback_resolution!=null&&!ex._autoFilled)){next.feedback_resolution=fr;next._autoFilled=stamp;}team[pk]=next;});
       Object.keys(fbMT).forEach(ml=>{const pk="m__"+ml;const ex=team[pk]||{};const fb={p:fbMP[ml]||0,t:fbMT[ml]};const fr=combine(fb,ex._revRes);const next={...ex,_fbRes:fb};if(fr!=null&&!(ex.feedback_resolution!=null&&!ex._autoFilled)){next.feedback_resolution=fr;next._autoFilled=stamp;}team[pk]=next;});
@@ -15011,12 +15018,21 @@ const teamMap={
         let body=null;
         if(kpiBreakdown==="claims_resolved"){
           const r=bd._clRes||{p:0,t:0};const rate=pctOf(r.p,r.t);
+          const cases=Array.isArray(bd._clCases)?bd._clCases:null;
+          const inT=cases?cases.filter(c=>c.ok):[];const over=cases?cases.filter(c=>!c.ok):[];
+          const caseRow=(c,i)=>(<div key={(c.id||"")+"_"+i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",fontSize:12,borderBottom:"1px solid #f9fafb"}}>
+            {c.link?<a href={c.link} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb",fontWeight:600,textDecoration:"none"}}>{c.id||"(no ID)"}</a>:<span style={{fontWeight:600,color:"#374151"}}>{c.id||"(no ID)"}</span>}
+            <span style={{color:c.ok?"#059669":"#dc2626",fontWeight:600}}>{c.days} day{c.days===1?"":"s"}</span>
+          </div>);
           body=(<div>
-            <p style={{fontSize:12,color:"#6b7280",marginBottom:6}}>Cleaning claims (Claim · Additional Cleaning) completed this period.</p>
+            <p style={{fontSize:12,color:"#6b7280",marginBottom:8}}>Cleaning claims (Claim · Additional Cleaning, Completed), by the FY week of the Created date. In time = under 3 business days.</p>
             <Row label="Completed" val={r.t}/>
-            <Row label="Within 3 business days" val={rate!=null?`${r.p} (${rate}%)`:r.p} good/>
-            <Row label="Took longer than 3 business days" val={Math.max(0,r.t-r.p)} bad/>
-            {!r.t&&<p style={{fontSize:12,color:"#9ca3af",marginTop:8}}>No data yet — re-upload the Case Tracker on v3.1.2+ to populate this.</p>}
+            <Row label="In time (under 3 business days)" val={rate!=null?`${r.p} (${rate}%)`:r.p} good/>
+            <Row label="Took longer" val={Math.max(0,r.t-r.p)} bad/>
+            {cases&&over.length>0&&<div style={{marginTop:12}}><div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:2}}>Took longer than 3 days</div>{over.map(caseRow)}</div>}
+            {cases&&inT.length>0&&<div style={{marginTop:12}}><div style={{fontSize:11,fontWeight:700,color:"#059669",marginBottom:2}}>In time</div>{inT.map(caseRow)}</div>}
+            {!cases&&r.t>0&&<p style={{fontSize:11,color:"#9ca3af",fontStyle:"italic",marginTop:8}}>Re-import the Case Tracker to list the individual cases with links here.</p>}
+            {!r.t&&<p style={{fontSize:12,color:"#9ca3af",marginTop:8}}>No cleaning claims for this period.</p>}
           </div>);
         } else if(kpiBreakdown==="feedback_resolution"){
           const fb=bd._fbRes||{p:0,t:0};const rev=bd._revRes||{p:0,t:0};

@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.4.1";
+const APP_VERSION="3.4.2";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -6464,7 +6464,8 @@ function App(){
     };
     const NOW=new Date();
     const RESP_DUE=3; // business days used by the resolution-time KPI below
-    const NEW_GRACE=2; // business days a "New" review may sit before it becomes "Unresolved"
+    const STALE_HOURS=72; // hours an in-progress review may sit before it becomes "Unresolved"
+    const STALE_STATUSES=["New","Escalated","Ready for Team Review"];
     const revP={},revT={},abP={},abT={},brkW={},brkM={};
     for(let i=1;i<allRows.length;i++){
       const row=allRows[i];if(!row||!row.length)continue;
@@ -6482,8 +6483,10 @@ function App(){
         const w=wkOf(isoOf(created));
         if(w){
           let lbl=status||"(blank)";
-          // A "New" review past its 2 business day window is reclassified as "Unresolved".
-          if(status==="New"&&bizDaysSince(created,NOW)>NEW_GRACE)lbl="Unresolved";
+          // New, Escalated, or Ready for Team Review items sitting more than 72 hours (since last
+          // activity) are reclassified as "Unresolved".
+          const _ageRef=modified||created;
+          if(_ageRef&&STALE_STATUSES.includes(status)&&((NOW-_ageRef)/3600000)>STALE_HOURS)lbl="Unresolved";
           abT[w]=(abT[w]||0)+1;if(status==="Resolved")abP[w]=(abP[w]||0)+1;
           const ml=wkMonth(w);
           (brkW[w]=brkW[w]||{})[lbl]=((brkW[w]||{})[lbl]||0)+1;
@@ -15031,11 +15034,11 @@ const teamMap={
           const brk=bd._respondBreakdown||{};
           const STATUS_INFO=[
             ["Resolved","The guest's review has been responded to and the case is complete.","in"],
-            ["Unresolved","A New review that has not been actioned within 2 business days.","den"],
+            ["Unresolved","A New, Escalated, or Ready for Team Review item left for more than 72 hours.","den"],
             ["Team Reviewed Guest","The guest has been reviewed by the team.",null],
-            ["Ready for Team Review","The 72-hour post-checkout hold has passed, and the team is ready to review the guest.",null],
-            ["Escalated","A review has been escalated into a case due to multiple concerns or where confirmation is needed that reported issues have been addressed.",null],
-            ["New","Recently added to the tracker, still within the 2 business day window to be actioned.",null],
+            ["Ready for Team Review","The 72-hour post-checkout hold has passed, and the team is ready to review the guest. Becomes Unresolved after 72 hours.",null],
+            ["Escalated","A review has been escalated into a case due to multiple concerns or where confirmation is needed that reported issues have been addressed. Becomes Unresolved after 72 hours.",null],
+            ["New","Recently added to the tracker, still within the 72 hour window to be actioned.",null],
           ];
           const total=Object.values(brk).reduce((s,v)=>s+(v||0),0);
           const resolved=brk["Resolved"]||0;const unres=brk["Unresolved"]||0;const den=resolved+unres;
@@ -15056,7 +15059,7 @@ const teamMap={
             </div>);
           };
           body=(<div>
-            <p style={{fontSize:12,color:"#6b7280",marginBottom:12}}>Airbnb or negative reviews. The rate is <b>Resolved</b> / (<b>Resolved</b> + <b>Unresolved</b>). Reviews still in progress are shown for visibility only and do not affect it.</p>
+            <p style={{fontSize:12,color:"#6b7280",marginBottom:12}}>Airbnb or negative reviews. The rate is <b>Resolved</b> / (<b>Resolved</b> + <b>Unresolved</b>). New, Escalated, and Ready for Team Review items become <b>Unresolved</b> after 72 hours; in-progress items inside that window are shown for visibility only.</p>
             {total===0?<p style={{fontSize:12,color:"#9ca3af"}}>No reviews in scope for this period.</p>:<React.Fragment>
               {STATUS_INFO.map(renderStatus)}
               {extra.map(renderStatus)}

@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.4.4";
+const APP_VERSION="3.4.5";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -6534,6 +6534,7 @@ function App(){
         if(!headers.includes("CaseID")){toast2("⚠ That doesn't look like a Case Tracker export (no CaseID column).");return;}
         const snap={rows,headers,lastUpdated:new Date().toISOString(),uploadedBy:currentUser?.displayName||currentUser?.username||"Unknown",fileName:file.name,count:rows.length};
         setCaseTracker(snap);
+        dbSaveConfigAll("casetracker",{data:snap});
         applyCaseTrackerKPIs(rows);
         addAudit("Case Tracker Updated",`${rows.length} cases imported from ${file.name}`);
         toast2(`✓ Case Tracker updated — ${rows.length} cases loaded. Cleaning-claims KPI refreshed.`);

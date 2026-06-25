@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.4.9";
+const APP_VERSION="3.5.0";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -15078,52 +15078,38 @@ const teamMap={
         const labels={claims_resolved:"Claims Cleaning Cases <3 Business Days",feedback_resolution:"Feedback and Review Resolution <3 Days",airbnb_reviews:"Airbnb and Negative Reviews Responded"};
         const pctOf=(p,t)=>t>0?Math.round(p/t*1000)/10:null;
         const Row=({label,val,good,bad,strong})=>(<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",fontSize:13,borderBottom:"1px solid #f9fafb"}}><span style={{color:"#374151"}}>{label}</span><span style={{fontWeight:strong?700:600,color:good?"#059669":(bad?"#dc2626":"#111827")}}>{val}</span></div>);
+        // shared clean cards for the case-list KPI popups (claims + feedback)
+        const canEditClaimNotes=isOwner||isAdmin||(currentUser&&currentUser.role==="leader");
+        const fmtDays=(d)=>d!=null?(d+" day"+(d===1?"":"s")):"\u2014";
+        const StatBand=({p,t,unit})=>{const rate=pctOf(p,t);const ag=Math.max(0,t-p);const gp=t>0?Math.round(p/t*100):0;const cell=(v,lbl,col)=>(<div style={{textAlign:"right"}}><div style={{fontSize:17,fontWeight:800,lineHeight:1,color:col}}>{v}</div><div style={{fontSize:9.5,fontWeight:700,textTransform:"uppercase",letterSpacing:".4px",color:"#9ca3af",marginTop:3}}>{lbl}</div></div>);return(<div style={{background:"#fafafb",border:"1px solid #eceef1",borderRadius:12,padding:"14px 16px",marginBottom:14}}><div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><div style={{display:"flex",alignItems:"baseline",gap:7}}><span style={{fontSize:32,fontWeight:800,letterSpacing:"-1px",lineHeight:1,color:"#5C2D91"}}>{rate!=null?rate:0}<span style={{fontSize:17,fontWeight:700}}>%</span></span><span style={{fontSize:10.5,fontWeight:700,textTransform:"uppercase",letterSpacing:".5px",color:"#9ca3af"}}>in time</span></div><div style={{display:"flex",gap:18}}>{cell(t,unit||"cases","#111827")}{cell(p,"in time","#059669")}{cell(ag,"against",ag>0?"#dc2626":"#d1d5db")}</div></div><div style={{display:"flex",height:7,borderRadius:99,overflow:"hidden",marginTop:12,background:"#fde2e2"}}><div style={{width:gp+"%",background:"#10b981"}}/></div></div>);};
+        const SectionHead=({label,count,color})=>(<div style={{display:"flex",alignItems:"center",gap:8,margin:"16px 0 8px"}}><span style={{width:7,height:7,borderRadius:99,background:color,flexShrink:0}}/><span style={{fontSize:11,fontWeight:800,textTransform:"uppercase",letterSpacing:".6px",color:"#374151"}}>{label}</span><span style={{fontSize:10.5,fontWeight:800,color:"#fff",background:color,borderRadius:99,padding:"1px 7px",minWidth:16,textAlign:"center"}}>{count}</span><span style={{flex:1,height:1,background:"#f0f1f3"}}/></div>);
+        const idCell=(c)=>(<div style={{minWidth:0,display:"flex",alignItems:"center",flexWrap:"wrap",gap:6}}>{c.link?<a href={c.link} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb",fontWeight:700,textDecoration:"none"}}>{c.id||"(no ID)"}</a>:<span style={{fontWeight:700,color:"#374151"}}>{c.id||"(no ID)"}</span>}{c.status&&c.status!=="Completed"&&<span style={{fontSize:9.5,fontWeight:700,color:"#92400e",background:"#fef3c7",borderRadius:4,padding:"1px 6px"}}>{c.status}</span>}</div>);
+        const caseLine=(c,i)=>(<div key={(c.id||"")+"_"+i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"7px 10px",fontSize:12.5,background:"#fff",border:"1px solid #f0f1f3",borderRadius:8,marginBottom:4}}>{idCell(c)}<span style={{color:c.ok?"#059669":"#dc2626",fontWeight:700,whiteSpace:"nowrap"}}>{fmtDays(c.days)}</span></div>);
+        const caseCard=(c,i)=>(<div key={(c.id||"")+"_a_"+i} style={{background:"#fff",border:"1px solid #fadcdc",borderRadius:10,padding:"9px 11px 5px",marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,fontSize:12.5,marginBottom:3}}>{idCell(c)}<span style={{color:"#dc2626",fontWeight:700,whiteSpace:"nowrap"}}>{fmtDays(c.days)}</span></div><ClaimNoteEditor caseId={c.id} note={claimNotes[c.id]} canEdit={canEditClaimNotes} onSave={saveClaimNote}/></div>);
         let body=null;
         if(kpiBreakdown==="claims_resolved"){
-          const r=bd._clRes||{p:0,t:0};const rate=pctOf(r.p,r.t);
+          const r=bd._clRes||{p:0,t:0};
           const cases=Array.isArray(bd._clCases)?bd._clCases:null;
           const inT=cases?cases.filter(c=>c.ok):[];const against=cases?cases.filter(c=>!c.ok):[];
-          const canEditClaimNotes=isOwner||isAdmin||(currentUser&&currentUser.role==="leader");
-          const caseRow=(c,i)=>(<div key={(c.id||"")+"_"+i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"5px 0",fontSize:12,borderBottom:"1px solid #f9fafb"}}>
-            <div style={{minWidth:0}}>
-              {c.link?<a href={c.link} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb",fontWeight:600,textDecoration:"none"}}>{c.id||"(no ID)"}</a>:<span style={{fontWeight:600,color:"#374151"}}>{c.id||"(no ID)"}</span>}
-              {c.status&&c.status!=="Completed"&&<div style={{fontSize:10,color:"#9ca3af",marginTop:1}}>{c.status}</div>}
-            </div>
-            <span style={{color:c.ok?"#059669":"#dc2626",fontWeight:600,whiteSpace:"nowrap"}}>{c.days!=null?`${c.days} day${c.days===1?"":"s"}`:"—"}</span>
-          </div>);
-          const againstRow=(c,i)=>(<div key={(c.id||"")+"_a_"+i} style={{paddingBottom:2}}>{caseRow(c,i)}<ClaimNoteEditor caseId={c.id} note={claimNotes[c.id]} canEdit={canEditClaimNotes} onSave={saveClaimNote}/></div>);
           body=(<div>
-            <p style={{fontSize:12,color:"#6b7280",marginBottom:8}}>All cleaning claims (Claim · Additional Cleaning) created this period count. In time = completed in under 3 business days. Anything not completed, or completed in 3+ business days, counts against.</p>
-            <Row label="Claims" val={r.t}/>
-            <Row label="In time (under 3 business days)" val={rate!=null?`${r.p} (${rate}%)`:r.p} good/>
-            <Row label="Counts against" val={Math.max(0,r.t-r.p)} bad/>
-            {cases&&against.length>0&&<div style={{marginTop:12}}><div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:4}}>Counts against</div>{against.map(againstRow)}</div>}
-            {cases&&inT.length>0&&<div style={{marginTop:12}}><div style={{fontSize:11,fontWeight:700,color:"#059669",marginBottom:2}}>In time</div>{inT.map(caseRow)}</div>}
-            {!cases&&r.t>0&&<p style={{fontSize:11,color:"#9ca3af",fontStyle:"italic",marginTop:8}}>Re-import the Case Tracker to list the individual cases with links here.</p>}
-            {!r.t&&<p style={{fontSize:12,color:"#9ca3af",marginTop:8}}>No cleaning claims for this period.</p>}
+            {r.t>0&&<StatBand p={r.p} t={r.t} unit="claims"/>}
+            <p style={{fontSize:11.5,color:"#9ca3af",lineHeight:1.5,margin:"0 0 2px"}}>Cleaning claims (Claim · Additional Cleaning) created this period, by the FY week of the Created date. In time = completed in under 3 business days. Anything not completed, or completed in 3+ business days, counts against.</p>
+            {cases&&against.length>0&&<div><SectionHead label="Counts against" count={against.length} color="#dc2626"/>{against.map(caseCard)}</div>}
+            {cases&&inT.length>0&&<div><SectionHead label="In time" count={inT.length} color="#059669"/>{inT.map(caseLine)}</div>}
+            {!cases&&r.t>0&&<p style={{fontSize:11,color:"#9ca3af",fontStyle:"italic",marginTop:10}}>Re-import the Case Tracker to list the individual cases with links here.</p>}
+            {!r.t&&<p style={{fontSize:12.5,color:"#9ca3af",textAlign:"center",padding:"18px 0"}}>No cleaning claims for this period.</p>}
           </div>);
         } else if(kpiBreakdown==="feedback_resolution"){
-          const r=bd._fbRes||{p:0,t:0};const rate=pctOf(r.p,r.t);
+          const r=bd._fbRes||{p:0,t:0};
           const cases=Array.isArray(bd._fbCases)?bd._fbCases:null;
           const inT=cases?cases.filter(c=>c.ok):[];const against=cases?cases.filter(c=>!c.ok):[];
-          const canEditClaimNotes=isOwner||isAdmin||(currentUser&&currentUser.role==="leader");
-          const caseRow=(c,i)=>(<div key={(c.id||"")+"_"+i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"5px 0",fontSize:12,borderBottom:"1px solid #f9fafb"}}>
-            <div style={{minWidth:0}}>
-              {c.link?<a href={c.link} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb",fontWeight:600,textDecoration:"none"}}>{c.id||"(no ID)"}</a>:<span style={{fontWeight:600,color:"#374151"}}>{c.id||"(no ID)"}</span>}
-              {c.status&&c.status!=="Completed"&&<div style={{fontSize:10,color:"#9ca3af",marginTop:1}}>{c.status}</div>}
-            </div>
-            <span style={{color:c.ok?"#059669":"#dc2626",fontWeight:600,whiteSpace:"nowrap"}}>{c.days!=null?`${c.days} day${c.days===1?"":"s"}`:"—"}</span>
-          </div>);
-          const againstRow=(c,i)=>(<div key={(c.id||"")+"_a_"+i} style={{paddingBottom:2}}>{caseRow(c,i)}<ClaimNoteEditor caseId={c.id} note={claimNotes[c.id]} canEdit={canEditClaimNotes} onSave={saveClaimNote}/></div>);
           body=(<div>
-            <p style={{fontSize:12,color:"#6b7280",marginBottom:8}}>Feedback and Review Escalation cases created this period, by the FY week of the Created date. In time = completed in under 3 days. Anything not completed, or completed in 3+ days, counts against.</p>
-            <Row label="Cases" val={r.t}/>
-            <Row label="In time (under 3 days)" val={rate!=null?`${r.p} (${rate}%)`:r.p} good/>
-            <Row label="Counts against" val={Math.max(0,r.t-r.p)} bad/>
-            {cases&&against.length>0&&<div style={{marginTop:12}}><div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:4}}>Counts against</div>{against.map(againstRow)}</div>}
-            {cases&&inT.length>0&&<div style={{marginTop:12}}><div style={{fontSize:11,fontWeight:700,color:"#059669",marginBottom:2}}>In time</div>{inT.map(caseRow)}</div>}
-            {!cases&&r.t>0&&<p style={{fontSize:11,color:"#9ca3af",fontStyle:"italic",marginTop:8}}>Re-import the Case Tracker to list the individual cases with links here.</p>}
-            {!r.t&&<p style={{fontSize:12,color:"#9ca3af",marginTop:8}}>No feedback or review escalation cases for this period.</p>}
+            {r.t>0&&<StatBand p={r.p} t={r.t} unit="cases"/>}
+            <p style={{fontSize:11.5,color:"#9ca3af",lineHeight:1.5,margin:"0 0 2px"}}>Feedback and Review Escalation cases created this period, by the FY week of the Created date. In time = completed in under 3 days. Anything not completed, or completed in 3+ days, counts against.</p>
+            {cases&&against.length>0&&<div><SectionHead label="Counts against" count={against.length} color="#dc2626"/>{against.map(caseCard)}</div>}
+            {cases&&inT.length>0&&<div><SectionHead label="In time" count={inT.length} color="#059669"/>{inT.map(caseLine)}</div>}
+            {!cases&&r.t>0&&<p style={{fontSize:11,color:"#9ca3af",fontStyle:"italic",marginTop:10}}>Re-import the Case Tracker to list the individual cases with links here.</p>}
+            {!r.t&&<p style={{fontSize:12.5,color:"#9ca3af",textAlign:"center",padding:"18px 0"}}>No feedback or review escalation cases for this period.</p>}
           </div>);
         } else if(kpiBreakdown==="airbnb_reviews"){
           const brk=bd._respondBreakdown||{};
@@ -15164,7 +15150,7 @@ const teamMap={
         }
         return(
           <div onClick={()=>setKpiBreakdown(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,padding:20}}>
-            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,maxWidth:440,width:"100%",boxShadow:"0 20px 50px rgba(0,0,0,.3)",overflow:"hidden"}}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:14,borderTop:"3px solid #5C2D91",maxWidth:460,width:"100%",boxShadow:"0 20px 50px rgba(0,0,0,.3)",overflow:"hidden"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"18px 20px",borderBottom:"1px solid #f3f4f6"}}>
                 <div><div style={{fontWeight:700,fontSize:15,color:"#111827"}}>{labels[kpiBreakdown]||"Breakdown"}</div><div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{team} · {plbl(pk)}</div></div>
                 <button onClick={()=>setKpiBreakdown(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,color:"#6b7280",lineHeight:1,padding:"4px 8px"}}>×</button>

@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.5.5";
+const APP_VERSION="3.5.6";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -2874,7 +2874,7 @@ function IntercomDropzone({isAdmin,icFileRef,handleIcFile,toast2,icData}){
           or <span style={{color:"#0d9488",fontWeight:600}}>click to browse</span> &nbsp;·&nbsp; CSV files only &nbsp;·&nbsp; auto-detects report type
         </div>
         <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",fontSize:11,color:"#6b7280"}}>
-          {["Closed conversations","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate","Activity Time","Abandoned Calls","Detailed work log","Call handle times","Ticket Stats (In Stay)","Review Tracker"].map(t=>(
+          {["Closed conversations","Close actions (drill-in)","Replies by agent","Conversation export","Work Completed","Total Calls","Answer Rate","Activity Time","Abandoned Calls","Detailed work log","Call handle times","Ticket Stats (In Stay)","Review Tracker"].map(t=>(
             <span key={t} style={{background:"#f3f4f6",borderRadius:4,padding:"2px 8px"}}>{t}</span>
           ))}
         </div>
@@ -7261,6 +7261,21 @@ function App(){
           const _agents=Object.keys(dayCount);
           if(!_agents.length){toast2("No close actions found in the export.");return;}
           let _minIso=null,_maxIso=null;datesSeen.forEach(d=>{if(!_minIso||d<_minIso)_minIso=d;if(!_maxIso||d>_maxIso)_maxIso=d;});
+          // v3.5.6: weekly totals are recomputed from the MERGED per-day counts. Days inside the
+          // file's date range come from the file; days outside it keep their earlier counts. A file
+          // covering only part of an FY week no longer wipes the rest of that week's closes.
+          const _wkTouched=FY25_WK_RANGES.filter(([w,a2,b2])=>!(b2<_minIso||a2>_maxIso));
+          const _mergeCounts=(existingDayClosed,newDays)=>{
+            const dc={};
+            Object.entries(existingDayClosed||{}).forEach(([iso,c])=>{if(iso<_minIso||iso>_maxIso)dc[iso]=c;});
+            Object.entries(newDays||{}).forEach(([iso,c])=>{dc[iso]=c;});
+            const wkT={};
+            _wkTouched.forEach(([w,a2,b2])=>{let t=0,any=false;Object.entries(dc).forEach(([iso,c])=>{if(iso>=a2&&iso<=b2){t+=c;any=true;}});if(any)wkT[w]=t;});
+            return{dc,wkT};
+          };
+          const _pay={};
+          _agents.forEach(nm=>{const r=_mergeCounts(icData[nm]?.dayClosed,dayCount[nm]);_pay[nm]={weeks:Object.fromEntries(Object.entries(r.wkT).map(([w,t])=>[w,{closed:t}]))};});
+          if(!confirmIcOverwrites(_pay,"Close actions drill-in")){toast2("Import cancelled, kept existing figures.");return;}
           // Timeline: within the covered range, replace ticket closes only; keep emails/calls/other types.
           setDailyTimelineWithSaves(prev=>{
             const next={...(prev||{})};
@@ -7280,11 +7295,10 @@ function App(){
               if(!merged[nm])merged[nm]={team,weeks:{},months:{},dayClosed:{}};
               merged[nm]={...merged[nm]};
               merged[nm].team=merged[nm].team||team;
-              merged[nm].dayClosed={...(merged[nm].dayClosed||{})};
               merged[nm].weeks={...(merged[nm].weeks||{})};
-              const wkTotals={};
-              Object.entries(dayCount[nm]).forEach(([iso,c])=>{merged[nm].dayClosed[iso]=c;const wr=FY25_WK_RANGES.find(([w,a,b])=>iso>=a&&iso<=b);if(wr)wkTotals[wr[0]]=(wkTotals[wr[0]]||0)+c;});
-              Object.entries(wkTotals).forEach(([wk,total])=>{merged[nm].weeks[wk]={...(merged[nm].weeks[wk]||{}),closed:total};});
+              const _r=_mergeCounts(merged[nm].dayClosed,dayCount[nm]);
+              merged[nm].dayClosed=_r.dc;
+              Object.entries(_r.wkT).forEach(([wk,total])=>{merged[nm].weeks[wk]={...(merged[nm].weeks[wk]||{}),closed:total};});
             });
             return merged;
           });

@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.5.7";
+const APP_VERSION="3.5.8";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -6063,6 +6063,18 @@ function App(){
 
 
   // ── SCHEDULE XLSX PARSE ──
+  // v3.5.8: one canonical ISO day key for schedule shifts. The schedule export writes dates as
+  // m/d/yyyy TEXT, and storing that raw string as the day key broke the week/month recompute
+  // (which compares ISO strings). Date and Excel-serial cells are handled too.
+  const schedDayKey=(ds)=>{
+    try{
+      if(ds instanceof Date)return ds.getUTCFullYear()+"-"+String(ds.getUTCMonth()+1).padStart(2,"0")+"-"+String(ds.getUTCDate()).padStart(2,"0");
+      if(typeof ds==="number"){const tmp=new Date(Math.round((ds-25569)*86400*1000));return tmp.getUTCFullYear()+"-"+String(tmp.getUTCMonth()+1).padStart(2,"0")+"-"+String(tmp.getUTCDate()).padStart(2,"0");}
+      const p=String(ds).trim().split("/");
+      if(p.length===3)return p[2]+"-"+p[0].padStart(2,"0")+"-"+p[1].padStart(2,"0");
+      return String(ds).trim();
+    }catch(e){return String(ds);}
+  };
   const dateToWk=(ds)=>{
     try{
       let iso;
@@ -6129,7 +6141,7 @@ function App(){
           const net=parseNetHours(startTime,endTime,breakMin);
           const wk=dateToWk(startDate);
           const mon=dateToMonthLabel(startDate);
-          const dayKey=startDate instanceof Date?startDate.getUTCFullYear()+"-"+String(startDate.getUTCMonth()+1).padStart(2,"0")+"-"+String(startDate.getUTCDate()).padStart(2,"0"):String(startDate);
+          const dayKey=schedDayKey(startDate);
           const stStr=startTime instanceof Date?String(startTime.getUTCHours()).padStart(2,"0")+":"+String(startTime.getUTCMinutes()).padStart(2,"0"):String(startTime);
           const etStr=endTime instanceof Date?String(endTime.getUTCHours()).padStart(2,"0")+":"+String(endTime.getUTCMinutes()).padStart(2,"0"):String(endTime);
           const correctGroup=getPersonTeam(name)||group;
@@ -6190,6 +6202,14 @@ function App(){
             if(!merged[name]){merged[name]=nd;return;}
             merged[name]={...merged[name],weeks:{...(merged[name].weeks||{})},months:{...(merged[name].months||{})},days:{...(merged[name].days||{})}};
             merged[name].group=nd.group;
+            // v3.5.8: re-key any legacy m/d/yyyy day entries to ISO so the recompute below sees them.
+            Object.keys(merged[name].days).forEach(k=>{
+              if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(k)){
+                const nk=schedDayKey(k);
+                if(!merged[name].days[nk])merged[name].days[nk]=merged[name].days[k];
+                delete merged[name].days[k];
+              }
+            });
             // v3.5.7: per-day shifts are the source of truth. Merge the file's days first, then
             // RECOMPUTE every touched week and month from the full merged day history. The old code
             // replaced month totals with only this file's hours, so each weekly schedule upload

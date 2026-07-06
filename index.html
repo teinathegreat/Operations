@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.5.3";
+const APP_VERSION="3.5.5";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -2483,13 +2483,18 @@ function ClaimNoteEditor({caseId,note,canEdit,onSave}){
   }
   return canEdit?(<button onClick={()=>setEditing(true)} style={{fontSize:11,fontWeight:600,color:"#5C2D91",background:"none",border:"1px dashed #c4b5fd",borderRadius:6,cursor:"pointer",padding:"4px 10px",marginTop:6,marginBottom:4}}>+ Add note</button>):null;
 }
+// v3.5.5 security: passwords are stored as SHA-256 hashes, never plaintext. Legacy plaintext
+// records (from older Supabase account rows) still verify and are upgraded to a hash on next login.
+const sha256Hex=async(str)=>{const d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(str));return[...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,"0")).join("");};
+// v3.5.5 sync: content-equality check so background refreshes only re-render when data actually changed.
+const _cfgSame=(a,b)=>{try{return JSON.stringify(a)===JSON.stringify(b);}catch(e){return false;}};
 const ACCOUNTS=[
-  {username:"Teina",    password:"3sxHhArRa&HEPtr4", role:"admin",  displayName:"Teina Smith"},
-  {username:"Luke",     password:"tX7Ir925H@f64gNv",  role:"admin",  displayName:"Luke Anderson"},
-  {username:"Drew",     password:"AYv$RORe^xxW2U98",  role:"leader", displayName:"Drew Paogofie",    team:"Guest Support"},
-  {username:"Janendra", password:"Ux7q*IN0rTqhjLo!",  role:"leader", displayName:"Janendra Kishan",  team:"Reputation and Resolutions"},
-  {username:"Shanya",   password:"&jaKj9n9LmQax7OS",  role:"leader", displayName:"Shanya Kumar",     team:"Owner Support"},
-  {username:"Ashleigh", password:"9ealsJjNrqehXk1!", role:"leader", displayName:"Ashleigh Jones",   team:"Managed Services"},
+  {username:"Teina",    passwordHash:"bfadf80baab2c9a60fe200d1974e962db3502d0cff2ae600f8616cc735f40a28", role:"admin",  displayName:"Teina Smith"},
+  {username:"Luke",     passwordHash:"7bf674807e4bef826d2e79d47e9d4b2317430097b69778728d4a9f2343999daf",  role:"admin",  displayName:"Luke Anderson"},
+  {username:"Drew",     passwordHash:"93af3cdb7de7915f5816b950beaa27b2ed5e59748b6f989840d1798a716cf9ad",  role:"leader", displayName:"Drew Paogofie",    team:"Guest Support"},
+  {username:"Janendra", passwordHash:"0701a9829d1ff3b4e05ebe2f5cc5ebd5f833c654cf4651e759fcf690d1797887",  role:"leader", displayName:"Janendra Kishan",  team:"Reputation and Resolutions"},
+  {username:"Shanya",   passwordHash:"bc613e375102ef054b644554ef59c09713af67cae91734dff09f39a41e271e63",  role:"leader", displayName:"Shanya Kumar",     team:"Owner Support"},
+  {username:"Ashleigh", passwordHash:"db7489b4363a579b01aa648b09ae117be6548994bc38f1289003014a66efa93c", role:"leader", displayName:"Ashleigh Jones",   team:"Managed Services"},
 ];
 
 const SK="bc_v3";
@@ -3643,6 +3648,18 @@ function App(){
   const isLeader=currentUser?.role==="leader";
   const isGuest=currentUser?.role==="guest";
   const[pw,setPw]=useState("");const[pwErr,setPwErr]=useState("");const[showPw,setShowPw]=useState(false);
+  const attemptLogin=async()=>{
+    const parts=pw.split("|");const uname=(parts[0]||"").trim();const upw=parts[1]||"";
+    if(!uname||!upw){setPwErr("Enter your username and password.");return;}
+    let h="";try{h=await sha256Hex(upw);}catch(e){}
+    const acct=liveAccounts.find(a=>a.username.toLowerCase()===uname.toLowerCase()&&((a.passwordHash&&h&&a.passwordHash===h)||(a.password&&a.password===upw)));
+    if(!acct){setPwErr("Incorrect username or password.");return;}
+    if(acct.password&&h){
+      const updated=liveAccounts.map(a=>{if(a.username!==acct.username)return a;const{password,...rest}=a;return{...rest,passwordHash:h};});
+      setLiveAccounts(updated);saveAccountsToSupabase(updated);
+    }
+    const{password,...clean}=acct;loginAs(clean);
+  };
   const[data,setData]=useState(init.data);
   const[roster,setRoster]=useState(init.roster);
   const[tc,setTc]=useState(init.tc);
@@ -3820,6 +3837,7 @@ function App(){
   // loadFromSupabase consults this to avoid clobbering an in-progress save with
   // a stale DB read (root cause of "weights revert" bug).
   const dirtyConfigRef=useRef(new Set());
+  const configEpochRef=useRef({}); // per-prefix save counter; closes the read-before / apply-after race where a stale config fetch overwrites a fresh import
   // Tracks the last known hash per config_rows id (saved or received via Realtime).
   // Used to skip redundant writes — both echoes from Realtime AND stale re-saves
   // from useEffects that iterate every key in a config object.
@@ -4585,6 +4603,7 @@ function App(){
     }
     activeSaves.current++;updateSaveStatus();
     dirtyConfigRef.current.add(id); // v2.4.4: protect against load races
+    configEpochRef.current[prefix]=(configEpochRef.current[prefix]||0)+1;
     // Wrap with origin metadata for Realtime echo suppression. Loader unwraps the _v key.
     const wrapped={_v:value,_origin:clientIdRef.current,_editedBy:currentUserRef.current?.username||currentUserRef.current?.displayName||"",_editedAt:new Date().toISOString()};
     const body={id,data:wrapped,updated_at:new Date().toISOString()};
@@ -4616,6 +4635,7 @@ function App(){
     if(!changed.length)return;
     const rows=changed.map(([k,v])=>{const wrapped={_v:v,_origin:clientIdRef.current,_editedBy:currentUserRef.current?.username||currentUserRef.current?.displayName||"",_editedAt:new Date().toISOString()};return{id:prefix+":"+k,data:wrapped,updated_at:new Date().toISOString()};});
     rows.forEach(r=>dirtyConfigRef.current.add(r.id)); // v2.4.4: protect against load races
+    configEpochRef.current[prefix]=(configEpochRef.current[prefix]||0)+1;
     const url=sbUrlRef.current,k=sbKeyRef.current;if(!url||!k)return;
     for(let i=0;i<rows.length;i+=100){
       const batch=rows.slice(i,i+100);
@@ -5073,6 +5093,7 @@ function App(){
       const fetchAppData=async()=>{
         suppressSaves();
         try{
+          const _sysEp=configEpochRef.current["sys"]||0;
           const sysConf=await dbLoadConfig("sys");
           // v2.4.3: load app_data, team_config, team_roster from independent keys
           let d=sysConf?.app_data;
@@ -5085,16 +5106,16 @@ function App(){
           // the symptom is "I edited KPI targets, clicked Dashboard, and my changes reverted" —
           // the tab-change re-fetch landed before the in-flight POST committed, so the read
           // returned the OLD value and overwrote the fresh local state.
-          if(d&&!dirtyConfigRef.current.has("sys:app_data")){const{_r,_tc,...rest}=d;setData(rest);}
-          if(tcVal&&typeof tcVal==="object"&&!dirtyConfigRef.current.has("sys:team_config"))setTc(migrateTeamColors(tcVal));
-          if(rVal&&typeof rVal==="object"&&!dirtyConfigRef.current.has("sys:team_roster"))setRoster(migrateRoster(fixRosterNames(rVal)));
+          if(d&&!dirtyConfigRef.current.has("sys:app_data")&&(configEpochRef.current["sys"]||0)===_sysEp){const{_r,_tc,...rest}=d;setData(prev=>_cfgSame(prev,rest)?prev:rest);}
+          if(tcVal&&typeof tcVal==="object"&&!dirtyConfigRef.current.has("sys:team_config")){const _tcm=migrateTeamColors(tcVal);setTc(prev=>_cfgSame(prev,_tcm)?prev:_tcm);}
+          if(rVal&&typeof rVal==="object"&&!dirtyConfigRef.current.has("sys:team_roster")){const _rm=migrateRoster(fixRosterNames(rVal));setRoster(prev=>_cfgSame(prev,_rm)?prev:_rm);}
           {let pmv=sysConf?.phone_mask;if(pmv&&typeof pmv==="object"&&"_v" in pmv)pmv=pmv._v;if(typeof pmv==="boolean")setPhoneMaskOn(pmv);}
         }catch(e){console.error("Dashboard refresh failed:",e);}
         finally{releaseSaves();}
       };
-      fetchAppData();const directFetchConfig=async(prefix,setter)=>{suppressSaves();try{const obj=await dbLoadConfig(prefix);if(obj){// v2.6.15: skip the replace if any key under this prefix is dirty (in-flight save). Same protection as self-heal — without it, switching tabs right after a CSV import could clobber the local state before the save lands.
+      fetchAppData();const directFetchConfig=async(prefix,setter)=>{suppressSaves();const _ep=configEpochRef.current[prefix]||0;try{const obj=await dbLoadConfig(prefix);if(obj){// v2.6.15: skip the replace if any key under this prefix is dirty (in-flight save). Same protection as self-heal — without it, switching tabs right after a CSV import could clobber the local state before the save lands.
         let dirty=false;for(const id of dirtyConfigRef.current)if(id.startsWith(prefix+":")){dirty=true;break;}
-        if(!dirty)setter(obj);}}finally{releaseSaves();}};if(!icSavingRef.current)directFetchConfig("ic",setIcData);if(!schedSavingRef.current)directFetchConfig("sched",setSchedData);if(!rejSavingRef.current)directFetchConfig("rejcalls",setRejectedCallsData);if(!tlSavingRef.current)directFetchConfig("timeline",setDailyTimelineData);if(!isOwner)directFetchConfig("dailycfg",setDailyConfig);}},[tab]);
+        if(!dirty&&(configEpochRef.current[prefix]||0)===_ep)setter(prev=>_cfgSame(prev,obj)?prev:obj);}}finally{releaseSaves();}};if(!icSavingRef.current)directFetchConfig("ic",setIcData);if(!schedSavingRef.current)directFetchConfig("sched",setSchedData);if(!rejSavingRef.current)directFetchConfig("rejcalls",setRejectedCallsData);if(!tlSavingRef.current)directFetchConfig("timeline",setDailyTimelineData);if(!isOwner)directFetchConfig("dailycfg",setDailyConfig);}},[tab]);
     useEffect(()=>{if(sbUrl&&sbKey)loadFromSupabase();},[]);
     // Periodic read-only self-heal for non-admins. Realtime only delivers changes made while a
     // client stays connected (no backfill), and the per-tab refreshes need a tab switch — so a
@@ -5116,8 +5137,8 @@ function App(){
           const sysConf=await dbLoadConfig("sys");
           let tcVal=sysConf?.team_config;if(tcVal&&typeof tcVal==="object"&&"_v" in tcVal&&"_origin" in tcVal)tcVal=tcVal._v;
           let rVal=sysConf?.team_roster;if(rVal&&typeof rVal==="object"&&"_v" in rVal&&"_origin" in rVal)rVal=rVal._v;
-          if(tcVal&&typeof tcVal==="object"&&!dirtyConfigRef.current.has("sys:team_config"))setTc(migrateTeamColors(tcVal));
-          if(rVal&&typeof rVal==="object"&&!dirtyConfigRef.current.has("sys:team_roster"))setRoster(migrateRoster(fixRosterNames(rVal)));
+          if(tcVal&&typeof tcVal==="object"&&!dirtyConfigRef.current.has("sys:team_config")){const _tcm=migrateTeamColors(tcVal);setTc(prev=>_cfgSame(prev,_tcm)?prev:_tcm);}
+          if(rVal&&typeof rVal==="object"&&!dirtyConfigRef.current.has("sys:team_roster")){const _rm=migrateRoster(fixRosterNames(rVal));setRoster(prev=>_cfgSame(prev,_rm)?prev:_rm);}
           {let pmv=sysConf?.phone_mask;if(pmv&&typeof pmv==="object"&&"_v" in pmv)pmv=pmv._v;if(typeof pmv==="boolean")setPhoneMaskOn(pmv);}
           // v2.6.15 — every wholesale-replace in self-heal now checks if any key under that
           // prefix is dirty (in-flight save). If so, skip the replace — a CSV import that just
@@ -5127,14 +5148,14 @@ function App(){
           // `${prefix}:` — needed because ic/sched/etc store per-person, so any one save in
           // flight means the whole map is mid-write.
           const dirtyHasPrefix=(p)=>{for(const id of dirtyConfigRef.current)if(id.startsWith(p+":"))return true;return false;};
-          const dc=await dbLoadConfig("dailycfg");if(dc&&typeof dc==="object"&&!dirtyHasPrefix("dailycfg"))setDailyConfig(dc);
-          const icv=await dbLoadConfig("ic");if(icv&&typeof icv==="object"&&!dirtyHasPrefix("ic"))setIcData(icv);
-          const sdv=await dbLoadConfig("sched");if(sdv&&typeof sdv==="object"&&!dirtyHasPrefix("sched"))setSchedData(sdv);
-          const rjv=await dbLoadConfig("rejcalls");if(rjv&&typeof rjv==="object"&&!dirtyHasPrefix("rejcalls"))setRejectedCallsData(rjv);
-          const tlv=await dbLoadConfig("timeline");if(tlv&&typeof tlv==="object"&&!dirtyHasPrefix("timeline"))setDailyTimelineData(tlv);
-          const csv2=await dbLoadConfig("csat");if(csv2&&csv2.data&&typeof csv2.data==="object"&&(Array.isArray(csv2.data.responses)||Array.isArray(csv2.data.post_case)||Array.isArray(csv2.data.claim)||Array.isArray(csv2.data.in_stay))&&!dirtyConfigRef.current.has("csat:data"))setCsatData(csv2.data);
-          const ctv=await dbLoadConfig("casetracker");if(ctv&&ctv.data&&typeof ctv.data==="object"&&Array.isArray(ctv.data.rows)&&!dirtyConfigRef.current.has("casetracker:data"))setCaseTracker(ctv.data);
-          const cnv=await dbLoadConfig("claimnotes");if(cnv&&cnv.data&&typeof cnv.data==="object"&&!dirtyConfigRef.current.has("claimnotes:data"))setClaimNotes(cnv.data);
+          const _epdc=configEpochRef.current["dailycfg"]||0;const dc=await dbLoadConfig("dailycfg");if(dc&&typeof dc==="object"&&!dirtyHasPrefix("dailycfg")&&(configEpochRef.current["dailycfg"]||0)===_epdc)setDailyConfig(prev=>_cfgSame(prev,dc)?prev:dc);
+          const _epic=configEpochRef.current["ic"]||0;const icv=await dbLoadConfig("ic");if(icv&&typeof icv==="object"&&!dirtyHasPrefix("ic")&&(configEpochRef.current["ic"]||0)===_epic)setIcData(prev=>_cfgSame(prev,icv)?prev:icv);
+          const _epsd=configEpochRef.current["sched"]||0;const sdv=await dbLoadConfig("sched");if(sdv&&typeof sdv==="object"&&!dirtyHasPrefix("sched")&&(configEpochRef.current["sched"]||0)===_epsd)setSchedData(prev=>_cfgSame(prev,sdv)?prev:sdv);
+          const _eprj=configEpochRef.current["rejcalls"]||0;const rjv=await dbLoadConfig("rejcalls");if(rjv&&typeof rjv==="object"&&!dirtyHasPrefix("rejcalls")&&(configEpochRef.current["rejcalls"]||0)===_eprj)setRejectedCallsData(prev=>_cfgSame(prev,rjv)?prev:rjv);
+          const _eptl=configEpochRef.current["timeline"]||0;const tlv=await dbLoadConfig("timeline");if(tlv&&typeof tlv==="object"&&!dirtyHasPrefix("timeline")&&(configEpochRef.current["timeline"]||0)===_eptl)setDailyTimelineData(prev=>_cfgSame(prev,tlv)?prev:tlv);
+          const csv2=await dbLoadConfig("csat");if(csv2&&csv2.data&&typeof csv2.data==="object"&&(Array.isArray(csv2.data.responses)||Array.isArray(csv2.data.post_case)||Array.isArray(csv2.data.claim)||Array.isArray(csv2.data.in_stay))&&!dirtyConfigRef.current.has("csat:data"))setCsatData(prev=>_cfgSame(prev,csv2.data)?prev:csv2.data);
+          const ctv=await dbLoadConfig("casetracker");if(ctv&&ctv.data&&typeof ctv.data==="object"&&Array.isArray(ctv.data.rows)&&!dirtyConfigRef.current.has("casetracker:data"))setCaseTracker(prev=>_cfgSame(prev,ctv.data)?prev:ctv.data);
+          const cnv=await dbLoadConfig("claimnotes");if(cnv&&cnv.data&&typeof cnv.data==="object"&&!dirtyConfigRef.current.has("claimnotes:data"))setClaimNotes(prev=>_cfgSame(prev,cnv.data)?prev:cnv.data);
           // Backfill call reviews a stranded session may have missed. MERGE (not replace): server rows win,
           // but any review created locally and not yet returned by the read is preserved — so this can never
           // make a just-submitted review vanish.
@@ -5301,7 +5322,7 @@ function App(){
           const objMerge=(setter)=>{
             if(dirtyConfigRef.current.has(row.id))return;
             if(ev==="DELETE")setter(prev=>{const n={...prev};delete n[key];return n;});
-            else setter(prev=>({...prev,[key]:value}));
+            else setter(prev=>_cfgSame(prev[key],value)?prev:{...prev,[key]:value});
           };
           if(prefix==="caps")objMerge(setCapabilities);
           else if(prefix==="capcrit")objMerge(setCapCriteria);
@@ -5554,8 +5575,15 @@ function App(){
         if(!out[name].months[mon])out[name].months[mon]={};
         const mo=out[name].months[mon];
         Object.entries(stats).forEach(([k,v])=>{
-          if(typeof v==="number")mo[k]=(mo[k]||0)+v;
+          if(typeof v!=="number")return;
+          // v3.5.5: medians are averaged across the month's weeks, not summed. Summing weekly
+          // medians made Month view show inflated Med. 1st / Med. Close figures.
+          if(k==="medReply"||k==="medClose"){mo._avg=mo._avg||{};(mo._avg[k]=mo._avg[k]||[]).push(v);return;}
+          mo[k]=(mo[k]||0)+v;
         });
+      });
+      Object.values(out[name].months).forEach(mo=>{
+        if(mo._avg){Object.entries(mo._avg).forEach(([k,arr])=>{if(arr.length)mo[k]=Math.round(arr.reduce((a,b)=>a+b,0)/arr.length*100)/100;});delete mo._avg;}
       });
     });
     return out;
@@ -6757,6 +6785,34 @@ function App(){
   };
 
     // Handle ANY Intercom file — detects type automatically
+  // v3.5.5 overwrite guard: before an import replaces already-saved weekly figures with
+  // DIFFERENT numbers, list the mismatches and let the admin cancel. Re-importing identical
+  // values or filling brand-new cells passes silently.
+  const IC_METRIC_LABELS={closed:"Tickets",emails:"Emails",replies:"Replies",wfs:"WFs",calls:"Calls",caseActions:"Cases",reviews:"Reviews",medReply:"Med. 1st (h)",medClose:"Med. Close (h)"};
+  const icOverwriteDiffs=(payload)=>{
+    const diffs=[];
+    try{
+      Object.entries(payload||{}).forEach(([name,nd])=>{
+        const cur=icData[name];if(!cur)return;
+        Object.entries(nd.weeks||{}).forEach(([wk2,wd])=>{
+          const old=cur.weeks?.[wk2];if(!old)return;
+          Object.entries(wd||{}).forEach(([k,v])=>{
+            if(typeof v!=="number")return;
+            const ov=old[k];
+            if(typeof ov==="number"&&ov!==v)diffs.push({name,wk:wk2,k,ov,nv:v});
+          });
+        });
+      });
+    }catch(err){console.error("icOverwriteDiffs:",err);}
+    return diffs;
+  };
+  const confirmIcOverwrites=(payload,label)=>{
+    const diffs=icOverwriteDiffs(payload);
+    if(!diffs.length)return true;
+    const lines=diffs.slice(0,10).map(d=>`${d.name} | W${d.wk} | ${IC_METRIC_LABELS[d.k]||d.k}: ${d.ov} -> ${d.nv}`);
+    const more=diffs.length>10?`\n...and ${diffs.length-10} more`:"";
+    return window.confirm(label+": this file changes "+diffs.length+" figure"+(diffs.length===1?"":"s")+" already saved for these weeks:\n\n"+lines.join("\n")+more+"\n\nOK = apply the new numbers. Cancel = keep the current numbers.");
+  };
   const handleIcFile=(e)=>{
     const file=e.target.files[0];if(!file)return;
     const reader=new FileReader();
@@ -6777,7 +6833,10 @@ function App(){
           const dayToWk={};const dayToIso={};
           parsed.days.forEach(day=>{
             const mo=day.split(" ")[0];
-            const yr=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep"].includes(mo)?2026:2025;
+            // v3.5.5: pick the year that puts this day closest to today (reports are always recent).
+            // The old hardcoded Jan-Sep=2026 / Oct-Dec=2025 rule would misdate files from Oct 2026 on.
+            const _cy=new Date().getFullYear();let yr=_cy,_bd=Infinity;
+            [_cy-1,_cy,_cy+1].forEach(cand=>{const t=new Date(mo+" "+day.split(" ")[1]+" "+cand);if(!isNaN(t.getTime())){const df=Math.abs(t.getTime()-Date.now());if(df<_bd){_bd=df;yr=cand;}}});
             try{
               const d=new Date(day+" "+yr);
               if(isNaN(d.getTime()))return;
@@ -6821,6 +6880,7 @@ function App(){
             });
           });
 
+          if(!confirmIcOverwrites(newIc,"Closed conversations")){toast2("Import cancelled, kept existing figures.");return;}
           // Merge icData
           setIcDataWithMonths(prev=>{
             const merged={...prev};
@@ -6897,6 +6957,7 @@ function App(){
             if(!newIc[rName])newIc[rName]={team:getPersonTeam(rName)||"",weeks:{},months:{}};
             newIc[rName].weeks[wk]={...(newIc[rName].weeks[wk]||{}),replies:total};
           });
+          if(!confirmIcOverwrites(newIc,"Replies by agent")){toast2("Import cancelled, kept existing figures.");return;}
           setIcDataWithMonths(prev=>{
             const merged={...prev};
             Object.entries(newIc).forEach(([name,nd])=>{
@@ -7362,6 +7423,7 @@ function App(){
             if(medLC!=null)newIc[agent].weeks[wkN].medClose=Math.round(medLC/3600*100)/100;
           });
           if(Object.keys(newIc).length){
+            if(!confirmIcOverwrites(newIc,"Conversation export")){toast2("Import cancelled, kept existing figures.");return;}
             setIcDataWithMonths(prev=>{
               const merged={...prev};
               Object.entries(newIc).forEach(([name,nd])=>{
@@ -7463,6 +7525,7 @@ function App(){
           }
           // Merge weekly counts into icData (case actions / emails / WFs) — same shape the Work Completed report fed.
           if(Object.keys(agg).length){
+            if(!confirmIcOverwrites(agg,"Detailed work log")){toast2("Import cancelled, kept existing figures.");return;}
             setIcDataWithMonths(prev=>{
               const merged={...prev};
               Object.entries(agg).forEach(([nm,nd])=>{
@@ -7557,6 +7620,7 @@ function App(){
             rowCount++;
           }
 
+          if(!confirmIcOverwrites(bucket,"Work Completed")){toast2("Import cancelled, kept existing figures.");return;}
           // Merge into icData
           setIcDataWithMonths(prev=>{
             const merged={...prev};
@@ -7714,6 +7778,7 @@ function App(){
             agentCount++;
           }
 
+          if(!confirmIcOverwrites(newIc,"Total Calls")){toast2("Import cancelled, kept existing figures.");return;}
           // Merge into icData
           setIcDataWithMonths(prev=>{
             const merged={...prev};
@@ -7744,14 +7809,16 @@ function App(){
               const tickets=agents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.closed||0),0);
               const emails=agents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.emails||0),0);
               const wfs=agents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.wfs||0),0);
-              const calls=newAgents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.calls||0),0)+
-                           agents.reduce((s,[,d])=>s+(d.weeks?.[wkN]?.calls||0),0);
+              // v3.5.5: the merged call count per agent is newIc's value where present, else the
+              // existing value. Summing both double-counted agents present in both maps.
+              const _callNames=new Set([...agents.map(([n])=>n),...newAgents.map(([n])=>n)]);
+              const calls=[..._callNames].reduce((s,n)=>{const nv=newIc[n]?.weeks?.[wkN]?.calls;return s+(nv!=null?nv:(icData[n]?.weeks?.[wkN]?.calls||0));},0);
               const _w=getW(tname);const totalPts=tickets*_w.tickets+emails*_w.emails+wfs*_w.wfs+calls*_w.calls;
               const teamHrs=Object.values(schedData).filter(p=>p.group===tname)
                 .reduce((s,p)=>{const h=p.overrides?.[`w_${wkN}`]??p.weeks?.[wkN]??0;return s+h;},0);
               const leadName=TEAM_LEADS[tname];
               const leadHrs=schedData[leadName]?((schedData[leadName].overrides?.[`w_${wkN}`]??schedData[leadName].weeks?.[wkN])??0):0;
-              const leadCalls=(newIc[leadName]?.weeks?.[wkN]?.calls||0)+(icData[leadName]?.weeks?.[wkN]?.calls||0);
+              const leadCalls=(newIc[leadName]?.weeks?.[wkN]?.calls!=null)?newIc[leadName].weeks[wkN].calls:(icData[leadName]?.weeks?.[wkN]?.calls||0);
               const leadCaseActions=(newIc[leadName]?.weeks?.[wkN]?.caseActions||0)+(icData[leadName]?.weeks?.[wkN]?.caseActions||0);const leadReviews=icData[leadName]?.weeks?.[wkN]?.reviews||0;const leadPts=(icData[leadName]?.weeks?.[wkN]?.closed||0)*weights.tickets+(icData[leadName]?.weeks?.[wkN]?.emails||0)*weights.emails+(icData[leadName]?.weeks?.[wkN]?.wfs||0)*weights.wfs+leadCalls*weights.calls+leadCaseActions*(weights.case_actions||0)+leadReviews*(weights.reviews||1);
               const upd={};
               if(totalPts>0&&teamHrs>0)upd.productivity_team=Math.round(totalPts/teamHrs*100)/100;
@@ -8009,11 +8076,11 @@ function App(){
           <input value={pw.split("|")[0]||""} onChange={e=>setPw(e.target.value.replace("|","")+"|"+(pw.split("|")[1]||""))} onKeyDown={e=>e.key==="Enter"&&document.getElementById("bc_pw_field")?.focus()} placeholder="Enter your name" style={{...S.inp,marginBottom:12,background:"#f9fafb"}}/>
           <label style={S.lbl}>Password</label>
           <div style={{position:"relative",marginBottom:16}}>
-            <input id="bc_pw_field" type={showPw?"text":"password"} value={pw.split("|")[1]||""} onChange={e=>setPw((pw.split("|")[0]||"")+"|"+e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){const[uname,upw]=pw.split("|");const acct=liveAccounts.find(a=>a.username.toLowerCase()===uname.toLowerCase()&&a.password===upw);if(acct)loginAs(acct);else setPwErr("Incorrect username or password.");}}} placeholder="Enter your password" style={{...S.inp,paddingRight:52,background:"#f9fafb"}}/>
+            <input id="bc_pw_field" type={showPw?"text":"password"} value={pw.split("|")[1]||""} onChange={e=>setPw((pw.split("|")[0]||"")+"|"+e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){attemptLogin();}}} placeholder="Enter your password" style={{...S.inp,paddingRight:52,background:"#f9fafb"}}/>
             <button onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#9ca3af",fontSize:12,fontWeight:500}}>{showPw?"Hide":"Show"}</button>
           </div>
           {pwErr&&<div style={{color:"#dc2626",fontSize:13,marginBottom:12,background:"#fef2f2",padding:"8px 12px",borderRadius:8,border:"1px solid #fecaca"}}>{pwErr}</div>}
-          <button onClick={()=>{const[uname,upw]=pw.split("|");const acct=liveAccounts.find(a=>a.username.toLowerCase()===uname.toLowerCase()&&a.password===upw);if(acct)loginAs(acct);else setPwErr("Incorrect username or password.");}} style={{...S.p1,width:"100%",padding:12,fontSize:14,borderRadius:10}}>Sign In</button>
+          <button onClick={()=>{attemptLogin();}} style={{...S.p1,width:"100%",padding:12,fontSize:14,borderRadius:10}}>Sign In</button>
         </div>
       </div>
     );
@@ -8957,10 +9024,11 @@ function App(){
       r.onload=ev=>{setAvatar(ev.target.result);localStorage.setItem("bc_avatar_"+currentUser.username,ev.target.result);toast2("Photo updated.");};
       r.readAsDataURL(f);
     };
-    const changePw=()=>{
+    const changePw=async()=>{
       if(!profilePwVal||profilePwVal.length<8){setProfilePwMsg("Password must be at least 8 characters.");return;}
       if(profilePwVal!==profilePwConf){setProfilePwMsg("Passwords don’t match.");return;}
-      const updated=liveAccounts.map(a=>a.username===currentUser.username?{...a,password:profilePwVal}:a);
+      const _h=await sha256Hex(profilePwVal);
+      const updated=liveAccounts.map(a=>{if(a.username!==currentUser.username)return a;const{password,...rest}=a;return{...rest,passwordHash:_h};});
       setLiveAccounts(updated);
       saveAccountsToSupabase(updated);
       addAudit("Password Changed",currentUser.displayName+" changed their own password");
@@ -11318,9 +11386,10 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
     const getPerms=(username)=>{const acct=localAccounts.find(a=>a.username===username);const stored=permissions[username];if(!stored?.menu)return getDefPerms(acct||{role:"guest"});return stored;};
     const togglePerm=(username,category,item)=>{const cur=getPerms(username);const arr=[...(cur[category]||[])];const idx=arr.indexOf(item);if(idx>=0)arr.splice(idx,1);else arr.push(item);if(category==="teams"&&item==="All Teams"&&idx<0){arr.length=0;arr.push("All Teams");}else if(category==="teams"&&item!=="All Teams"){const ati=arr.indexOf("All Teams");if(ati>=0)arr.splice(ati,1);}const updated={...cur,[category]:arr};if(category==="admin"){updated.Weights=arr.includes("Weights");updated["KPI Targets"]=arr.includes("KPI Targets");updated.Capabilities=arr.includes("Capabilities");}setPermissions(prev=>{const n={...prev,[username]:updated};dbSaveConfigKey("perms",username,updated);return n;});addAudit("Permission Updated",item+" "+(idx>=0?"removed":"granted")+" for "+username);};
 
-    const doReset=(username)=>{
+    const doReset=async(username)=>{
       if(!newPw||newPw.length<8){toast2("Password must be at least 8 characters.");return;}
-      const updated=localAccounts.map(a=>a.username===username?{...a,password:newPw}:a);
+      const _h=await sha256Hex(newPw);
+      const updated=localAccounts.map(a=>{if(a.username!==username)return a;const{password,...rest}=a;return{...rest,passwordHash:_h};});
       setLocalAccounts(updated);
       addAudit("Password Reset",`${username}'s password was reset by ${currentUser?.displayName}`);
       setResetId(null);setNewPw("");
@@ -11354,7 +11423,7 @@ ${v.review_summary?'<h3 style="color:#111827;font-size:15px;margin:24px 0 10px;b
             <div><div style={{fontSize:11,fontWeight:600,color:"#4b5563",marginBottom:4}}>Username (login)</div><input id="ca_user" placeholder="e.g. john" style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6}}/></div>
             <div id="ca_team_wrap"><div style={{fontSize:11,fontWeight:600,color:"#4b5563",marginBottom:4}}>Assign to Team</div><select id="ca_team" style={{width:"100%",fontSize:12,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6}}>{tNames.map(t=><option key={t}>{t}</option>)}</select></div>
           </div>
-          <button onClick={()=>{var name=document.getElementById("ca_name")?.value?.trim();var user=document.getElementById("ca_user")?.value?.trim();var role=document.getElementById("ca_role")?.value||"guest";var team2=role==="admin"?null:document.getElementById("ca_team")?.value;if(!name)return toast2("Enter a display name.");if(!user)return toast2("Enter a username.");if(localAccounts.some(a=>a.username.toLowerCase()===user.toLowerCase()))return toast2("Username already taken.");var chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";var pw="";for(var i=0;i<12;i++)pw+=chars.charAt(Math.floor(Math.random()*chars.length));var acct={username:user,password:pw,role:role,displayName:name};if(team2)acct.team=team2;var updated=[...localAccounts,acct];setLocalAccounts(updated);addAudit("Account Created",name+" ("+role+")"+(team2?" · "+team2:""));window.prompt("Account created! Copy this password and share it securely:",pw);document.getElementById("ca_name").value="";document.getElementById("ca_user").value="";document.getElementById("ca_roster").value="";toast2("Account created for "+name);}} style={S.p1}>Create Account</button>
+          <button onClick={async()=>{var name=document.getElementById("ca_name")?.value?.trim();var user=document.getElementById("ca_user")?.value?.trim();var role=document.getElementById("ca_role")?.value||"guest";var team2=role==="admin"?null:document.getElementById("ca_team")?.value;if(!name)return toast2("Enter a display name.");if(!user)return toast2("Enter a username.");if(localAccounts.some(a=>a.username.toLowerCase()===user.toLowerCase()))return toast2("Username already taken.");var chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";var pw="";for(var i=0;i<12;i++)pw+=chars.charAt(Math.floor(Math.random()*chars.length));var acct={username:user,passwordHash:await sha256Hex(pw),role:role,displayName:name};if(team2)acct.team=team2;var updated=[...localAccounts,acct];setLocalAccounts(updated);addAudit("Account Created",name+" ("+role+")"+(team2?" · "+team2:""));window.prompt("Account created! Copy this password and share it securely:",pw);document.getElementById("ca_name").value="";document.getElementById("ca_user").value="";document.getElementById("ca_roster").value="";toast2("Account created for "+name);}} style={S.p1}>Create Account</button>
         </div>
 
         {/* Account List */}

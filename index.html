@@ -10028,7 +10028,7 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
               </div>
 
               {/* Audio upload */}
-              {openaiKey&&!aiAudioFile&&!aiTranscript&&<div onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const f=e.dataTransfer?.files?.[0];if(!f)return;if(f.size>25*1024*1024)return toast2("File must be under 25MB.");setAiAudioFile(f);setAiAudioName(f.name);window[stateKey]={...window[stateKey],aiAudioFile:f,aiAudioName:f.name};}} onClick={()=>{const inp=document.createElement("input");inp.type="file";inp.accept=".wav,.mp3,.mp4,.m4a,.ogg,.webm,.flac";inp.onchange=e2=>{const f=e2.target?.files?.[0];if(!f)return;if(f.size>25*1024*1024)return toast2("File must be under 25MB.");setAiAudioFile(f);setAiAudioName(f.name);window[stateKey]={...window[stateKey],aiAudioFile:f,aiAudioName:f.name};};inp.click();}} style={{border:"2px dashed #a7f3d0",borderRadius:8,padding:"20px",textAlign:"center",cursor:"pointer",background:"rgba(255,255,255,.5)",marginBottom:10}}>
+              {!aiAudioFile&&!aiTranscript&&<div onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const f=e.dataTransfer?.files?.[0];if(!f)return;if(f.size>25*1024*1024)return toast2("File must be under 25MB.");setAiAudioFile(f);setAiAudioName(f.name);window[stateKey]={...window[stateKey],aiAudioFile:f,aiAudioName:f.name};}} onClick={()=>{const inp=document.createElement("input");inp.type="file";inp.accept=".wav,.mp3,.mp4,.m4a,.ogg,.webm,.flac";inp.onchange=e2=>{const f=e2.target?.files?.[0];if(!f)return;if(f.size>25*1024*1024)return toast2("File must be under 25MB.");setAiAudioFile(f);setAiAudioName(f.name);window[stateKey]={...window[stateKey],aiAudioFile:f,aiAudioName:f.name};};inp.click();}} style={{border:"2px dashed #a7f3d0",borderRadius:8,padding:"20px",textAlign:"center",cursor:"pointer",background:"rgba(255,255,255,.5)",marginBottom:10}}>
                 <div style={{fontSize:20,marginBottom:4}}>🎙️</div>
                 <div style={{fontSize:12,color:"#0f766e",fontWeight:600}}>Drop audio file here or click to browse</div>
                 <div style={{fontSize:10,color:"#6b7280",marginTop:2}}>WAV, MP3, M4A, OGG, FLAC (max 25MB)</div>
@@ -10054,81 +10054,24 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
               <div style={{display:"flex",gap:8,marginTop:8,alignItems:"center",flexWrap:"wrap"}}>
                 {aiAudioFile&&!aiTranscript&&claudeKey&&<button disabled={aiStatus==="transcribing"||aiStatus==="grading"||!agentName} onClick={async()=>{
                   if(!agentName)return toast2("Select an agent first.");
-                  if(!openaiKey)return toast2("Configure keys in Settings first.");
+                  const TRANSCRIBE_URL=(typeof localStorage!=="undefined"&&localStorage.getItem("bc_transcribe_url"))||"https://calls.lever.tools/transcribe";
+                  const TRANSCRIBE_TOKEN=(typeof localStorage!=="undefined"&&localStorage.getItem("bc_transcribe_token"))||"";
                   let localTranscript="";
                   let localDuration="";
                   try{
-                    setAiStatus("transcribing");setAiProgress("Processing audio...");
+                    setAiStatus("transcribing");setAiProgress("Sending audio to transcription server...");
                     const formData=new FormData();
                     formData.append("file",aiAudioFile);
-                    formData.append("model","whisper-1");
-                    formData.append("language","en");
-                    formData.append("prompt","Bachcare. MSP. bach. Booking.com. Airbnb. VRBO. Intercom. "+agentName+".");
-                    formData.append("temperature","0");
-                    formData.append("response_format","verbose_json");
-                    formData.append("timestamp_granularities[]","segment");
-                    const txResp=await fetch("https://api.openai.com/v1/audio/transcriptions",{method:"POST",headers:{"Authorization":"Bearer "+openaiKey},body:formData});
-                    if(!txResp.ok){const errTxt=await txResp.text().catch(()=>"unknown");console.error("Whisper error "+txResp.status+":",errTxt);throw new Error("Transcription failed ("+txResp.status+"). Check your API key or try a smaller file.");}
+                    formData.append("agent_name",agentName.split(" ")[0]);
+                    const txResp=await fetch(TRANSCRIBE_URL,{method:"POST",headers:TRANSCRIBE_TOKEN?{"x-auth-token":TRANSCRIBE_TOKEN}:{},body:formData});
+                    if(!txResp.ok){const errTxt=await txResp.text().catch(()=>"unknown");console.error("Transcribe error "+txResp.status+":",errTxt);throw new Error("Transcription failed ("+txResp.status+"). Is your PC on and the tunnel running?");}
                     const txData=await txResp.json();
-                    const segments=txData.segments||[];
-                    if(segments.length){
-                      // v2.9 — robust hallucination filter. The previous version only caught
-                      // CONSECUTIVE repeats; Whisper often alternates two phrases (A B A B A B…)
-                      // when fed a long prompt or silent audio, which beat consecutive-dedup.
-                      // New approach: count how many times each normalized segment text appears
-                      // across the whole transcript. Anything that appears 4+ times is a
-                      // hallucination loop, regardless of position.
-                      const normalize=(t)=>String(t||"").toLowerCase().replace(/[^a-z\s]/g,"").trim();
-                      const occurrenceCount={};
-                      segments.forEach(seg=>{const n=normalize(seg.text);if(n.length>3)occurrenceCount[n]=(occurrenceCount[n]||0)+1;});
-                      const hallucinatedTexts=new Set(Object.entries(occurrenceCount).filter(([,c])=>c>=4).map(([t])=>t));
-                      // Filter Whisper hallucinations: detect repeated phrases
-                      const cleanSegments=[];let prevText="";let repeatCount=0;let lastWasSilence=false;
-                      segments.forEach(seg=>{
-                        const text=seg.text.trim();
-                        const normalized=normalize(text);
-                        const prevNorm=normalize(prevText);
-                        // NEW: skip segments whose text is part of a hallucination loop
-                        if(hallucinatedTexts.has(normalized)){
-                          if(!lastWasSilence){cleanSegments.push({start:seg.start,text:"[silence or hallucinated audio]",filtered:true});lastWasSilence=true;}
-                          return;
-                        }
-                        // Check for exact or near-exact repeat (legacy consecutive check)
-                        if(normalized===prevNorm||normalized.length<15&&prevNorm.includes(normalized)){
-                          repeatCount++;
-                          if(repeatCount>=3)return; // Skip hallucinated repeats
-                        }else{
-                          // If we had a repeated section, mark it
-                          if(repeatCount>=3&&!lastWasSilence){cleanSegments.push({start:seg.start,text:"[silence]",filtered:true});lastWasSilence=true;}
-                          repeatCount=0;
-                        }
-                        // Also filter common hallucination phrases when repeated
-                        const hallucinations=["thank you","thanks for watching","bye","please subscribe","you","thank you for watching"];
-                        if(hallucinations.some(h=>normalized===h)&&seg.no_speech_prob>0.5)return;
-                        prevText=text;
-                        lastWasSilence=false;
-                        cleanSegments.push(seg);
-                      });
-                      cleanSegments.forEach(seg=>{
-                        const mins=Math.floor(seg.start/60);const secs=Math.floor(seg.start%60);
-                        localTranscript+="["+String(mins).padStart(2,"0")+":"+String(secs).padStart(2,"0")+"] "+(seg.filtered?seg.text:seg.text.trim())+"\n";
-                      });
-                    }
-                    else{localTranscript=txData.text||"";}
-                    // Final cleanup: remove any remaining long runs of the same short phrase
-                    localTranscript=localTranscript.replace(/(\[[\d:]+\]\s*.{2,30}\n)(\1{2,})/g,"$1[silence]\n");
-                    if(!localTranscript.trim())throw new Error("Empty transcript returned.");
+                    // Tower returns an already speaker-labelled transcript (Agent:/Customer:) with
+                    // timestamps, holds, pauses and transfers, so the old Claude diarization step is gone.
+                    localTranscript=(txData.grading_text||txData.text||"").trim();
+                    if(!localTranscript)throw new Error("Empty transcript returned.");
                     const durSecs=Math.round(txData.duration||0);
                     if(durSecs)localDuration=Math.floor(durSecs/60)+"m "+String(durSecs%60).padStart(2,"0")+"s";
-                    setAiProgress("Identifying speakers...");
-                    // v2.6.12: diarize the Whisper output before grading. Without this, the grader
-                    // has to guess who said what — which leads to lenient grading because it can't
-                    // confidently attribute hedge language, missed empathy, or weak language to
-                    // the agent vs the customer. Fall back to the raw transcript on failure.
-                    try{
-                      const diar=await diarizeTranscript(localTranscript,agentName.split(" ")[0]);
-                      if(diar&&diar.length>localTranscript.length*0.5)localTranscript=diar;
-                    }catch(e){console.warn("Diarization step failed:",e);}
                     setAiProgress("Processing complete. Grading...");
                     setAiStatus("grading");
                     const prompt=buildGradingPrompt({transcript:localTranscript,diarized:true});

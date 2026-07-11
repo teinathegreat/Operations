@@ -10098,18 +10098,34 @@ const data3=await callClaudeAPI({maxTokens:4000,prompt,purpose:"cancellation-or-
                   if(!agentName)return toast2("Select an agent first.");
                   const TRANSCRIBE_URL=(typeof localStorage!=="undefined"&&localStorage.getItem("bc_transcribe_url"))||"https://calls.lever.tools/transcribe";
                   const TRANSCRIBE_TOKEN=(typeof localStorage!=="undefined"&&localStorage.getItem("bc_transcribe_token"))||"";
+                  const TRANSCRIBE_BASE=TRANSCRIBE_URL.replace(/\/transcribe\/?$/,"");
+                  const _thdrs=TRANSCRIBE_TOKEN?{"x-auth-token":TRANSCRIBE_TOKEN}:{};
                   let localTranscript="";
                   let localDuration="";
                   try{
-                    setAiStatus("transcribing");setAiProgress("Sending audio to transcription server...");
+                    setAiStatus("transcribing");setAiProgress("Uploading audio to your PC...");
                     const formData=new FormData();
                     formData.append("file",aiAudioFile);
                     formData.append("agent_name",agentName.split(" ")[0]);
-                    const txResp=await fetch(TRANSCRIBE_URL,{method:"POST",headers:TRANSCRIBE_TOKEN?{"x-auth-token":TRANSCRIBE_TOKEN}:{},body:formData});
-                    if(!txResp.ok){const errTxt=await txResp.text().catch(()=>"unknown");console.error("Transcribe error "+txResp.status+":",errTxt);throw new Error("Transcription failed ("+txResp.status+"). Is your PC on and the tunnel running?");}
-                    const txData=await txResp.json();
-                    // Tower returns an already speaker-labelled transcript (Agent:/Customer:) with
-                    // timestamps, holds, pauses and transfers, so the old Claude diarization step is gone.
+                    const startResp=await fetch(TRANSCRIBE_URL,{method:"POST",headers:_thdrs,body:formData});
+                    if(!startResp.ok){const errTxt=await startResp.text().catch(()=>"unknown");console.error("Transcribe start error "+startResp.status+":",errTxt);throw new Error("Could not start transcription ("+startResp.status+"). Is your PC on and the tunnel running?");}
+                    const startData=await startResp.json();
+                    const jobId=startData.job_id;
+                    if(!jobId)throw new Error("No job id returned by server.");
+                    let txData=null;const _t0=Date.now();const _MAXMS=20*60*1000;
+                    while(true){
+                      await new Promise(r=>setTimeout(r,3000));
+                      if(Date.now()-_t0>_MAXMS)throw new Error("Transcription timed out after 20 minutes.");
+                      let job;
+                      try{
+                        const pollResp=await fetch(TRANSCRIBE_BASE+"/jobs/"+jobId,{headers:_thdrs});
+                        if(!pollResp.ok){const t=await pollResp.text().catch(()=>"");throw new Error("Job check failed ("+pollResp.status+"). "+t);}
+                        job=await pollResp.json();
+                      }catch(pe){console.warn("poll retry:",pe);continue;}
+                      if(job.status==="processing"){setAiProgress("Transcribing on your PC (speaker separation runs on CPU)... "+Math.round((Date.now()-_t0)/1000)+"s");continue;}
+                      if(job.status==="error"){throw new Error("Transcription failed: "+(job.error||"unknown"));}
+                      if(job.status==="done"){txData=job.result;break;}
+                    }
                     localTranscript=(txData.grading_text||txData.text||"").trim();
                     if(!localTranscript)throw new Error("Empty transcript returned.");
                     const durSecs=Math.round(txData.duration||0);

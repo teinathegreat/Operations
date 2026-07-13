@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.8.0";
+const APP_VERSION="3.8.1";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -12375,7 +12375,7 @@ const lb=plbl(ik);const rawProd=+d.productivity;const pv=(!isNaN(rawProd)&&rawPr
             <button onClick={()=>setTab("audit")} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"4px 14px",fontSize:12,cursor:"pointer",marginLeft:4,fontWeight:500}}>Review</button>
           </div>
         )}
-        <div key={tab} className="bc-page-fade" style={{maxWidth:(tab==="planner"||tab==="owner withdrawals"||tab==="reviews"||tab==="case tracker")?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":(tab==="owner withdrawals"?"0":"24px 28px"),width:tab==="owner withdrawals"?"100%":undefined}}>
+        <div key={tab} className="bc-page-fade" style={{maxWidth:(tab==="planner"||tab==="owner withdrawals"||tab==="airbnb reviews"||tab==="reviews"||tab==="case tracker")?"none":1100,margin:"0 auto",padding:tab==="planner"?"24px 28px 24px 28px":((tab==="owner withdrawals"||tab==="airbnb reviews")?"0":"24px 28px"),width:(tab==="owner withdrawals"||tab==="airbnb reviews")?"100%":undefined}}>
 
         {/* Profile View takes over main content */}
         {tab==="dashboard"&&isAdmin&&(

@@ -2433,7 +2433,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.7.5";
+const APP_VERSION="3.8.0";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -3023,12 +3023,12 @@ function AirbnbScraperTab({sbUrl,sbKey,currentUser,addAudit,toast2,theme}){
     <button onClick={()=>setSub(id)} style={{padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:13,background:sub===id?"#1e293b":"transparent",color:sub===id?"#fff":"#64748b"}}>{label}</button>
   );
   return(
-    <div style={{margin:0,width:"100%",height:"100vh",display:"flex",flexDirection:"column",background:"#f8fafc",position:"relative"}}>
-      <div style={{display:"flex",gap:6,padding:"10px 14px",borderBottom:"1px solid #e2e8f0",flexShrink:0,background:"#fff"}}>
+    <div style={{margin:0,width:"100%",height:"100vh",background:"#f8fafc",position:"relative",flex:"1 1 auto",alignSelf:"stretch",minWidth:0}}>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:46,display:"flex",gap:6,padding:"8px 14px",borderBottom:"1px solid #e2e8f0",background:"#fff",boxSizing:"border-box",zIndex:2}}>
         {tabBtn("byyou","Airbnb Reviews by you")}
         {tabBtn("aboutyou","Airbnb Reviews about you")}
       </div>
-      <div style={{position:"relative",flex:1,minHeight:0}}>
+      <div style={{position:"absolute",top:46,left:0,right:0,bottom:0}}>
         <iframe ref={byYouRef} srcDoc={AIRBNB_SCRAPER_HTML} title="Airbnb Reviews by you" style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none",display:sub==="byyou"?"block":"none"}}/>
         <iframe ref={aboutRef} srcDoc={AIRBNB_ABOUT_YOU_HTML} title="Airbnb Reviews about you" style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none",display:sub==="aboutyou"?"block":"none"}}/>
       </div>

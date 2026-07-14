@@ -244,7 +244,7 @@ const {useState,useRef,useEffect,useCallback}=React;
 
 const APP_PW="Bachcare2025";
 
-const APP_VERSION="3.9.7";
+const APP_VERSION="3.9.8";
 // Single source of truth for the Claude model. Anthropic retires versioned model
 // IDs roughly every 60-90 days (claude-sonnet-4-20250514 retired 15 Jun 2026), so
 // keeping this in one place makes the next migration a one-line change.
@@ -4366,11 +4366,13 @@ function App(){
         clT[w]=(clT[w]||0)+1;if(ok)clP[w]=(clP[w]||0)+1;
         (clCasesW[w]=clCasesW[w]||[]).push({id:String(r.CaseID||"").trim(),link:String(r.LinkToCase||"").trim(),days:dn,status:status,ok:ok});
       }else if(ctype==="feedback"||ctype==="review escalation"){
-        // Feedback + Review Escalation cases. Every one created in the week counts toward the
-        // denominator; in time (numerator) = Completed AND the "Days" column under 3. Anything not
-        // completed (or completed in 3+ days) counts against.
+        // Feedback + Review Escalation cases (R&R work Mon–Fri). Every one created in the week
+        // counts toward the denominator; in time (numerator) = Completed AND WorkingDaysToComplete
+        // under 3. Uses WorkingDaysToComplete (weekends excluded), NOT the calendar "Days" column,
+        // so a Sat/Sun falling inside a case doesn't count against a Mon–Fri team. This now matches
+        // the cleaning-claims rule above.
         const w=dmyToWk(r.Created);if(!w)return;
-        const raw=String(r.Days||"").trim();
+        const raw=String(r.WorkingDaysToComplete||"").trim();
         const d=raw===""?null:parseInt(raw,10);
         const dn=(d!=null&&!isNaN(d))?d:null;
         const ok=(status==="Completed")&&(dn!=null)&&(dn<3);
